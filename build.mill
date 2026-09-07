@@ -1,0 +1,310 @@
+//| mill-version: 1.1.5
+//| mill-jvm-version: temurin:25
+//| mill-jvm-opts: ["-XX:NonProfiledCodeHeapSize=250m", "-XX:ReservedCodeCacheSize=500m"]
+
+package build
+
+import mill.*
+import scalalib.*
+import publish.*
+
+object settings:
+  // The propensive/proscala fork toolchain, pinned exactly as in the flame and fume builds:
+  // Soundness TASTy is produced by this compiler, so Pyrocosm must compile with it too.
+  val scalaVersion = sys.env.getOrElse("SOUNDNESS_SCALA_VERSION", "3.9.0-p16")
+  val scalaRelease = sys.env.getOrElse("SOUNDNESS_SCALA_RELEASE", "3.9.0-p16")
+  val scalaHome = sys.env.getOrElse("SOUNDNESS_SCALA_HOME", "")
+
+  // The Soundness release the components resolve at (from `~/.ivy2/local`, installed by
+  // `make sync-releases` in the Soundness repository). Pinned to the build fume is on.
+  val soundnessVersion = "0.65.0-selection"
+
+  val pyrocosmVersion = sys.env.getOrElse("PYROCOSM_VERSION", "0.1.0")
+
+  val scalaOptions = Seq(
+    "-Zalias-captures",
+    "-Zdiagnostic-givens",
+    "-Zgiven-prefixes",
+    "-Zinline-source-maps",
+    "-Zopaque-mutability",
+    "-Zpure-iarrays",
+    "-Zretains-bounds",
+    "-Zretains-skolems",
+    "-Zspreadable-varargs",
+    "-Zunboxed-pure-types",
+    "-Zunion-captures",
+    "-experimental",
+    "-new-syntax",
+    "-feature",
+    "-preview",
+    "-deprecation",
+    "-Wunused:imports",
+    "-Wimplausible-patterns",
+    "-Xmax-inlines", "32",
+    "-Yno-flexible-types",
+    "-Yexplicit-nulls",
+    "-Ycheck-all-patmat",
+    "-language:experimental.modularity",
+    "-language:experimental.dependent",
+    "-language:experimental.relaxedLambdaSyntax",
+    "-language:experimental.genericNumberLiterals",
+    "-language:experimental.into",
+    "-language:experimental.erasedDefinitions",
+    "-language:implicitConversions",
+    "-language:experimental.saferExceptions",
+    "-language:experimental.strictEqualityPatternMatching",
+    "-language:experimental.subCases",
+    "-language:experimental.multiSpreads",
+    // Capture checking as throughout Soundness. Separation checking is left off for now, as in
+    // flame: the web module threads WebSocket handlers the separation checker rejects.
+    "-Ycc-new",
+    "-language:experimental.captureChecking"
+  )
+
+  // The proscenium predef, as fume and flame: `scala` is deliberately not imported.
+  val predef = Seq("-Yno-predef", "-Yimports:java.lang,proscenium")
+
+  def component(name: String): Dep = mvn"dev.propensive:$name:$soundnessVersion"
+
+  // The model is pure data and typeclasses; every dependency here is Scala.js-capable, so the
+  // module can later cross-compile for a browser-side renderer.
+  val modelDeps = Seq(
+    "gossamer-core", "rudiments-core", "vacuous-core", "prepositional-core", "contingency-core",
+    "spectacular-core", "wisteria-core", "fulminate-core", "denominative-core", "aviation-core",
+    "clavichord-core",     // Keypress
+    "quantitative-core",   // Quantity, for measures
+    "acyclicity-core",     // Dag, for graphs
+    "archimedes-core",     // MathML
+    "punctuation-core",    // Markdown -> Block
+    "digression-core",     // StackTrace
+    "dissonance-core",     // Diff
+    "jacinta-core",        // JSON, at the browser edge only
+    "stratiform-core")     // TEL codecs, the canonical wire form
+  . map(component)
+
+  val terminalDeps = Seq(
+    "ultimatum-core", "ultimatum-gauges", "ultimatum-tables", "escapade-core", "escapade-io",
+    "escritoire-core", "dendrology-dag", "dendrology-tree", "tessellate-core", "harlequin-ansi",
+    "profanity-core", "turbulence-stdio", "hieroglyph-core", "iridescence-core", "parasite-jvm")
+  . map(component)
+
+  val webDeps = Seq(
+    "honeycomb-core", "cataclysm-core", "graffiti-core", "perihelion-core", "scintillate-server",
+    "jacinta-core", "iridescence-core")
+  . map(component)
+
+  val demoDeps = Seq("exoskeleton-completions", "ethereal-core").map(component)
+  val testDeps = Seq("probably-cli").map(component)
+
+// Exposes the fork compiler's `release/lib` jars (from a local build via `settings.scalaHome`, or
+// downloaded from the `settings.scalaRelease` GitHub release) as a Maven-layout repository,
+// generated on demand into the task's own dest: the unversioned jars are copied to versioned
+// coordinates with minimal POMs. Ported (JVM artifacts only) from the Soundness build, whose
+// published TASTy this toolchain produced.
+object toolchain extends Module:
+  // Downloads and extracts the `settings.scalaRelease` tarball from propensive/proscala into a
+  // *shared* cache dir outside the Mill `out/` tree — the same cache the Soundness build uses, so
+  // a release fetched by either build is reused by the other. Each release is a single
+  // `proscala-<tag>.tar.gz` asset carrying a `lib/` directory of jars, extracted here into
+  // `<tag>/lib`. A `.complete` sentinel makes a fully-populated cache a no-op — no network, no
+  // GitHub API call. Returns the `lib` dir.
+  def downloadRelease(tag: String): os.Path =
+    val root = os.home / ".cache" / "soundness" / "proscala" / tag
+    val lib = root / "lib"
+    val sentinel = lib / ".complete"
+    if os.exists(sentinel) then lib else
+      os.makeDir.all(root)
+      val api = s"https://api.github.com/repos/propensive/proscala/releases/tags/$tag"
+      val json = ujson.read(os.proc("curl", "-fsSL", api).call().out.text())
+      val asset = json("assets").arr.find(_("name").str.endsWith(".tar.gz")).getOrElse:
+        throw new Exception(s"no .tar.gz asset on proscala release $tag")
+      val name = asset("name").str
+      val url = asset("browser_download_url").str
+      val tarball = root / name
+      if !os.exists(tarball) then
+        os.proc("curl", "-fsSL", "-o", tarball.toString, url).call()
+      // Verify against the published digest when the API supplies one ("sha256:<hex>").
+      asset.obj.get("digest").flatMap(_.strOpt).foreach: digest =>
+        if digest.startsWith("sha256:") then
+          val md = java.security.MessageDigest.getInstance("SHA-256")
+          val hex = md.digest(os.read.bytes(tarball)).map("%02x".format(_)).mkString
+          if hex != digest.stripPrefix("sha256:") then
+            os.remove(tarball)
+            throw new Exception(s"checksum mismatch for $name (expected $digest, got sha256:$hex)")
+      // The tarball carries a `lib/` prefix, so extracting into `<tag>` lands the jars at
+      // `<tag>/lib/*.jar`. Clear any partial extract first (we only get here without the sentinel).
+      os.remove.all(lib)
+      os.proc("tar", "-xzf", tarball.toString, "-C", root.toString).call()
+      os.remove(tarball) // reclaim ~43 MB; the sentinel guards against re-fetching
+      os.write(sentinel, "")
+      lib
+
+  // Content-fingerprints the fork's jars so a rebuilt or re-released compiler regenerates the
+  // repository. `SOUNDNESS_SCALA_HOME` (if set) points at a local `release`; otherwise the
+  // `settings.scalaRelease` assets are downloaded and cached.
+  def distribution: T[PathRef] = Task.Input:
+    if settings.scalaHome.nonEmpty then PathRef(os.Path(settings.scalaHome) / "lib")
+    else PathRef(downloadRelease(settings.scalaRelease))
+
+  def repo: T[PathRef] = Task:
+    val lib = distribution().path
+    val v = settings.scalaVersion
+    val sl = "org.scala-lang"
+
+    // (group, artifactId, jar filename in release/lib, dependencies as (group, id, version))
+    val artifacts = Seq(
+      // The fork's supplementary runtime (since 3.9.0-p16): shipped as its own jar so
+      // `scala-library` stays byte-identical to upstream's build, and declared as a
+      // dependency of `scala-library` so it rides along wherever the stdlib goes —
+      // exactly as in the Soundness build's toolchain repository.
+      (sl, "proscala-library_3", "proscala-library.jar", Seq()),
+      (sl, "scala-library", "scala-library.jar", Seq((sl, "proscala-library_3", v))),
+      (sl, "scala3-library_3", "scala3-library.jar", Seq((sl, "scala-library", v))),
+      (sl, "scala3-interfaces", "scala3-interfaces.jar", Seq()),
+      (sl, "tasty-core_3", "tasty-core.jar", Seq((sl, "scala-library", v))),
+      (sl, "scala3-compiler_3", "scala3-compiler.jar", Seq(
+        (sl, "scala3-interfaces", v),
+        (sl, "tasty-core_3", v),
+        (sl, "scala3-library_3", v),
+        ("org.scala-lang.modules", "scala-asm", "9.9.0-scala-1"),
+        ("org.scala-sbt", "compiler-interface", "1.12.0"),
+        ("org.scala-sbt", "util-interface", "1.11.5"))),
+      (sl, "scala3-repl_3", "scala3-repl.jar", Seq(
+        (sl, "scala3-compiler_3", v),
+        ("org.jline", "jline-reader", "4.0.14"),
+        ("org.jline", "jline-terminal", "4.0.14"),
+        ("org.jline", "jline-terminal-jni", "4.0.14"),
+        ("io.get-coursier", "interface", "1.0.29-M4"),
+        ("org.virtuslab", "using_directives", "1.1.4"),
+        ("com.lihaoyi", "pprint_3", "0.9.3"))),
+      (sl, "scala3-sbt-bridge", "scala3-sbt-bridge.jar", Seq(
+        (sl, "scala3-compiler_3", v),
+        (sl, "scala3-repl_3", v))),
+      (sl, "scala3-staging_3", "scala3-staging.jar", Seq((sl, "scala3-compiler_3", v))),
+      (sl, "scala3-tasty-inspector_3", "scala3-tasty-inspector.jar", Seq(
+        (sl, "scala3-compiler_3", v))))
+
+    artifacts.map: (group, id, jar, dependencies) =>
+      val dir = Task.dest / os.SubPath(group.replace('.', '/')) / id / v
+      os.makeDir.all(dir)
+      os.copy(lib / jar, dir / s"$id-$v.jar", replaceExisting = true)
+
+      val deps = dependencies.map: (dGroup, dId, dVersion) =>
+        s"<dependency><groupId>$dGroup</groupId><artifactId>$dId</artifactId>" +
+          s"<version>$dVersion</version></dependency>"
+      . mkString
+
+      os.write.over(dir / s"$id-$v.pom",
+        s"""<?xml version="1.0" encoding="UTF-8"?>
+           |<project xmlns="http://maven.apache.org/POM/4.0.0">
+           |  <modelVersion>4.0.0</modelVersion>
+           |  <groupId>$group</groupId>
+           |  <artifactId>$id</artifactId>
+           |  <version>$v</version>
+           |  <dependencies>$deps</dependencies>
+           |</project>
+           |""".stripMargin)
+
+    PathRef(Task.dest)
+
+// Routes a Scala module through the fork toolchain: the repository view above for all coursier
+// resolutions, plus direct (content-hashed) paths for the two hot artifacts — the compiler
+// classpath and the compiled sbt bridge — so a rebuilt compiler is picked up without any
+// version-string ceremony.
+trait Toolchain extends ScalaModule:
+  override def repositories: T[Seq[String]] = Task:
+    super.repositories() :+ s"file://${toolchain.repo().path}"
+
+  // The Soundness bundle POMs name the fork toolchain at the version Soundness itself was built
+  // with — `soundness-base`/`-test`/`-tool` all pin `scala-library`, `scala3-compiler_3` and
+  // `scala3-staging_3`, and `soundness-tool` also `scala3-tasty-inspector_3`. The synthetic
+  // repository above only ever contains `settings.scalaVersion`, and no fork version exists on
+  // Central, so any pin that differs from ours is unresolvable. Forcing them all to
+  // `settings.scalaVersion` is what lets flame be built by a compiler from a *different* proscala
+  // stream than the one that produced the Soundness jars.
+  override def depManagement: T[Seq[Dep]] = Task:
+    super.depManagement() ++ Seq(
+      mvn"org.scala-lang:proscala-library_3:${settings.scalaVersion}",
+      mvn"org.scala-lang:scala-library:${settings.scalaVersion}",
+      mvn"org.scala-lang:scala3-library_3:${settings.scalaVersion}",
+      mvn"org.scala-lang:scala3-interfaces:${settings.scalaVersion}",
+      mvn"org.scala-lang:tasty-core_3:${settings.scalaVersion}",
+      mvn"org.scala-lang:scala3-compiler_3:${settings.scalaVersion}",
+      mvn"org.scala-lang:scala3-staging_3:${settings.scalaVersion}",
+      mvn"org.scala-lang:scala3-tasty-inspector_3:${settings.scalaVersion}")
+
+  override def scalaCompilerClasspath: T[Seq[PathRef]] = Task:
+    // The fork-built jars come from the repository view because Zinc locates the standard
+    // library within this classpath BY FILENAME (`scala-library-<version>*.jar`), and the
+    // distribution's own filenames are unversioned. The compiler's own third-party runtime
+    // dependencies (scala-asm for bytecode, the sbt compiler/util interfaces for the bridge) are
+    // not shipped in the release, so they are resolved from the ordinary repositories.
+    val versioned = os.walk(toolchain.repo().path).filter(_.ext == "jar").map(PathRef(_))
+    val thirdParty = defaultResolver().classpath(Seq(
+      mvn"org.scala-lang.modules:scala-asm:9.9.0-scala-1",
+      mvn"org.scala-sbt:compiler-interface:1.12.0",
+      mvn"org.scala-sbt:util-interface:1.11.5"))
+
+    versioned ++ thirdParty
+
+  override def scalaCompilerBridge: T[Option[PathRef]] = Task:
+    Some(PathRef(toolchain.distribution().path / "scala3-sbt-bridge.jar"))
+
+trait Project extends Module:
+  def moduleDir = super.moduleDir / os.up / "src"
+
+trait Component(dependencies: PublishModule*) extends Toolchain:
+  override def scalaVersion = settings.scalaVersion
+  override def scalacOptions = settings.scalaOptions ++ settings.predef
+
+  // Concatenate the beneficence index fragments rather than letting last-one-wins truncate
+  // them, exactly as the flame, fume and Soundness builds do.
+  override def assemblyRules = super.assemblyRules ++ Seq(
+    mill.javalib.Assembly.Rule.AppendPattern("META-INF/givens/.*"),
+    mill.javalib.Assembly.Rule.AppendPattern("META-INF/services/.*"))
+  def moduleId: String = moduleDir.last
+  def moduleDeps: Seq[PublishModule] = dependencies
+  def sources = Task.Sources(moduleDir)
+
+trait Publishing extends Toolchain, SonatypeCentralPublishModule:
+  def publishVersion = settings.pyrocosmVersion
+  def artifactSuffix = Task("")
+
+  def pomSettings = Task(PomSettings(
+    description = "pyrocosm",
+    organization = "dev.propensive",
+    url = "https://propensive.dev/pyrocosm/",
+    licenses = Seq(License.`Apache-2.0`),
+    versionControl = VersionControl.github("propensive", "pyrocosm"),
+    developers = Seq(Developer("propensive", "Jon Pretty", "https://github.com/propensive"))))
+
+  override def docJar = Task:
+    val jar = Task.dest / "empty.jar"
+    val zos = new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(jar.toIO))
+    zos.close()
+    PathRef(jar)
+
+object pyrocosm extends Project:
+  // The semantic model: Inline, Block, Interface, Live, Event, Presentable. Pure data and
+  // typeclasses, with no renderer. Published as `dev.propensive:pyrocosm-model`.
+  object model extends Component(), Publishing:
+    def mvnDeps = settings.modelDeps
+
+  // The terminal renderer and frontend, on Ultimatum. `dev.propensive:pyrocosm-terminal`.
+  object terminal extends Component(model), Publishing:
+    def mvnDeps = settings.terminalDeps
+
+  // The web renderer and frontend, on Honeycomb, Graffiti and Perihelion.
+  // `dev.propensive:pyrocosm-web`.
+  object web extends Component(model), Publishing:
+    def mvnDeps = settings.webDeps
+    def resources = Task.Sources(mill.api.BuildCtx.workspaceRoot / "res" / "web")
+
+  // The gallery: every node in both frontends, the fixture for judging appearance.
+  object demo extends Component(terminal, web):
+    def mvnDeps = settings.demoDeps
+    def finalMainClass = "pyrocosm.gallery"
+
+  object test extends Component(model):
+    def mvnDeps = settings.testDeps
+    def finalMainClass = "pyrocosm.Tests"
