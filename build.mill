@@ -90,7 +90,7 @@ object settings:
 
   val webDeps = Seq(
     "honeycomb-core", "cataclysm-core", "graffiti-core", "perihelion-core", "scintillate-server",
-    "jacinta-core", "iridescence-core")
+    "jacinta-core", "iridescence-core", "eucalyptus-core")
   . map(component)
 
   // The instances that need the compiler: harlequin highlighting, delicious diagnostic markup.
@@ -317,6 +317,6 @@ object pyrocosm extends Project:
     def mvnDeps = settings.demoDeps
     def finalMainClass = "pyrocosm.gallery"
 
-  object test extends Component(model, compiler, terminal):
+  object test extends Component(model, compiler, terminal, web):
     def mvnDeps = settings.testDeps
     def finalMainClass = "pyrocosm.Tests"

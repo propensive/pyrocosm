@@ -223,12 +223,36 @@ Found while building the model (M1):
   fullscreen form repaints them; and Tab is the form's own focus key, so Right accepts a
   completion. The gallery's `static` mode prints the overview without a session.
   Not yet: inline links as focusables, mouse, and the `Resized` event.
-- **M3 Web renderer**: `HtmlRenderer`, `Stylesheet`, `WebArrangement` on graffiti,
-  `PyrocosmPage`, `WebFrontend` with the patch protocol, `res/web/pyrocosm.js`.
+- **M3 Web renderer** (done, first cut): `HtmlRenderer` renders every node to semantic HTML
+  carrying `pyro-*` classes and handle ids; `WebArrangement.plan` maps roles to page features
+  and `PyrocosmPage` is the graffiti page (masthead with title, status panels and a connection
+  pill; global controls as the top menu; navigation verso; detail recto; primary, log and
+  prompt as cards); `WebStyles` is the one stylesheet and `WebTheme` the palette; `WebFrontend`
+  serves the page and script, binds every `Live` cell to a patch broadcast over one WebSocket
+  per tab, and validates every incoming id against the interface's handles; `pyrocosm.js` is
+  the generic script. Patches so far: `replace`, `value`, `enable`/`disable`, `check`/`uncheck`,
+  `select`. `gallery serve [port]` runs the gallery on it, from the same `Session` as the
+  terminal. Found while building it:
+  - Cataclysm's `css"…"` checks a substitution against the property's MDN grammar and only
+    accepts a hole as a *whole* value, so `border: 1px solid $colour` is rejected, and a lone
+    colour is never valid for `background` (its grammar has a mandatory comma; use
+    `background-color`). Hence the palette is emitted as the design said: `WebTheme.variables`
+    is a `:root` block of `--pyro-*` custom properties, read from text at runtime (the parser
+    accepts any value for a `--` property, and no interpolator knows custom properties), and
+    every rule refers to `var(--pyro-…)` as literal text, which always validates. Per-case
+    rules (tones, accents) are read from text the same way.
+  - `urticose.Service` is stopped with `cancel()`; `Channel#send` `logs Websocket.Event`, so
+    the frontend imports `silentLogging`; honeycomb boolean attributes take `= true`.
+  - Reading CSS needs a `Diagnostics` given (`fulminate.errorDiagnostics`) as well as a
+    `Tactic[Css.Errors]`; showing it needs a `cataclysm.formatting` given.
+  Not yet: graphs as SVG (a graph is a dependency list), sortable tables, per-connection
+  sessions, `Focus` and `Notify` patches, the `Resized` event, a `Decorate` patch finer than
+  replacing the completions list, and clean shutdown on Ctrl+C under the Ethereal launcher.
 - **M4 Gallery**: every node, every role and priority, a ticking gauge, a selectable table
   driving a detail panel, a code field with fake decorations; `demo terminal` and
-  `demo serve`; rendered at 40/80/160 columns and phone/laptop/wide viewports. Permanent
-  visual regression fixture.
+  `demo serve` (both exist, driven by one `Session`); rendered at 40/80/160 columns and
+  phone/laptop/wide viewports. Permanent visual regression fixture. Still to do: the width and
+  viewport renderings, and tarantula screenshots.
 - **M5 Fume**: `Doc.Document` → blocks; an `Interface` of results, log, status and detail
   panels fed from `Model.handle`; `fume serve`; palette and figures move here.
 - **M6 Flame**: log panel of records and notices; a `Prompt` panel with `Field.Code(Scala)`

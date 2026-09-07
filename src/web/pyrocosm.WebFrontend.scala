@@ -48,6 +48,7 @@ import denominative.dysasymptotics.linearSize
 import hieroglyph.charEncoders.utf8Encoder
 import jacinta.formatting.compactJsonFormatting
 import contingency.strategies.throwUnsafely
+import eucalyptus.logging.silentLogging
 
 // The messages the frontend and its script exchange as JSON. Flat case classes, so the shape is
 // plain for the script: a patch replaces the inner HTML of an element by id; an incoming message
@@ -175,7 +176,7 @@ extends pyrocosm.Frontend:
 
     try stopped.await()
     finally
-      service.stop()
+      service.cancel()
       interface.cells.each(_.unbindWakes())
       handle(Event.Closed)
 

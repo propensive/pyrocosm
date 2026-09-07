@@ -48,6 +48,7 @@ import hieroglyph.textMetrics.uniformMetric
 import parasite.probates.cancelProbate
 import parasite.threading.platformThreading
 import ultimatum.palettes.solarizedDarkGaugePalette
+import scintillate.webserverErrorPages.minimalErrorPage
 
 // The gallery: one interface with every kind of node, every role and priority, a ticking gauge,
 // a selectable table driving a detail panel, a log a button appends to, and a code field with
@@ -155,6 +156,66 @@ object Samples:
 
     Control.Field.Decoration(tokens, completions, incomplete = text.s.count(_ == '(') > text.s.count(_ == ')'))
 
+// One session of the gallery: the live cells, the ticking gauge, the code field and the event
+// handler. Built once per run, and handed to whichever frontend the arguments choose, so the
+// terminal and the browser show the same interface driven by the same logic.
+class Session():
+  val progress: Live[List[Block]] = Live(Nil)
+  val log: Live[List[Block]] = Live(List(Block.paragraph(t"Started.")))
+  val detail: Live[List[Block]] = Live(List(Block.paragraph(t"Nothing selected.")))
+
+  val field: Control.Field =
+    Control.Field(Samples.prompt, Control.Field.Kind.Code(Language.Scala), notification = Control.Field.Notify.Keystrokes, placeholder = t"type here")
+
+  val interface: Interface = Samples.interface(progress, log, detail, field)
+
+  private var fraction = 0.0
+  private var count = 0
+
+  private val ticker = Thread(new Runnable:
+    def run(): Unit =
+      while true do
+        Thread.sleep(150)
+        fraction = if fraction >= 1.0 then 0.0 else fraction + 0.02
+        progress() = List
+          ( Block.Gauge(Status.Fraction(fraction), Inline.text(t"progress")),
+            Block.Gauge(Status.Steps(List(Step(Inline.text(t"resolve"), Standing.Succeeded), Step(Inline.text(t"compile"), Standing.Running), Step(Inline.text(t"test"), Standing.Pending)))) ))
+
+  ticker.setDaemon(true)
+  ticker.start()
+
+  def handle(event: Event): Unit = event match
+    case Event.Pressed(Samples.append) =>
+      count += 1
+      log.append(Block.paragraph(t"Appended line $count."))
+
+    case Event.Pressed(Samples.clear) =>
+      log() = Nil
+
+    case Event.Pressed(action) =>
+      Samples.benchmarks.seek(_(1) == action).let: (benchmark, _) =>
+        detail() = List(Block.Record(List(Block.Entry(Inline.text(t"name"), List(Block.paragraph(benchmark.name))), Block.Entry(Inline.text(t"mean"), List(Block.Paragraph(List(Inline.Amount(benchmark.mean, t"s")))))), Inline.text(benchmark.name)))
+      log.append(Block.paragraph(t"Pressed ${action.label}."))
+
+    case Event.Edited(_, text, caret) =>
+      field.decoration() = Samples.decorate(text, caret)
+
+    case Event.Submitted(_, text) =>
+      log.append(Block.Code(Language.Scala, List(Block.Line(Samples.decorate(text, text.length).tokens))))
+      field.decoration() = Control.Field.Decoration()
+
+    case Event.Toggled(_, state) =>
+      log.append(Block.paragraph(t"Verbose: ${state.toString}"))
+
+    case Event.Key(keypress) =>
+      log.append(Block.Paragraph(List(Inline.Textual(t"Key: "), Inline.Keystroke(keypress))))
+
+    case _ =>
+      ()
+
+// `gallery` or `gallery terminal` runs the interface in the terminal; `gallery serve [port]`
+// serves it as a web page; `gallery static [columns]` prints the overview once, for a look
+// without a terminal session.
 @main
 def gallery(arguments: Text*): Unit = cli:
   execute:
@@ -165,63 +226,25 @@ def gallery(arguments: Text*): Unit = cli:
 
     given Stdio = caps.unsafe.unsafeAssumePure(summon[exoskeleton.Invocation].stdio)
 
-    // `gallery static [columns]` prints the overview once, for a look without a terminal session.
     val words: List[Text] = summon[exoskeleton.Cli].arguments.map { (argument: Argument) => argument() }
+    def number(default: Int): Int = words.stdlib.lift(1).flatMap(_.s.toIntOption).getOrElse(default)
 
-    if words.stdlib.headOption.contains(t"static") then
-      val columns = words.stdlib.lift(1).flatMap(_.s.toIntOption).getOrElse(100)
-      val renderer = TerminalRenderer()
-      renderer.blocks(Samples.overview, columns).each { (line: Teletype) => Out.println(line) }
-      Exit.Ok
-    else supervise:
-      val progress: Live[List[Block]] = Live(Nil)
-      val log: Live[List[Block]] = Live(List(Block.paragraph(t"Started.")))
-      val detail: Live[List[Block]] = Live(List(Block.paragraph(t"Nothing selected.")))
+    words.stdlib.headOption match
+      case Some(t"static") =>
+        val renderer = TerminalRenderer()
+        renderer.blocks(Samples.overview, number(100)).each { (line: Teletype) => Out.println(line) }
+        Exit.Ok
 
-      val field = Control.Field(Samples.prompt, Control.Field.Kind.Code(Language.Scala), notification = Control.Field.Notify.Keystrokes, placeholder = t"type here")
+      case Some(t"serve") =>
+        val port = number(8080)
+        supervise:
+          val session = Session()
+          Out.println(t"Serving the Pyrocosm gallery at http://localhost:${port.toString}/")
+          WebFrontend(port).run(session.interface)(session.handle)
+        Exit.Ok
 
-      var fraction = 0.0
-      val ticker = Thread(new Runnable:
-        def run(): Unit =
-          while true do
-            Thread.sleep(150)
-            fraction = if fraction >= 1.0 then 0.0 else fraction + 0.02
-            progress() = List
-              ( Block.Gauge(Status.Fraction(fraction), Inline.text(t"progress")),
-                Block.Gauge(Status.Steps(List(Step(Inline.text(t"resolve"), Standing.Succeeded), Step(Inline.text(t"compile"), Standing.Running), Step(Inline.text(t"test"), Standing.Pending)))) ))
-      ticker.setDaemon(true)
-      ticker.start()
-
-      var count = 0
-
-      def handle(event: Event): Unit = event match
-        case Event.Pressed(Samples.append) =>
-          count += 1
-          log.append(Block.paragraph(t"Appended line $count."))
-
-        case Event.Pressed(Samples.clear) =>
-          log() = Nil
-
-        case Event.Pressed(action) =>
-          Samples.benchmarks.seek(_(1) == action).let: (benchmark, _) =>
-            detail() = List(Block.Record(List(Block.Entry(Inline.text(t"name"), List(Block.paragraph(benchmark.name))), Block.Entry(Inline.text(t"mean"), List(Block.Paragraph(List(Inline.Amount(benchmark.mean, t"s")))))), Inline.text(benchmark.name)))
-          log.append(Block.paragraph(t"Pressed ${action.label}."))
-
-        case Event.Edited(_, text, caret) =>
-          field.decoration() = Samples.decorate(text, caret)
-
-        case Event.Submitted(_, text) =>
-          log.append(Block.Code(Language.Scala, List(Block.Line(Samples.decorate(text, text.length).tokens))))
-          field.decoration() = Control.Field.Decoration()
-
-        case Event.Toggled(_, state) =>
-          log.append(Block.paragraph(t"Verbose: ${state.toString}"))
-
-        case Event.Key(keypress) =>
-          log.append(Block.Paragraph(List(Inline.Textual(t"Key: "), Inline.Keystroke(keypress))))
-
-        case _ =>
-          ()
-
-      TerminalFrontend().run(Samples.interface(progress, log, detail, field))(handle)
-      Exit.Ok
+      case _ =>
+        supervise:
+          val session = Session()
+          TerminalFrontend().run(session.interface)(session.handle)
+        Exit.Ok

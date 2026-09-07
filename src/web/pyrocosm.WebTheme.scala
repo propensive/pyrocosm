@@ -23,10 +23,20 @@
 package pyrocosm
 
 import anticipation.*
+import cataclysm.*
+import gossamer.*
+import rudiments.*
+import spectacular.*
+import symbolism.*
+import turbulence.*
+
+import contingency.strategies.throwUnsafely
+import denominative.dysasymptotics.linearSize
+import fulminate.errorDiagnostics.emptyDiagnostics
 
 // The web's colours by role: the same solarized values the terminal theme uses, as the seed of
-// one palette for both media. Emitted once as CSS custom properties, so every rule refers to a
-// role and a second theme is a second `:root` block.
+// one palette for both media. Emitted once as CSS custom properties (`variables`), so every rule
+// in `WebStyles` refers to a role by `var(--pyro-…)` and a second theme is a second `:root` block.
 trait WebTheme:
   def background: Chroma
   def surface: Chroma       // cards and panels
@@ -42,8 +52,36 @@ trait WebTheme:
   def link: Chroma
   def selection: Chroma
 
+  // The `:root` block. Cataclysm's `css` interpolator checks a substituted value against the
+  // property's grammar and has no notion of a custom property, so the block is read from text
+  // at runtime, where a `--name` declaration is accepted with any value.
+  def variables: Css =
+    val roles: List[(Text, Chroma)] =
+      List
+        ( t"bg" -> background, t"surface" -> surface, t"fg" -> foreground, t"muted" -> muted,
+          t"border" -> border, t"key" -> key, t"reference" -> reference, t"figure" -> figure,
+          t"units" -> units, t"link" -> link, t"selection" -> selection )
+
+    val tones: List[(Text, Chroma)] =
+      Tone.values.foldLeft(Nil: List[(Text, Chroma)]) { (acc, tone0) => acc :+ (t"tone-${tone0.toString.tt.lower}" -> tone(tone0)) }
+
+    val accents: List[(Text, Chroma)] =
+      Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]) { (acc, accent0) => acc :+ (t"accent-${accent0.toString.tt.lower}" -> accent(accent0)) }
+
+    val declarations: Text =
+      (roles + tones + accents).map { (name, chroma) => t"--pyro-$name: ${WebTheme.hex(chroma)}" }.join(t"; ")
+
+    t":root { $declarations }".read[Css]
+
 object WebTheme:
   given default: WebTheme = SolarizedDark
+
+  def hex(chroma: Chroma): Text =
+    def channel(value: Int): Text =
+      val digits = java.lang.Integer.toHexString(value&255).nn
+      (if digits.length == 1 then "0"+digits else digits).tt
+
+    t"#${channel(chroma.red)}${channel(chroma.green)}${channel(chroma.blue)}"
 
   object SolarizedDark extends WebTheme:
     private val base03 = Chroma(0x002b36)

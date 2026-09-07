@@ -84,17 +84,17 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
   def control(control: Control): Html of Phrasing = control match
     case Control.Button(label, action, enabled) =>
       if enabled() then Button(id = action.id, `class` = List(cls(t"pyro-button"), cls(t"pyro-press")))(renderer.phrase(label))
-      else Button(id = action.id, `class` = List(cls(t"pyro-button"), cls(t"pyro-press")), disabled = t"")(renderer.phrase(label))
+      else Button(id = action.id, `class` = List(cls(t"pyro-button"), cls(t"pyro-press")), disabled = true)(renderer.phrase(label))
 
     case Control.Toggle(toggle, label, state) =>
       val box =
-        if state() then Input.Checkbox(id = toggle.id, `class` = cls(t"pyro-toggle"), checked = t"")
+        if state() then Input.Checkbox(id = toggle.id, `class` = cls(t"pyro-toggle"), checked = true)
         else Input.Checkbox(id = toggle.id, `class` = cls(t"pyro-toggle"))
       Label(box, t" ", renderer.phrase(label))
 
     case Control.Choice(choice, options, current) =>
       Select(id = choice.id, `class` = cls(t"pyro-choice"))(options.indexed.map { (option, index) =>
-          if index.n0 == current() then Option(value = index.n0.toString.tt, selected = t"")(Inline.plain(option))
+          if index.n0 == current() then Option(value = index.n0.toString.tt, selected = true)(Inline.plain(option))
           else Option(value = index.n0.toString.tt)(Inline.plain(option))
         }*)
 
@@ -161,6 +161,6 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
   def content: Html of Flow = Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
 
   protected override def head: Html of Metadata =
-    Fragment[Metadata](Script(src = t"/pyrocosm.js", defer = t""), super.head)
+    Fragment[Metadata](Script(src = t"/pyrocosm.js", defer = true), super.head)
 
   protected override def styles: Css = super.styles + WebStyles.css(theme)

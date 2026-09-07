@@ -140,7 +140,7 @@ class HtmlRenderer():
         (Fragment[Flow](title.lay(Fragment[Flow]()) { title => Header(Strong(phrase(title))) }, blocks(content)))
 
     case Block.Disclosure(summary, content, open) =>
-      if open then Details(`class` = cls(t"pyro-disclosure"), open = t"")(Summary(phrase(summary)), blocks(content))
+      if open then Details(`class` = cls(t"pyro-disclosure"), open = true)(Summary(phrase(summary)), blocks(content))
       else Details(`class` = cls(t"pyro-disclosure"))(Summary(phrase(summary)), blocks(content))
 
     case Block.Image(source, alt) => Figure(`class` = cls(t"pyro-image"))(Img(src = source, alt = alt), Figcaption(alt))

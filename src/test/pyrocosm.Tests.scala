@@ -24,6 +24,7 @@ package pyrocosm
 
 import anticipation.*
 import archimedes.*
+import cataclysm.*
 import clavichord.*
 import contingency.*
 import denominative.*
@@ -45,7 +46,9 @@ import yossarian.*
 
 import anticipation.termcapDefinitions.xtermTrueColorTermcap
 import contingency.strategies.throwUnsafely
+import cataclysm.formatting.indentedCssFormatting
 import escritoire.tableStyles.thickTableStyle
+import fulminate.errorDiagnostics.emptyDiagnostics
 import hieroglyph.charEncoders.utf8Encoder
 import hieroglyph.textMetrics.uniformMetric
 import ultimatum.palettes.solarizedDarkGaugePalette
@@ -340,6 +343,55 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"a very narrow terminal keeps only the essential panels"):
       TerminalArrangement.plan(arranged, 40, 12).dropped.map(_.id.label)
     . assert(_ == List(t"nav", t"detail", t"log"))
+
+    // ── The web renderer ──────────────────────────────────────────────────────────────────
+
+    val html = HtmlRenderer()
+
+    test(m"every node renders as HTML"):
+      html.block(rich).show.length
+    . assert(_ > 0)
+
+    test(m"an actionable row carries its action's id"):
+      html.block(rich).show.contains(t"""<tr id="${run.id}" class="pyro-action pyro-tone-success">""")
+    . assert(_ == true)
+
+    test(m"a tone renders as its class"):
+      html.phrase(List(Inline.Toned(Tone.Failure, Inline.text(t"no")))).show
+    . assert(_ == t"""<span class="pyro-toned pyro-tone-failure">no</span>""")
+
+    test(m"a keystroke renders as a kbd element"):
+      html.phrase(List(Inline.Keystroke(Keypress.Ctrl('C')))).show
+    . assert(_.starts(t"<kbd"))
+
+    test(m"the web arrangement maps every role"):
+      val plan = WebArrangement.plan(arranged)
+      (plan.navigation.map(_.id.label), plan.primary.map(_.id.label), plan.detail.map(_.id.label), plan.status.map(_.id.label))
+    . assert(_ == (List(t"nav"), List(t"main"), List(t"detail"), List(t"status")))
+
+    val page = PyrocosmPage(arranged, html, WebTheme.default).html.show
+
+    test(m"the page has a content element for each panel"):
+      arranged.panels.map { (panel: Panel) => page.contains(t"""id="${HtmlRenderer.panelId(panel)}-content"""") }
+    . assert(_.all(_ == true))
+
+    test(m"the page loads the generic script"):
+      page.contains(t"""<script src="/pyrocosm.js" defer""")
+    . assert(_ == true)
+
+    val stylesheet: Text = WebStyles.css(WebTheme.default).show
+
+    test(m"the stylesheet declares the palette as custom properties"):
+      stylesheet.contains(t"--pyro-bg: #002b36") && stylesheet.contains(t"--pyro-tone-success: #859900")
+    . assert(_ == true)
+
+    test(m"the stylesheet refers to colours only through variables"):
+      stylesheet.contains(t"$$") || stylesheet.contains(t"Chroma")
+    . assert(_ == false)
+
+    test(m"the stylesheet reads back as CSS"):
+      stylesheet.read[Css].rules.stdlib.length
+    . assert(_ > 50)
 
     // ── On a terminal emulator ────────────────────────────────────────────────────────────
 
