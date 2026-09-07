@@ -28,6 +28,7 @@ import gossamer.*
 import quantitative.*
 import rudiments.*
 import spectacular.*
+import stratiform.*
 import vacuous.*
 
 // Phrasing content: the things which occur *within* a line of text. Comparable to Markdown's
@@ -43,8 +44,22 @@ object Inline:
   // Plain text as a one-element phrase, the commonest case.
   def text(text: Text): List[Inline] = List(Textual(text))
 
+  object Amount:
+    // A quantity's units exist only at the type level, so they are captured as text when the
+    // phrase is made; that is what lets an amount travel over the wire and still render with
+    // the right units and scaling.
+    inline def of[units <: Measure](quantity: Quantity[units]): Amount =
+      Amount(quantity.value, Quantity.units[units])
+
   // The unstyled text of a phrase, for a plain renderer, a title attribute, or a width estimate.
   def plain(content: List[Inline]): Text = content.map { (inline: Inline) => inline.plain }.join
+
+  // The TEL codecs, anchored here so that they resolve from any package. They are derived in
+  // `Codecs`, a sibling object, because a derived decoder fails to typecheck under capture
+  // checking for an enum with a singleton case when an `Encodable` given for the same type is in
+  // lexical scope; the companion holds only aliases.
+  given telEncodable: Inline is Tel.Encodable = Codecs.inlineEncodable
+  given telDecodable: Inline is Tel.Decodable = Codecs.inlineDecodable
 
 enum Inline:
   case Textual(text: Text)
@@ -57,9 +72,13 @@ enum Inline:
   case Math(math: archimedes.Math)
   case Symbol(glyph: Glyph)
   case Reference(id: Text)                          // an identifier or hash, e.g. a test id
-  case Amount[units <: Measure](quantity: Quantity[units]) // the renderer chooses units and digits
+  case Amount(value: Double, units: Text)           // a quantity in base units; the renderer scales it
   case Figure(value: Double, precision: Optional[Int] = Unset)
-  case Break
+
+  // A fieldless product, not a singleton: deriving the TEL decoder for this enum with a singleton
+  // case fails under capture checking (see the `Min` reproduction in the Soundness issue). Revert
+  // to `case Break` when that is fixed.
+  case Break()
 
   def plain: Text = this match
     case Textual(text)        => text
@@ -72,6 +91,6 @@ enum Inline:
     case Math(_)              => "…"
     case Symbol(glyph)        => glyph.toString.tt
     case Reference(id)        => id
-    case Amount(quantity)     => quantity.toString.tt
+    case Amount(value, units) => t"${value.toString} $units"
     case Figure(value, _)     => value.toString.tt
-    case Break                => "\n"
+    case Break()              => "\n"

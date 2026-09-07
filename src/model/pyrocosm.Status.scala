@@ -23,6 +23,7 @@
 package pyrocosm
 
 import aviation.*
+import quantitative.*
 import vacuous.*
 
 // How one unit of work has turned out, or has not yet. The same six-way vocabulary as
@@ -35,11 +36,18 @@ case class Step(name: List[Inline], standing: Standing, detail: Optional[List[In
 
 // What a gauge displays. Each case corresponds to a family of ultimatum gauge designs on the
 // terminal and to a `<progress>`, `<meter>`, a step list or a timer on the web.
+object Status:
+  object Elapsed:
+    def of(duration: Duration): Elapsed = Elapsed(duration.value)
+
+  object Remaining:
+    def of(duration: Duration): Remaining = Remaining(duration.value)
+
 enum Status:
   case Fraction(value: Double)                          // a proportion in [0, 1]
-  case Indeterminate                                    // in progress, extent unknown: a spinner
+  case Indeterminate()                                  // in progress, extent unknown: a spinner
   case Reckoning(done: Long, total: Optional[Long])     // 17/120, or 17 of an unknown total
   case Standing(standing: pyrocosm.Standing)
-  case Elapsed(duration: Duration)
-  case Remaining(duration: Duration)
+  case Elapsed(seconds: Double)
+  case Remaining(seconds: Double)
   case Steps(steps: List[Step])

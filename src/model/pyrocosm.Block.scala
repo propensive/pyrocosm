@@ -24,6 +24,8 @@ package pyrocosm
 
 import acyclicity.*
 import anticipation.*
+import rudiments.*
+import stratiform.*
 import vacuous.*
 
 // Flow content: the things which occur one after another down a page or a pane. Comparable to
@@ -50,8 +52,13 @@ object Block:
 
   // A row with an `Action` is selectable: a click on the web, focus and Enter in the terminal.
   // This is how master/detail interfaces are built, with no layout-level machinery.
+  // A cell and a line are records of their own, not nested lists: a repeated TEL field cannot
+  // nest, so `List[List[_]]` would flatten on the wire.
+  case class Cell(content: List[Inline])
+  case class Line(tokens: List[Token])
+
   case class Row
-    ( cells:  List[List[Inline]],
+    ( cells:  List[Cell],
       tone:   Optional[Tone]   = Unset,
       action: Optional[Action] = Unset )
 
@@ -73,12 +80,28 @@ object Block:
       tone:     Optional[Tone]   = Unset,
       action:   Optional[Action] = Unset )
 
-  // A node of a graph, identified by `id` so that a `Dag` of vertices has structural identity.
+  // A node of a graph, identified by `id`, and an edge between two ids. A graph is stored as
+  // its vertices and edges (which serialise plainly); `Graph.of` and `Graph#dag` convert to and
+  // from acyclicity's `Dag`, which supplies the ordering and reachability operations.
   case class Vertex
     ( id:     Text,
       label:  List[Inline],
       tone:   Optional[Tone]   = Unset,
       action: Optional[Action] = Unset )
+
+  case class Edge(from: Text, to: Text)
+
+  object Graph:
+    def of(dag: Dag[Vertex]): Graph =
+      val edges = List.from(dag.edges).map { (edge: (Vertex, Vertex)) => Edge(edge(0).id, edge(1).id) }
+      Graph(List.from(dag.keys), edges)
+
+    extension (graph: Graph)
+      def dag: Dag[Vertex] =
+        val byId: Map[Text, Vertex] = graph.vertices.map { (vertex: Vertex) => vertex.id -> vertex }.to[Map]
+
+        Dag(graph.vertices.stdlib.toSet): (vertex: Vertex) =>
+          graph.edges.filter(_.from == vertex.id).stdlib.flatMap { (edge: Edge) => byId(edge.to).option }.toSet
 
   object Chart:
     enum Kind:
@@ -88,20 +111,24 @@ object Block:
 
   def paragraph(text: Text): Block = Paragraph(Inline.text(text))
 
+  // The TEL codecs, anchored as those of `Inline` are.
+  given telEncodable: Block is Tel.Encodable = Codecs.blockEncodable
+  given telDecodable: Block is Tel.Decodable = Codecs.blockDecodable
+
 enum Block:
   case Paragraph(content: List[Inline])
   case Heading(level: Int, content: List[Inline])
   case Listing(ordered: Boolean, items: List[Block.Item])
   case Quotation(content: List[Block])
-  case Rule
-  case Code(language: Language, lines: List[List[Token]], notes: List[Block.Note] = Nil)
+  case Rule()
+  case Code(language: Language, lines: List[Block.Line], notes: List[Block.Note] = Nil)
   case Table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] = Unset)
   case Record(entries: List[Block.Entry], title: Optional[List[Inline]] = Unset)
   case Notice(tone: Tone, title: Optional[List[Inline]], content: List[Block])
   case Disclosure(summary: List[Inline], content: List[Block], open: Boolean = false)
   case Image(source: Text, alt: Text)
   case Tree(roots: List[Block.TreeNode])
-  case Graph(dag: Dag[Block.Vertex])
+  case Graph(vertices: List[Block.Vertex], edges: List[Block.Edge])
   case Chart(kind: Block.Chart.Kind, series: List[Block.Series])
   case Gauge(status: Status, caption: Optional[List[Inline]] = Unset)
   case Group(content: List[Block])                      // a run of blocks which belong together

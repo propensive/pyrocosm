@@ -93,6 +93,9 @@ object settings:
     "jacinta-core", "iridescence-core")
   . map(component)
 
+  // The instances that need the compiler: harlequin highlighting, delicious diagnostic markup.
+  val compilerDeps = Seq("harlequin-core", "delicious-core").map(component)
+
   val demoDeps = Seq("exoskeleton-completions", "ethereal-core").map(component)
   val testDeps = Seq("probably-cli").map(component)
 
@@ -290,6 +293,11 @@ object pyrocosm extends Project:
   object model extends Component(), Publishing:
     def mvnDeps = settings.modelDeps
 
+  // Exhibitions of compiler-facing types (highlighted source, semantic diagnostics), JVM-only
+  // because harlequin drives the compiler. `dev.propensive:pyrocosm-compiler`.
+  object compiler extends Component(model), Publishing:
+    def mvnDeps = settings.compilerDeps
+
   // The terminal renderer and frontend, on Ultimatum. `dev.propensive:pyrocosm-terminal`.
   object terminal extends Component(model), Publishing:
     def mvnDeps = settings.terminalDeps
@@ -305,6 +313,6 @@ object pyrocosm extends Project:
     def mvnDeps = settings.demoDeps
     def finalMainClass = "pyrocosm.gallery"
 
-  object test extends Component(model):
+  object test extends Component(model, compiler):
     def mvnDeps = settings.testDeps
     def finalMainClass = "pyrocosm.Tests"

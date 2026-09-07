@@ -22,25 +22,44 @@
                                                                                                   */
 package pyrocosm
 
+import java.util.concurrent.atomic as juca
+
 import anticipation.*
 
-// The opaque handles an application creates to name the things a user can act upon. Identity is
-// by reference: two buttons carrying the same `Action` are the same command, and an event
-// naming it is matched with `case Event.Pressed(`run`)`. The label is for the application's own
-// diagnostics and for the web renderer's element ids; it plays no part in equality.
+// The handles an application creates to name the things a user can act upon. Each carries a
+// process-unique id, so that a handle is a plain value: it serialises as its id, an event
+// naming it decodes to an equal handle, and `case Event.Pressed(`run`)` matches by equality.
+// The label is for the application's own diagnostics; it plays no part in identity.
+object Handles:
+  // A random per-process prefix keeps ids from two processes (a server and a replayed
+  // recording, say) from colliding; the counter keeps them unique within one.
+  private val prefix: String =
+    java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(Math.random()) & 0xffffffL).nn
+
+  private val counter: juca.AtomicLong = juca.AtomicLong(0L)
+
+  def fresh(kind: Char): Text = s"$kind$prefix-${counter.incrementAndGet()}".tt
 
 // Something that can be triggered: a button, a selectable row, an internal link, a shortcut.
-final class Action(val label: Text = ""):
-  override def toString: String = s"Action(${label.s})"
+object Action:
+  def apply(label: Text = ""): Action = new Action(Handles.fresh('a'), label)
+
+case class Action private (id: Text, label: Text)
 
 // A text field the user can edit.
-final class Input(val label: Text = ""):
-  override def toString: String = s"Input(${label.s})"
+object Input:
+  def apply(label: Text = ""): Input = new Input(Handles.fresh('i'), label)
+
+case class Input private (id: Text, label: Text)
 
 // A choice among a fixed set of options.
-final class Choice(val label: Text = ""):
-  override def toString: String = s"Choice(${label.s})"
+object Choice:
+  def apply(label: Text = ""): Choice = new Choice(Handles.fresh('c'), label)
+
+case class Choice private (id: Text, label: Text)
 
 // A two-state switch.
-final class Toggle(val label: Text = ""):
-  override def toString: String = s"Toggle(${label.s})"
+object Toggle:
+  def apply(label: Text = ""): Toggle = new Toggle(Handles.fresh('t'), label)
+
+case class Toggle private (id: Text, label: Text)

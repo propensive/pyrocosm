@@ -23,11 +23,18 @@
 package pyrocosm
 
 import anticipation.*
+import archimedes.*
+import clavichord.*
+import contingency.*
 import fulminate.*
 import gossamer.*
+import harlequin.Scala
+import symbolism.*
 import jacinta.*
 import probably.*
 import punctuation.*
+import quantitative.*
+import rudiments.*
 import spectacular.*
 import stratiform.*
 import turbulence.*
@@ -163,3 +170,87 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"a directly-recursive sum round-trips as TEL"):
       direct.in[Tel].show.read[Tel].as[Direct]
     . assert(_ == direct)
+
+    val keypresses: List[Keypress] =
+      List
+        ( Keypress.CharKey('a'), Keypress.CharKey(' '), Keypress.CharKey('+'), Keypress.Enter,
+          Keypress.FunctionKey(12), Keypress.Ctrl('C'), Keypress.Ctrl(Keypress.Left),
+          Keypress.Shift(Keypress.Enter), Keypress.Alt(Keypress.Shift(Keypress.Tab)),
+          Keypress.Meta(Keypress.Ctrl(Keypress.Alt(Keypress.Up))), Keypress.EscapeSeq('x') )
+
+    test(m"every keypress parses back from its rendering"):
+      keypresses.filter { (keypress: Keypress) => Keypresses.parse(keypress.show) != keypress }
+    . assert(_ == Nil)
+
+    test(m"malformed keypress text does not parse"):
+      List(t"", t"a", t"[⌃]", t"[⌃]+[⌃]", t"[⇧]+[a]", t"[⌃]+[é]").map { (text: Text) => Keypresses.parse(text) }
+    . assert(_.all(_ == Unset))
+
+    val run = Action(t"run")
+
+    val rich: Block =
+      Block.Group:
+        List
+          ( Block.Heading(2, Inline.text(t"Results")),
+            Block.Paragraph:
+              List
+                ( Inline.Textual(t"Press "),
+                  Inline.Keystroke(Keypress.Ctrl('C')),
+                  Inline.Textual(t" to stop; "),
+                  Inline.Emphasis(Inline.text(t"emphasis")),
+                  Inline.Toned(Tone.Success, Inline.text(t"ok")),
+                  Inline.Link(Inline.Destination.Internal(run), Inline.text(t"again")),
+                  Inline.Math(unsafely(Ergo.parse(t"(x↗2 + y↗2)"))),
+                  Inline.Symbol(Glyph.Check),
+                  Inline.Reference(t"a1b2c3"),
+                  Inline.Amount(0.0123, t"s"),
+                  Inline.Figure(3.5, 2),
+                  Inline.Break() ),
+            Block.Table
+              ( List
+                  ( Block.Column(Inline.text(t"Name")),
+                    Block.Column(Inline.text(t"Time"), Block.Alignment.End, Block.Sizing.Rigid, true) ),
+                List(Block.Row(List(Block.Cell(Inline.text(t"parse")), Block.Cell(List(Inline.Amount(0.5, t"s")))), Tone.Success, run)),
+                Inline.text(t"Benchmarks") ),
+            Block.Code(Language.Scala, List(Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" x")))),
+                List(Block.Note(0, 0, 3, Block.Note.Style.Highlight))),
+            Block.Notice(Tone.Warning, Unset, List(Block.Rule())),
+            Block.Graph
+              ( List(Block.Vertex(t"a", Inline.text(t"A")), Block.Vertex(t"b", Inline.text(t"B"))),
+                List(Block.Edge(t"b", t"a")) ),
+            Block.Gauge(Status.Reckoning(3, 10), Inline.text(t"progress")),
+            Block.Gauge(Status.Elapsed.of(1.5*Second)),
+            Block.Gauge(Status.Steps(List(Step(Inline.text(t"compile"), Standing.Running)))),
+            Block.Listing(true, List(Block.Item(List(Block.paragraph(t"one")), run))),
+            Block.Record(List(Block.Entry(Inline.text(t"key"), List(Block.paragraph(t"value")))), Inline.text(t"R")),
+            Block.Disclosure(Inline.text(t"more"), List(Block.Image(t"x.png", t"an image")), true),
+            Block.Chart(Block.Chart.Kind.Sparkline, List(Block.Series(Inline.text(t"s"), List(1.0, 2.0)))) )
+
+    test(m"a block with every node round-trips as TEL"):
+      rich.in[Tel].show.read[Tel].as[Block]
+    . assert(_ == rich)
+
+    test(m"a graph converts to a dag and back"):
+      val graph: Block.Graph = Block.Graph
+        ( List(Block.Vertex(t"a", Inline.text(t"A")), Block.Vertex(t"b", Inline.text(t"B"))),
+          List(Block.Edge(t"b", t"a")) )
+
+      Block.Graph.of(graph.dag).edges
+    . assert(_ == List(Block.Edge(t"b", t"a")))
+
+    test(m"a list of case classes exhibits as a table with a numeric column"):
+      val exhibit: Inline | Block = (List(Person(t"Simon", 72), Person(t"Ada", 36)): List[Person]).exhibit
+
+      exhibit match
+        case Block.Table(columns, rows, _) =>
+          columns.map(_.numeric) == List(false, true) && rows.stdlib.length == 2
+        case _ =>
+          false
+    . assert(_ == true)
+
+    test(m"highlighted source exhibits as a code block"):
+      val exhibit: Block = Scala.highlight(t"val x = 1").exhibit
+      exhibit match
+        case Block.Code(Language.Scala, lines, _) => lines.stdlib.head.tokens.stdlib.head.accent == Token.Accent.Keyword
+        case _                                    => false
+    . assert(_ == true)

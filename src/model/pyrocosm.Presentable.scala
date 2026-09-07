@@ -26,6 +26,7 @@ import scala.compiletime
 
 import anticipation.*
 import clavichord.*
+import denominative.*
 import digression.*
 import fulminate.*
 import gossamer.*
@@ -76,6 +77,34 @@ object Presentable extends Presentable2:
         variant(value):
           [variant <: derivation] => variant => block(contextual.exhibit(variant))
 
+    // A cell is phrasing: a field exhibited as a block is reduced to its paragraph's content, or
+    // to an ellipsis where it has no single line.
+    private def cell(exhibit: Inline | Block): List[Inline] = exhibit match
+      case inline: Inline                => List(inline)
+      case Block.Paragraph(content)      => content
+      case _                             => List(Inline.Symbol(Glyph.Ellipsis))
+
+    private def numeric(cells: List[List[Inline]]): Boolean =
+      !cells.nil && cells.all:
+        case Inline.Figure(_, _) :: Nil => true
+        case Inline.Amount(_, _) :: Nil => true
+        case _                          => false
+
+    inline def tabulate[element <: Product: ProductReflection](list: List[element]): Block =
+      val titles: List[Text] = List.from(contexts[element]() { [field] => context => label }.readable)
+
+      val rows: List[List[List[Inline]]] = list.map: (element: element) =>
+        List.from(fields(element) { [field] => field => cell(contextual.exhibit(field)) }.readable)
+
+      val columns: List[Block.Column] = titles.indexed.map: (title, index) =>
+        val column = rows.map { (row: List[List[Inline]]) => row.stdlib(index.n0) }
+        val isNumeric = numeric(column)
+        val alignment = if isNumeric then Block.Alignment.End else Block.Alignment.Start
+        val sizing = if isNumeric then Block.Sizing.Rigid else Block.Sizing.Paragraph
+        Block.Column(Inline.text(title), alignment, sizing, isNumeric)
+
+      Block.Table(columns, rows.map { (row: List[List[Inline]]) => Block.Row(row.map { (cell: List[Inline]) => Block.Cell(cell) }) })
+
   given inline: Inline is Presentable in Inline = identity(_)
   given block: Block is Presentable in Block = identity(_)
   given text: Text is Presentable in Inline = Inline.Textual(_)
@@ -84,8 +113,17 @@ object Presentable extends Presentable2:
   given double: Double is Presentable in Inline = Inline.Figure(_)
   given keypress: Keypress is Presentable in Inline = Inline.Keystroke(_)
 
-  given quantity: [units <: Measure] => Quantity[units] is Presentable in Inline =
-    Inline.Amount(_)
+  // Inline, so that the units are known where the given is summoned. A lambda rather than an
+  // anonymous class: at an inline site the class form infers a capture variable for `Self` and
+  // then fails the override check.
+  inline given quantity: [units <: Measure] => Quantity[units] is Presentable in Inline =
+    phrase[Quantity[units]] { quantity => Inline.Amount.of(quantity) }
+
+  // A list of case classes is a table, a column per field titled by the field's name, as
+  // escritoire tabulates one. A column whose every cell is a figure or an amount is numeric.
+  inline given table: [element <: Product: ProductReflection]
+  =>  List[element] is Presentable in Block =
+    flow[List[element]] { list => Derivation.tabulate(list) }
 
   // A message's nested emphasis levels collapse to the model's single emphasis.
   given message: Message is Presentable in Inline = message =>
@@ -107,18 +145,15 @@ object Presentable extends Presentable2:
     val rows = stackTrace.frames.map: (frame: StackTrace.Frame) =>
       Block.Row:
         List
-          ( List(Inline.Code(Language.Scala, List(Token.plain(frame.displayClass)))),
-            List(Inline.Code(Language.Scala, List(Token.plain(frame.displayMethod)))),
-            Inline.text(frame.file),
-            frame.line.lay(Nil: List[Inline]) { line => List(Inline.Figure(line.toDouble, 0)) } )
+          ( Block.Cell(List(Inline.Code(Language.Scala, List(Token.plain(frame.displayClass))))),
+            Block.Cell(List(Inline.Code(Language.Scala, List(Token.plain(frame.displayMethod))))),
+            Block.Cell(Inline.text(frame.file)),
+            Block.Cell(frame.line.lay(Nil: List[Inline]) { line => List(Inline.Figure(line.toDouble, 0)) }) )
 
     Block.Notice
       ( Tone.Failure,
         Inline.text(stackTrace.className),
         List(Block.Paragraph(List(message.exhibit(stackTrace.message))), Block.Table(columns, rows)) )
-
-  given list: [element: Presentable as presentable] => List[element] is Presentable in Block =
-    list => Block.Listing(false, list.map { (element: element) => Block.Item(blocks(presentable.exhibit(element))) })
 
   // A Markdown document, converted node for node. Both emphasis strengths become the model's
   // one emphasis; inline HTML is dropped; an inline image becomes a link to it.
@@ -133,7 +168,7 @@ object Presentable extends Presentable2:
     case Prose.Strong(children*)   => Inline.Emphasis(phrasing(children.toList.to(List)))
     case Prose.Code(code)          => Inline.Code(Language.Plain, List(Token.plain(code)))
     case Prose.Softbreak           => Inline.Textual(" ")
-    case Prose.Linebreak           => Inline.Break
+    case Prose.Linebreak           => Inline.Break()
     case Prose.HtmlInline(_)       => Inline.Textual("")
 
     case Prose.Link(destination, _, content*) =>
@@ -146,7 +181,7 @@ object Presentable extends Presentable2:
     case Layout.Paragraph(_, prose*)      => Block.Paragraph(phrasing(prose.toList.to(List)))
     case Layout.Heading(_, level, prose*) => Block.Heading(level, phrasing(prose.toList.to(List)))
     case Layout.BlockQuote(_, layouts*)   => Block.Quotation(layouts.toList.to(List).map(layout))
-    case Layout.ThematicBreak(_)          => Block.Rule
+    case Layout.ThematicBreak(_)          => Block.Rule()
     case Layout.HtmlBlock(_, html)        => Block.Code(Language("html"), lines(html))
 
     case Layout.CodeBlock(_, info, content) =>
@@ -158,10 +193,17 @@ object Presentable extends Presentable2:
     case Layout.OrderedList(_, _, _, _, items*) =>
       Block.Listing(true, items.toList.to(List).map { (item: List[Layout]) => Block.Item(item.map(layout)) })
 
-  private def lines(content: Text): List[List[Token]] =
-    content.cut(t"\n").map { (line: Text) => List(Token.plain(line)) }
+  private def lines(content: Text): List[Block.Line] =
+    content.cut(t"\n").map { (line: Text) => Block.Line(List(Token.plain(line))) }
 
-trait Presentable2:
+trait Presentable2 extends Presentable3:
+  // Below `table` in priority, so a list of products tabulates; above `derived`, so a list of
+  // anything else lists rather than falling through to its `Showable`.
+  given list: [element: Presentable as presentable] => List[element] is Presentable in Block =
+    list =>
+      Block.Listing(false, list.map { (element: element) => Block.Item(Presentable.blocks(presentable.exhibit(element))) })
+
+trait Presentable3:
   inline given derived: [value] => value is Presentable = compiletime.summonFrom:
     case given (`value` is Showable) => Presentable.phrase[value] { value => Inline.Textual(value.show) }
     case given Reflection[`value`]   => Presentable.Derivation.derived[value]

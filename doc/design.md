@@ -43,15 +43,44 @@ Every dependency of the model is Scala.js-capable, so it can later cross-compile
 browser-side renderer. Two types are defined here rather than reused for that reason:
 
 - `Token`/`Token.Accent` mirror harlequin's, because harlequin needs the compiler and is
-  JVM-only. Highlighting happens at exhibition time; the model carries its result.
+  JVM-only. Highlighting happens at exhibition time; the model carries its result. The
+  `compiler` module (JVM-only) bridges harlequin's `SourceCode` and delicious's diagnostic
+  `Markup` into the model.
 - `Status`/`Standing` mirror ultimatum's gauge statuses, so the model does not pull in the
   terminal stack. The terminal renderer converts.
+
+### Wire form
+
+TEL is the model's codec: `Inline` and `Block` carry anchored `Tel.Encodable`/`Tel.Decodable`
+givens in their companions (derived in a sibling `Codecs` object; see below), so a value
+serialises from any package, and BinTEL serves every JVM-to-JVM transport. JSON, if used at all,
+is an edge detail of the web frontend. Several model shapes follow from being serialisable:
+
+- Handles (`Action`, `Input`, `Choice`, `Toggle`) are case classes with a process-unique id, so
+  they are plain values: an event naming one decodes to an equal handle and matches by equality.
+  A frontend still validates incoming ids against those it has issued.
+- `Inline.Amount(value, units)` captures a `Quantity`'s type-level units as text when the phrase
+  is built (`Amount.of`), since a generic `Quantity` cannot be decoded.
+- `Block.Graph(vertices, edges)` with `Graph.of(dag)` and `Graph#dag` for acyclicity's
+  operations; `Status.Elapsed(seconds)` with `Elapsed.of(duration)`.
+- A table cell and a code line are records (`Block.Cell`, `Block.Line`), not `List[List[_]]`: a
+  repeated TEL field cannot nest, so nested lists flatten on the wire.
+- `Keypress` and `Math` are scalars: clavichord's rendering (`[⌃]+[C]`, parsed back by
+  `Keypresses.parse`, a candidate for clavichord itself) and Ergo shorthand.
+- Every singleton-only enum (`Tone`, `Glyph`, `Standing`, accents, alignments, note styles,
+  chart kinds, sizings) has a scalar codec keyed by its kebab-cased case name. This is nicer TEL
+  than a nested select, and it sidesteps a compiler problem: deriving a `Tel.Decodable` for a
+  sum with a singleton case fails under capture checking when the derivation is anchored to a
+  `given` or `val` (propensive/soundness#1972), in an order-sensitive way. For the same reason
+  the lone singleton cases `Inline.Break`, `Block.Rule` and `Status.Indeterminate` are fieldless
+  products for now, and the derivations run in a sibling object with the companions holding
+  only aliases.
 
 ### Inline
 
 `Textual`, `Phrase`, `Emphasis` (one kind), `Toned(tone, …)`, `Code(language, tokens)`,
 `Keystroke(keypress)`, `Link(External | Internal(action), …)`, `Math`, `Symbol(glyph)`,
-`Reference(id)`, `Amount(quantity)`, `Figure(value, precision)`, `Break`.
+`Reference(id)`, `Amount(value, units)`, `Figure(value, precision)`, `Break`.
 
 `Tone` (Success, Failure, Warning, Muted, Accent, Info) and `Glyph` are the semantic hooks that
 replace direct use of colours, weights and box characters.
@@ -61,7 +90,7 @@ replace direct use of colours, weights and box characters.
 `Paragraph`, `Heading`, `Listing` (items may carry an `Action`), `Quotation`, `Rule`, `Code`
 (lines of tokens plus `Note` ranges for annotated samples), `Table` (columns with escritoire-style
 `Sizing`; rows may carry a `Tone` and an `Action`, which is how master/detail is built),
-`Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Tree`, `Graph(Dag[Vertex])`,
+`Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Tree`, `Graph(vertices, edges)`,
 `Chart` (sparkline, bars, histogram only), `Gauge(status, caption)`, `Group`.
 
 ### Interface
@@ -74,8 +103,8 @@ where a panel goes.
 
 `Control`s are `Button`, `Field` (line, multiline or code, with a `Live[Decoration]` of
 highlighting tokens and completions supplied by the application), `Choice` and `Toggle`. Each
-names an opaque handle (`Action`, `Input`, `Choice`, `Toggle`) the application created, with
-reference identity.
+names a handle (`Action`, `Input`, `Choice`, `Toggle`) the application created, a value with a
+process-unique id.
 
 `Hints` is an open, typed bag. Three vocabularies live in the model so an application can attach
 any of them without touching a renderer: `pyrocosm.hints.*` (medium-neutral: `Proportion`,
@@ -177,10 +206,11 @@ Found while building the model (M1):
 
 - **M0 Scaffold** (done): `build.mill` on the flame pattern, modules `model`, `terminal`,
   `web`, `demo`, `test`; Makefile; shared CI workflow.
-- **M1 Model** (in progress): the types above compile; `Presentable` with its fallback chain
-  and derivation; instances for Soundness types. Remaining: TEL codecs (stratiform) for
-  Inline/Block, derived in place (recursive sums derive without anchoring; verified for JSON and
-  TEL in the test suite), BinTEL on JVM transports, JSON only at the browser edge; a `scala` module for harlequin/delicious/stenography instances; tests.
+- **M1 Model** (done): the types above; `Presentable` with its fallback chain, product and sum
+  derivation, and table derivation for lists of case classes; instances for Soundness types;
+  TEL codecs for `Inline` and `Block` with a full-model round-trip test; the `compiler` module
+  for harlequin and delicious. Not yet: stenography (types in diagnostics) and a schema
+  fingerprint for version skew, as `probably.Streamer` does.
 - **M2 Terminal renderer**: `TerminalRenderer` (`Block → List[Teletype]`),
   `TerminalArrangement`, `TerminalFrontend` on `Form.run`, `PanelFixture`, `ButtonFocus`,
   `SelectableFocus`, `CodeField`; a plain-text renderer for terse output.
