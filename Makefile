@@ -6,7 +6,7 @@ build:
 # beneficence plugin writes; a probably suite has no main class of its own.
 test:
 	./mill pyrocosm.test.assembly
-	fume run -c out/pyrocosm/test/assembly.dest/out.jar
+	fume run
 
 # The gallery as an Ethereal executable (the daemon launcher every Soundness application uses),
 # then run interactively in the terminal, or once, statically, at a width.

@@ -93,42 +93,6 @@ object TerminalRenderer:
       Sequence.from:
         lines.readable.to(sci.IndexedSeq).flatMap { line => Flow.wrap(line, width).stdlib }.toVector
 
-  // Numbers as a person reads them: three significant figures or so.
-  def figure(value: Double, precision: Optional[Int] = Unset): Text =
-    val decimals: Int = precision.or:
-      if value == value.toLong.toDouble then 0
-      else if value.abs >= 100 then 0
-      else if value.abs >= 10 then 1
-      else 2
-
-    java.lang.String.format(java.util.Locale.ROOT, s"%.${decimals}f", java.lang.Double.valueOf(value)).nn.tt
-
-  // An amount in base units, scaled to the unit a reader would choose: seconds down to
-  // nanoseconds, bytes up to gigabytes; anything else is shown as it came.
-  def scaled(value: Double, units: Text): (Text, Text) =
-    val absolute = value.abs
-
-    def step(divisor: Double, unit: Text): (Text, Text) = (figure(value/divisor), unit)
-
-    units.s match
-      case "s" =>
-        if absolute == 0.0 then (t"0", t"s")
-        else if absolute < 1e-6 then step(1e-9, t"ns")
-        else if absolute < 1e-3 then step(1e-6, t"µs")
-        else if absolute < 1.0 then step(1e-3, t"ms")
-        else if absolute < 60.0 then step(1.0, t"s")
-        else if absolute < 3600.0 then step(60.0, t"min")
-        else step(3600.0, t"h")
-
-      case "B" =>
-        if absolute < 1e3 then step(1.0, t"B")
-        else if absolute < 1e6 then step(1e3, t"kB")
-        else if absolute < 1e9 then step(1e6, t"MB")
-        else step(1e9, t"GB")
-
-      case _ =>
-        (figure(value), units)
-
   def glyph(glyph: Glyph)(using glyphs: Gaugeable.Glyphs): Text =
     val unicode = glyphs != Gaugeable.Glyphs.Ascii
 
@@ -164,7 +128,8 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
           gauging:     Gauging,
           glyphs:      Gaugeable.Glyphs ):
 
-  import TerminalRenderer.{figure, scaled, glyph, glyphTone, Stretch, Rigid}
+  import TerminalRenderer.{glyph, glyphTone, Stretch, Rigid}
+  import Amounts.{figure, scaled}
 
   private def tint(chroma: Chroma)(text: Teletype): Teletype = e"${Fg(chroma)}($text)"
   private def toned(tone: Tone)(text: Teletype): Teletype = tint(theme.tone(tone))(text)

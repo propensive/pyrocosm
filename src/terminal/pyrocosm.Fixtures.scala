@@ -40,39 +40,6 @@ import vacuous.*
 
 import ultimatum.{Fixture, Focus, Tick}
 
-// What a run of blocks can do: the actions it offers for selection, and whether anything in it
-// animates. Both are recomputed from the live content on every paint, so they are always current.
-object Actions:
-  def of(blocks: List[Block]): List[Action] =
-    blocks.bind { (block: Block) => ofBlock(block) }
-
-  private def ofTree(node: Block.TreeNode): List[Action] =
-    node.action.lay(Nil: List[Action])(List(_)) + node.children.bind { (child: Block.TreeNode) => ofTree(child) }
-
-  private def ofBlock(block: Block): List[Action] = block match
-    case Block.Listing(_, items)         => items.bind { (item: Block.Item) => item.action.lay(Nil: List[Action])(List(_)) + of(item.content) }
-    case Block.Table(_, rows, _)         => rows.bind { (row: Block.Row) => row.action.lay(Nil: List[Action])(List(_)) }
-    case Block.Tree(roots)               => roots.bind { (root: Block.TreeNode) => ofTree(root) }
-    case Block.Graph(vertices, _)        => vertices.bind { (vertex: Block.Vertex) => vertex.action.lay(Nil: List[Action])(List(_)) }
-    case Block.Quotation(content)        => of(content)
-    case Block.Notice(_, _, content)     => of(content)
-    case Block.Disclosure(_, content, _) => of(content)
-    case Block.Group(content)            => of(content)
-    case Block.Record(entries, _)        => entries.bind { (entry: Block.Entry) => of(entry.value) }
-    case _                               => Nil
-
-  def animated(blocks: List[Block]): Boolean = blocks.exists { (block: Block) => animatedBlock(block) }
-
-  private def animatedBlock(block: Block): Boolean = block match
-    case Block.Gauge(Status.Indeterminate(), _)         => true
-    case Block.Gauge(Status.Standing(Standing.Running), _) => true
-    case Block.Gauge(Status.Steps(steps), _)            => steps.exists(_.standing == Standing.Running)
-    case Block.Quotation(content)                       => animated(content)
-    case Block.Notice(_, _, content)                    => animated(content)
-    case Block.Disclosure(_, content, _)                => animated(content)
-    case Block.Group(content)                           => animated(content)
-    case _                                              => false
-
 // A panel's content, painted from its live cell on every repaint. Focusable: when the content
 // offers actions (selectable rows, items, tree nodes, vertices), Up and Down move the selection
 // and Enter presses it; otherwise they scroll. Any other key is reported as `Event.Key`.
