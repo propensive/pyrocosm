@@ -16,8 +16,8 @@ object settings:
   val scalaHome = sys.env.getOrElse("SOUNDNESS_SCALA_HOME", "")
 
   // The Soundness release the components resolve at (from `~/.ivy2/local`, installed by
-  // `make sync-releases` in the Soundness repository). Pinned to the build fume is on.
-  val soundnessVersion = "0.65.0-selection"
+  // `make sync-releases` in the Soundness repository). Pinned to the current release.
+  val soundnessVersion = "0.65.0"
 
   val pyrocosmVersion = sys.env.getOrElse("PYROCOSM_VERSION", "0.1.0")
 
@@ -97,7 +97,7 @@ object settings:
   val compilerDeps = Seq("harlequin-core", "delicious-core").map(component)
 
   val demoDeps = Seq("exoskeleton-completions", "ethereal-core").map(component)
-  val testDeps = Seq("probably-cli").map(component)
+  val testDeps = Seq("probably-cli", "probably-events", "yossarian-core").map(component)
 
 // Exposes the fork compiler's `release/lib` jars (from a local build via `settings.scalaHome`, or
 // downloaded from the `settings.scalaRelease` GitHub release) as a Maven-layout repository,
@@ -269,6 +269,10 @@ trait Component(dependencies: PublishModule*) extends Toolchain:
   def moduleDeps: Seq[PublishModule] = dependencies
   def sources = Task.Sources(moduleDir)
 
+  // The beneficence plugin indexes givens and test suites into `META-INF`; fume discovers the
+  // suites through that index and nothing else.
+  override def scalacPluginMvnDeps = Seq(settings.component("beneficence-plugin"))
+
 trait Publishing extends Toolchain, SonatypeCentralPublishModule:
   def publishVersion = settings.pyrocosmVersion
   def artifactSuffix = Task("")
@@ -313,6 +317,6 @@ object pyrocosm extends Project:
     def mvnDeps = settings.demoDeps
     def finalMainClass = "pyrocosm.gallery"
 
-  object test extends Component(model, compiler):
+  object test extends Component(model, compiler, terminal):
     def mvnDeps = settings.testDeps
     def finalMainClass = "pyrocosm.Tests"

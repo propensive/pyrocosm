@@ -2,19 +2,26 @@
 build:
 	./mill __.compile
 
-# Compile and run the test suite.
+# Compile and run the test suite through fume, which discovers the suites from the index the
+# beneficence plugin writes; a probably suite has no main class of its own.
 test:
 	./mill pyrocosm.test.assembly
-	java -cp out/pyrocosm/test/assembly.dest/out.jar pyrocosm.Tests
+	fume run -c out/pyrocosm/test/assembly.dest/out.jar
 
-# Run the gallery in the terminal, or serve it on http://localhost:8080/.
-demo:
+# The gallery as an Ethereal executable (the daemon launcher every Soundness application uses),
+# then run interactively in the terminal, or once, statically, at a width.
+gallery:
 	./mill pyrocosm.demo.assembly
-	java -jar out/pyrocosm/demo/assembly.dest/out.jar terminal
+	java -Dbuild.executable=gallery -jar out/pyrocosm/demo/assembly.dest/out.jar
 
-serve:
-	./mill pyrocosm.demo.assembly
-	java -jar out/pyrocosm/demo/assembly.dest/out.jar serve
+demo: gallery
+	./gallery
+
+static: gallery
+	./gallery static 100
+
+serve: gallery
+	./gallery serve
 
 # Publish the libraries to the local ~/.ivy2, for fume/flame to build against.
 publishLocal:
@@ -23,4 +30,4 @@ publishLocal:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: build test demo serve publishLocal dev
+.PHONY: build test gallery demo static serve publishLocal dev

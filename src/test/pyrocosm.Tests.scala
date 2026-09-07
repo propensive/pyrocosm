@@ -26,6 +26,8 @@ import anticipation.*
 import archimedes.*
 import clavichord.*
 import contingency.*
+import denominative.*
+import escapade.*
 import fulminate.*
 import gossamer.*
 import harlequin.Scala
@@ -39,9 +41,14 @@ import spectacular.*
 import stratiform.*
 import turbulence.*
 import vacuous.*
+import yossarian.*
 
+import anticipation.termcapDefinitions.xtermTrueColorTermcap
 import contingency.strategies.throwUnsafely
+import escritoire.tableStyles.thickTableStyle
 import hieroglyph.charEncoders.utf8Encoder
+import hieroglyph.textMetrics.uniformMetric
+import ultimatum.palettes.solarizedDarkGaugePalette
 import jacinta.discriminables.jsonByKindDiscriminable
 import jacinta.formatting.compactJsonFormatting
 
@@ -253,4 +260,94 @@ object Tests extends Suite(m"Pyrocosm tests"):
       exhibit match
         case Block.Code(Language.Scala, lines, _) => lines.stdlib.head.tokens.stdlib.head.accent == Token.Accent.Keyword
         case _                                    => false
+    . assert(_ == true)
+
+    // ── The terminal renderer ─────────────────────────────────────────────────────────────
+
+    val renderer = TerminalRenderer()
+
+    val prose: Block =
+      Block.paragraph(t"The quick brown fox jumps over the lazy dog, again and again, until the line is far too long for forty columns.")
+
+    test(m"a paragraph wraps within the width"):
+      renderer.block(prose, 40).all(_.length <= 40)
+    . assert(_ == true)
+
+    test(m"a paragraph wraps onto several lines"):
+      renderer.block(prose, 40).stdlib.length
+    . assert(_ > 2)
+
+    val stretched: Block =
+      Block.Table
+        ( List
+            ( Block.Column(Inline.text(t"Name"), sizing = Block.Sizing.Stretch),
+              Block.Column(Inline.text(t"Time"), Block.Alignment.End, Block.Sizing.Rigid, true) ),
+          List(Block.Row(List(Block.Cell(Inline.text(t"parse")), Block.Cell(List(Inline.Amount(0.5, t"s")))))) )
+
+    test(m"a table with a stretch column spans exactly the width"):
+      renderer.block(stretched, 60).stdlib.filter(_.plain.starts(t"┃")).map(_.length)
+    . assert(_.forall(_ == 60))
+
+    test(m"a table without a stretch column fits within the width"):
+      renderer.block(rich, 60).stdlib.filter(_.plain.starts(t"┃")).map(_.length)
+    . assert(_.forall(_ <= 60))
+
+    test(m"a gauge line is exactly the width"):
+      renderer.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work")), 50).stdlib.head.length
+    . assert(_ == 50)
+
+    test(m"code notes leave the text intact"):
+      val code = Block.Code(Language.Scala, List(Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" xs = 1")))),
+          List(Block.Note(0, 2, 6, Block.Note.Style.Erroneous)))
+      renderer.block(code, 80).stdlib.head.plain
+    . assert(_ == t"val xs = 1")
+
+    test(m"the plain rendering carries no escape sequences"):
+      renderer.plain(List(rich), 80).contains(t"")
+    . assert(_ == false)
+
+    // A run of phrasing with no space in it cannot be broken, and is emitted whole (as flame's
+    // diagnostic wrapper does for an overlong word); every breakable line must fit.
+    test(m"every node renders at a narrow width without overflowing"):
+      renderer.blocks(List(rich), 32).map(_.plain).filter { (line: Text) => line.length > 32 && line.contains(t" ") }
+    . assert(_ == Nil)
+
+    // ── The arrangement solver ────────────────────────────────────────────────────────────
+
+    def panel(name: Text, role: Panel.Role, priority: Panel.Priority): Panel =
+      Panel(Panel.Id(name), role, Inline.text(name), Live(List(Block.paragraph(name))), priority)
+
+    val arranged: Interface =
+      Interface
+        ( Inline.text(t"Test"),
+          List
+            ( panel(t"nav", Panel.Role.Navigation, Panel.Priority.Important),
+              panel(t"main", Panel.Role.Primary, Panel.Priority.Essential),
+              panel(t"detail", Panel.Role.Detail, Panel.Priority.Peripheral),
+              panel(t"log", Panel.Role.Log, Panel.Priority.Important),
+              panel(t"status", Panel.Role.Status, Panel.Priority.Essential) ) )
+
+    test(m"a narrow terminal drops peripheral panels and keeps essential ones"):
+      val plan = TerminalArrangement.plan(arranged, 60, 20)
+      (plan.dropped.map(_.id.label), plan.centre.map(_.id.label), plan.rectoBeside)
+    . assert(_ == (List(t"detail"), List(t"main"), false))
+
+    test(m"a wide terminal shows every panel with detail beside the centre"):
+      val plan = TerminalArrangement.plan(arranged, 120, 40)
+      (plan.dropped, plan.recto.map(_.id.label), plan.rectoBeside)
+    . assert(_ == (Nil, List(t"detail"), true))
+
+    test(m"a very narrow terminal keeps only the essential panels"):
+      TerminalArrangement.plan(arranged, 40, 12).dropped.map(_.id.label)
+    . assert(_ == List(t"nav", t"detail", t"log"))
+
+    // ── On a terminal emulator ────────────────────────────────────────────────────────────
+
+    test(m"rendered lines draw on a terminal emulator as their plain text"):
+      val lines = renderer.blocks(List(rich), 80)
+      val rendered = lines.map(_.render(xtermTrueColorTermcap)).join(t"\r\n")
+      val pty = Pty(80, 40).consume(rendered)
+      val first = lines.stdlib.head.plain
+
+      (0 until first.length).forall { column => pty.buffer.char(column.z, Prim) == first.s.charAt(column) }
     . assert(_ == true)

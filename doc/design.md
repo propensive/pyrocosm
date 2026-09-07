@@ -211,9 +211,18 @@ Found while building the model (M1):
   TEL codecs for `Inline` and `Block` with a full-model round-trip test; the `compiler` module
   for harlequin and delicious. Not yet: stenography (types in diagnostics) and a schema
   fingerprint for version skew, as `probably.Streamer` does.
-- **M2 Terminal renderer**: `TerminalRenderer` (`Block → List[Teletype]`),
-  `TerminalArrangement`, `TerminalFrontend` on `Form.run`, `PanelFixture`, `ButtonFocus`,
-  `SelectableFocus`, `CodeField`; a plain-text renderer for terse output.
+- **M2 Terminal renderer** (done, first cut): `TerminalRenderer` renders every block to styled
+  lines at a width (tessellate, escritoire, dendrology, ultimatum gauges) with a plain-text
+  path; `TerminalArrangement.plan` is the rule table from roles, priorities and `Minimum`
+  hints to verso, centre, recto, log, prompt and status bands, and `build` makes the pane
+  tree; `TerminalFrontend` conducts it on Ultimatum's `Form`, binding every `Live` cell to the
+  form's redraw wake. Fixtures: `PanelFixture` (live content, selectable actions, scrolling),
+  `ButtonFocus`, `ToggleFocus`, `ChoiceFocus` and `CodeField` (decorations, ghost text,
+  completions, history, Enter-versus-newline). Two Ultimatum limits shaped it: `bindWake` is
+  private to ultimatum, so the frontend binds cells itself and panels report a period so a
+  fullscreen form repaints them; and Tab is the form's own focus key, so Right accepts a
+  completion. The gallery's `static` mode prints the overview without a session.
+  Not yet: inline links as focusables, mouse, and the `Resized` event.
 - **M3 Web renderer**: `HtmlRenderer`, `Stylesheet`, `WebArrangement` on graffiti,
   `PyrocosmPage`, `WebFrontend` with the patch protocol, `res/web/pyrocosm.js`.
 - **M4 Gallery**: every node, every role and priority, a ticking gauge, a selectable table
