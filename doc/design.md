@@ -219,10 +219,27 @@ Found while building the model (M1):
   form's redraw wake. Fixtures: `PanelFixture` (live content, selectable actions, scrolling),
   `ButtonFocus`, `ToggleFocus`, `ChoiceFocus` and `CodeField` (decorations, ghost text,
   completions, history, Enter-versus-newline). Two Ultimatum limits shaped it: `bindWake` is
-  private to ultimatum, so the frontend binds cells itself and panels report a period so a
-  fullscreen form repaints them; and Tab is the form's own focus key, so Right accepts a
-  completion. The gallery's `static` mode prints the overview without a session.
-  Not yet: inline links as focusables, mouse, and the `Resized` event.
+  private to ultimatum, so the frontend binds cells itself; and Tab is the form's own focus
+  key, so Right accepts a completion. The gallery's `static` mode prints the overview without
+  a session. Not yet: inline links as focusables, mouse, and the `Resized` event.
+
+  Found while chasing a lag that grew the longer the gallery ran: a fullscreen `Form` repaints
+  only the entry that handled a key and any entry with a `period`, and it re-arms its
+  animation timer after every refresh but clears its "timer pending" flag on *every* `Redraw`
+  event, including an application's. So a redraw request while the timer is pending arms a
+  second timer, each timer re-arms itself forever, and a `Live` cell assigned seven times a
+  second (the gallery's gauge) leaks seven permanent timers a second: within twenty seconds
+  the form was refreshing a thousand times a second, every refresh re-rendering every panel
+  twice (once to measure, once to paint), and keystrokes queued behind it. The upstream fix
+  is for the timer's wake to be distinguishable from an application's (`Terminal.Info.Tick`,
+  say), or for `Form` to clear the flag only for its own wake. Pyrocosm's side, which stands
+  on its own: `Refreshable` fixtures report a period only while *marked* (a cell of theirs was
+  assigned) or while their content genuinely animates (`pulse`); the frontend binds each cell
+  to a wake that marks its fixture and queues a `Redraw` only when no refresh is already
+  coming (no timer armed, and nothing else marked); and `PanelFixture` caches its rendering
+  by content identity, width, focus, selection and animation frame, so a refresh costs a
+  render only for what changed. With this the gallery refreshes ten times a second at a few
+  per cent of a core, however long it runs.
 - **M3 Web renderer** (done, first cut): `HtmlRenderer` renders every node to semantic HTML
   carrying `pyro-*` classes and handle ids; `WebArrangement.plan` maps roles to page features
   and `PyrocosmPage` is the graffiti page (masthead with title, status panels and a connection

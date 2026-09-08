@@ -40,15 +40,40 @@ import vacuous.*
 
 import ultimatum.{Fixture, Focus, Tick}
 
-// A panel's content, painted from its live cell on every repaint. Focusable: when the content
-// offers actions (selectable rows, items, tree nodes, vertices), Up and Down move the selection
-// and Enter presses it; otherwise they scroll. Any other key is reported as `Event.Key`.
-//
-// The period is reported whenever the panel is live, because a fullscreen form repaints only the
-// entries it knows have changed, and a change to a `Live` cell is not one of them; an animated
-// panel is repainted every tick, and the diffing root then writes only the cells that differ.
-class PanelFixture(panel: Panel, renderer: TerminalRenderer, dispatch: Event -> Unit)
-extends Focus:
+// When the form last measured or painted anything: the frontend reads it to tell whether the
+// form's animation timer is pending, which it is for one period after every refresh while any
+// fixture pulses.
+class Repaints():
+  @volatile
+  @caps.unsafe.untrackedCaptures
+  private var last: Long = 0L
+
+  def touch(): Unit = last = System.nanoTime
+  def since: Long = (System.nanoTime - last)/1000000L
+
+// A fixture whose appearance an application changes from another thread, through a `Live` cell.
+// A fullscreen form repaints only what it knows has changed: the entry that handled a key, and
+// any entry with a period. So the frontend marks the fixture when one of its cells is assigned,
+// the fixture reports a period while marked (any period: it is only a flag to the form), and
+// clears the mark once it has painted. `pulse` is a genuine animation period, when the content
+// animates, and is what keeps the form's timer armed. Reporting a period at all other times
+// costs a full re-render of every panel on every tick, and worse: the form re-arms its timer
+// after every refresh and forgets the pending one whenever an application redraw arrives, so a
+// wake per assignment leaks a permanent timer each time (see `TerminalFrontend`).
+trait Refreshable extends Fixture:
+  @caps.unsafe.untrackedCaptures
+  private var marked: Boolean = true
+
+  def mark(): Unit = marked = true
+  protected def painted(): Unit = marked = false
+  def pulse: Optional[Int] = Unset
+  override def period: Optional[Int] = if pulse.present then pulse else if marked then 1 else Unset
+
+// A panel's content, painted from its live cell. Focusable: when the content offers actions
+// (selectable rows, items, tree nodes, vertices), Up and Down move the selection and Enter
+// presses it; otherwise they scroll. Any other key is reported as `Event.Key`.
+class PanelFixture(panel: Panel, renderer: TerminalRenderer, dispatch: Event -> Unit, repaints: Repaints)
+extends Focus, Refreshable:
 
   @caps.unsafe.untrackedCaptures
   private val started: Long = System.nanoTime
@@ -65,18 +90,40 @@ extends Focus:
   private def actions: List[Action] = Actions.of(panel.content())
   private def selected: Optional[Action] = actions.at(selection.z)
 
-  override def period: Optional[Int] = if Actions.animated(panel.content()) then 80 else 250
+  override def pulse: Optional[Int] = if Actions.animated(panel.content()) then 80 else Unset
+
+  // One rendering serves the measure and the paint of a refresh, and every refresh after it
+  // until something it depends on changes: the content (by identity, since it is immutable),
+  // the width, focus and selection, and the animation frame when the content animates.
+  private class Rendering
+    ( val content: List[Block], val width: Int, val focused: Boolean, val selection: Int, val frame: Long,
+      val lines: List[Teletype] ):
+
+    def matches(content0: List[Block], width0: Int, focused0: Boolean, selection0: Int, frame0: Long): Boolean =
+      (content.stdlib eq content0.stdlib) && width == width0 && focused == focused0
+        && selection == selection0 && frame == frame0
+
+  @caps.unsafe.untrackedCaptures
+  private var rendering: Optional[Rendering] = Unset
 
   private def lines(width: Int, focused: Boolean): List[Teletype] =
-    val heading: List[Teletype] = panel.title.lay(Nil: List[Teletype]): title =>
-      val text = renderer.phrase(title)
-      List(if focused then e"$Bold(${Fg(renderer.theme.tone(Tone.Accent))}($text))" else e"$Bold($text)")
+    val content = panel.content()
+    val frame: Long = if Actions.animated(content) then (System.nanoTime - started)/80000000L else 0L
+    val selection0: Int = if focused then selection else -1
 
-    heading + renderer.blocks(panel.content(), width.max(1), tick, if focused then selected else Unset)
+    rendering.let { current => if current.matches(content, width, focused, selection0, frame) then current.lines else Unset }.or:
+      val heading: List[Teletype] = panel.title.lay(Nil: List[Teletype]): title =>
+        val text = renderer.phrase(title)
+        List(if focused then e"$Bold(${Fg(renderer.theme.tone(Tone.Accent))}($text))" else e"$Bold($text)")
+
+      val result = heading + renderer.blocks(content, width.max(1), tick, if focused then selected else Unset)
+      rendering = Rendering(content, width, focused, selection0, frame, result)
+      result
 
   // The minimum height: the content, for the panels which are short by nature; a few rows for
   // the rest, which scroll, so that a long primary panel does not starve the others.
   def measure(width: Int): (Int, Int) =
+    repaints.touch()
     val rows = lines(width, false).stdlib.length.max(1)
     val bounded = panel.hints[hints.terminal.MaxRows].lay(rows) { hint => rows.min(hint.rows) }
 
@@ -101,6 +148,8 @@ extends Focus:
 
     canvas.cursor(false)
     canvas.flush()
+    painted()
+    repaints.touch()
 
   def handle(event: Terminal.Event): Unit = event match
     case Keypress.Up =>
@@ -132,7 +181,7 @@ class TextFixture(lines: List[Teletype]) extends Fixture:
     canvas.flush()
 
 class ButtonFocus(button: Control.Button, renderer: TerminalRenderer, dispatch: Event -> Unit)
-extends Focus:
+extends Focus, Refreshable:
 
   private def label: Teletype = e"[ ${renderer.phrase(button.label)} ]"
 
@@ -148,6 +197,7 @@ extends Focus:
     canvas.put(text)
     canvas.cursor(false)
     canvas.flush()
+    painted()
 
   def handle(event: Terminal.Event): Unit = event match
     case Keypress.Enter | Keypress.CharKey(' ') => if button.enabled() then dispatch(Event.Pressed(button.action))
@@ -155,7 +205,7 @@ extends Focus:
     case _                                      => ()
 
 class ToggleFocus(toggle: Control.Toggle, renderer: TerminalRenderer, dispatch: Event -> Unit)
-extends Focus:
+extends Focus, Refreshable:
 
   private def line: Teletype =
     val box = if toggle.state() then t"[x] " else t"[ ] "
@@ -169,6 +219,7 @@ extends Focus:
     canvas.put(if focused then e"$Reverse($line)" else line)
     canvas.cursor(false)
     canvas.flush()
+    painted()
 
   def handle(event: Terminal.Event): Unit = event match
     case Keypress.Enter | Keypress.CharKey(' ') =>
@@ -179,7 +230,7 @@ extends Focus:
     case _                  => ()
 
 class ChoiceFocus(choice: Control.Choice, renderer: TerminalRenderer, dispatch: Event -> Unit)
-extends Focus:
+extends Focus, Refreshable:
 
   private val count: Int = choice.options.stdlib.length
 
@@ -195,6 +246,7 @@ extends Focus:
       canvas.put(if current && focused then e"$Reverse($line)" else line)
     canvas.cursor(false)
     canvas.flush()
+    painted()
 
   private def move(delta: Int): Unit =
     val next = (choice.current() + delta).max(0).min(count - 1)
@@ -215,7 +267,7 @@ extends Focus:
 // completions when there are any, else through the submission history on a single-line value.
 // Tab is the form's focus key, so Right at the end of the text accepts the ghost.
 class CodeField(field: Control.Field, renderer: TerminalRenderer, dispatch: Event -> Unit)
-extends Focus:
+extends Focus, Refreshable:
 
   @caps.unsafe.untrackedCaptures
   private var editor: LineEditor =
@@ -330,6 +382,7 @@ extends Focus:
     canvas.showCaret(column.z, row.z)
     canvas.cursor(focused)
     canvas.flush()
+    painted()
 
   private def caret: (Int, Int) =
     val before = editor.value.s.substring(0, editor.position).nn

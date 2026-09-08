@@ -77,25 +77,36 @@ extends Frontend:
     // pure once here, as ultimatum does for the wakes its `Reading` cells hold.
     val dispatch: Event -> Unit = caps.unsafe.unsafeAssumePure(dispatch0)
 
+    // Every fixture, with the cells whose assignment should repaint it.
+    val repaints = Repaints()
+    val fixtures = scala.collection.mutable.ListBuffer[Refreshable]()
+    val bindings = scala.collection.mutable.ListBuffer[(Live[?], Refreshable)]()
+
+    def register[fixture <: Refreshable](fixture: fixture, cells: Live[?]*): fixture =
+      fixtures += fixture
+      cells.foreach { cell => bindings += ((cell, fixture)) }
+      fixture
+
     def control(control: Control): Pane = control match
       case button: Control.Button =>
-        val fixture = ButtonFocus(button, renderer, dispatch)
+        val fixture = register(ButtonFocus(button, renderer, dispatch), button.enabled)
         Pane.Widget(Sizing(0.0, minWidth = fixture.measure(0)(0), maxWidth = fixture.measure(0)(0), minHeight = 1, maxHeight = 1), fixture)
 
       case toggle: Control.Toggle =>
-        val fixture = ToggleFocus(toggle, renderer, dispatch)
+        val fixture = register(ToggleFocus(toggle, renderer, dispatch), toggle.state)
         Pane.Widget(Sizing(0.0, minWidth = fixture.measure(0)(0), maxWidth = fixture.measure(0)(0), minHeight = 1, maxHeight = 1), fixture)
 
       case choice: Control.Choice =>
-        Pane.Widget(Sizing(), ChoiceFocus(choice, renderer, dispatch))
+        Pane.Widget(Sizing(), register(ChoiceFocus(choice, renderer, dispatch), choice.current))
 
       case field: Control.Field =>
-        Pane.Widget(Sizing(), CodeField(field, renderer, dispatch))
+        Pane.Widget(Sizing(), register(CodeField(field, renderer, dispatch), field.value, field.decoration))
 
     // A panel is its content, with its own controls stacked beneath.
     def widget(panel: Panel): Pane =
       val maxRows: Optional[Int] = panel.hints[hints.terminal.MaxRows].let(_.rows)
-      val content = Pane.Widget(Sizing(maxHeight = maxRows), PanelFixture(panel, renderer, dispatch))
+      val fixture = register(PanelFixture(panel, renderer, dispatch, repaints), panel.content)
+      val content = Pane.Widget(Sizing(maxHeight = maxRows), fixture)
       if panel.controls.nil then content
       else ultimatum.stack((content :: panel.controls.map(control).map(_.weight(0.0)))*)
 
@@ -123,8 +134,23 @@ extends Frontend:
         case hints.terminal.Occupancy.Fullscreen => Occupancy.Fullscreen
         case _ => occupancy.or(if interface.panels.stdlib.length > 1 then Occupancy.Fullscreen else Occupancy.Inline)
 
-      val wake: () => Unit = () => terminal.events.put(Terminal.Info.Redraw)
-      interface.cells.each(_.bindWake(wake))
+      // A cell's assignment marks its fixture, which is what makes the form paint it; the form
+      // is woken only if no refresh is already coming. Ultimatum's form re-arms its animation
+      // timer after every refresh and forgets the pending one when any redraw request arrives,
+      // so a request while a timer is pending leaks a second, permanent timer: with a cell
+      // assigned several times a second, the loop is saturated within seconds. While a timer is
+      // pending (one period after the last refresh, generously; or a fixture other than this
+      // one is marked, so a refresh is already requested), the mark alone suffices.
+      def pending(self: Refreshable): Boolean =
+        fixtures.exists: fixture =>
+          val period: Optional[Int] = if fixture eq self then fixture.pulse else fixture.period
+          period.let { period => repaints.since <= period + 500 }.or(false)
+
+      def wake(fixture: Refreshable): () => Unit = () =>
+        fixture.mark()
+        if !pending(fixture) then terminal.events.put(Terminal.Info.Redraw)
+
+      bindings.foreach { (cell, fixture) => cell.bindWake(wake(fixture)) }
 
       try conduct(mode)(pane)
       finally interface.cells.each(_.unbindWakes())
