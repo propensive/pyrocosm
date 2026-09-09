@@ -35,8 +35,14 @@ object Panel:
   // What the panel is for. Each renderer has an idiom for each role: a verso sidebar or a menu
   // strip for `Navigation`, a masthead or a one-row bar for `Status`, a docked editor for
   // `Prompt`, a following scroller or card for `Log`.
+  //
+  // A `Transcript` is a log whose entries, once settled, are history: a REPL's submissions and
+  // their results. An inline terminal frontend commits settled entries to the scrollback and
+  // keeps only the rest live; every other frontend shows it as a following log. An entry is
+  // settled once nothing in it animates (a placeholder for a result still being computed is a
+  // gauge with an indeterminate status), and every entry before it is settled too.
   enum Role:
-    case Primary, Navigation, Detail, Inspector, Status, Log, Prompt
+    case Primary, Navigation, Detail, Inspector, Status, Log, Prompt, Transcript
 
   // What gives way first when space is short. The terminal drops `Peripheral` panels, then
   // `Important` ones; the web collapses them into disclosure or a drawer instead.

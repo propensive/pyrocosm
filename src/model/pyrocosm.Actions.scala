@@ -52,6 +52,13 @@ object Actions:
 
   def animated(blocks: List[Block]): Boolean = blocks.exists { (block: Block) => animatedBlock(block) }
 
+  // How many leading blocks are settled: every block before the first that animates. A
+  // transcript's settled entries are history, which an inline frontend commits to the
+  // scrollback.
+  def settled(blocks: List[Block]): Int =
+    val index = blocks.stdlib.indexWhere(animatedBlock)
+    if index < 0 then blocks.stdlib.length else index
+
   private def animatedBlock(block: Block): Boolean = block match
     case Block.Gauge(Status.Indeterminate(), _)            => true
     case Block.Gauge(Status.Standing(Standing.Running), _) => true

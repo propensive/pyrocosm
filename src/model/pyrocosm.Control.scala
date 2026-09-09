@@ -36,12 +36,14 @@ object Control:
       case Code(language: Language)
 
     // What a renderer draws over the user's text: highlighting tokens covering the whole value,
-    // completion candidates at the caret, and whether the text is an incomplete prefix (which
-    // decides what Enter does). Supplied by the application, usually in response to `Edited`.
+    // completion candidates at the caret, whether the text is an incomplete prefix (which
+    // decides what Enter does), and a note to show beside the text: what the input is being
+    // read as, say. Supplied by the application, usually in response to `Edited`.
     case class Decoration
-      ( tokens:      List[Token]      = Nil,
-        completions: List[Completion] = Nil,
-        incomplete:  Boolean          = false )
+      ( tokens:      List[Token]            = Nil,
+        completions: List[Completion]       = Nil,
+        incomplete:  Boolean                = false,
+        note:        Optional[List[Inline]] = Unset )
 
     case class Completion(name: Text, kind: Text, signature: Text)
 

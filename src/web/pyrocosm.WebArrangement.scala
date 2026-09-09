@@ -56,7 +56,7 @@ object WebArrangement:
 
     Plan
       ( navigation = role(Panel.Role.Navigation),
-        primary = role(Panel.Role.Primary),
+        primary = role(Panel.Role.Primary) + role(Panel.Role.Transcript),
         detail = role(Panel.Role.Detail) + role(Panel.Role.Inspector),
         log = role(Panel.Role.Log),
         prompt = role(Panel.Role.Prompt),
@@ -66,7 +66,11 @@ object WebArrangement:
 // global controls as the top menu; navigation on the verso side; detail on the recto side; and
 // the primary, log and prompt panels as the main matter. Each panel is a card whose content
 // element the frontend replaces by id when its `Live` cell changes.
-class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme)
+object PyrocosmPage:
+  // `<meta name="pyro-session" content="…">`, naming the page's session for the script.
+  val SessionMeta = Tag.void["meta", Whatwg](presets = proscenium.Map(t"name" -> t"pyro-session"))
+
+class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset)
 extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
   import HtmlRenderer.{cls, panelId}
 
@@ -100,34 +104,49 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
 
     case _: Control.Field => Fragment[Phrasing]()
 
+  // A line or multiline field is a textarea. A code field is an editable `code` element, which
+  // the script paints with the decoration's tokens: a textarea cannot carry styled spans.
   def fieldHtml(field: Control.Field): Html of Flow =
-    val classes = List(cls(t"pyro-field")) + (field.kind match
-      case Control.Field.Kind.Code(_) => List(cls(t"pyro-field-code"))
-      case _                          => Nil)
+    val holder = cls(t"pyro-field-holder")
+    val decorated = Div(id = t"${field.input.id}-decoration", `class` = cls(t"pyro-decoration"))(decoration(field))
 
-    val rows = field.kind match
-      case Control.Field.Kind.Line => 1
-      case _                       => 3
+    field.kind match
+      case Control.Field.Kind.Code(_) =>
+        Div(`class` = List(holder, cls(t"pyro-empty")))
+          ( Code(id = field.input.id, `class` = List(cls(t"pyro-field"), cls(t"pyro-editor")), contenteditable = t"true", spellcheck = t"false")(field.value()),
+            Span(`class` = cls(t"pyro-placeholder"))(field.placeholder.or(t"")),
+            decorated )
 
-    Div(`class` = cls(t"pyro-field-holder"))
-      ( Textarea(id = field.input.id, `class` = classes, rows = rows, placeholder = field.placeholder.or(t""))(field.value()),
-        Div(id = t"${field.input.id}-decoration", `class` = cls(t"pyro-decoration"))(decoration(field)) )
+      case kind =>
+        val rows = if kind == Control.Field.Kind.Line then 1 else 3
+        Div(`class` = holder)
+          ( Textarea(id = field.input.id, `class` = cls(t"pyro-field"), rows = rows, placeholder = field.placeholder.or(t""))(field.value()),
+            decorated )
 
-  // The completions beneath a field, and a hidden marker when the text is an incomplete prefix,
-  // which tells the script that Enter inserts a newline rather than submitting.
+  // What the script reads to decorate a field: the highlighting tokens (hidden; the script
+  // paints an editor with them when they cover its text), the note, a hidden marker when the
+  // text is an incomplete prefix (so Enter inserts a newline rather than submitting), and the
+  // completions, which the script also turns into ghost text.
   def decoration(field: Control.Field): Html of Flow =
-    val completions = field.decoration().completions
+    val decoration0 = field.decoration()
+
+    val tokens: Html of Flow =
+      if decoration0.tokens.nil then Fragment[Flow]()
+      else Span(`class` = cls(t"pyro-tokens"), hidden = t"")(renderer.tokens(decoration0.tokens))
 
     val marker: Html of Flow =
-      if field.decoration().incomplete then Span(`class` = cls(t"pyro-incomplete"), hidden = t"")(t"")
+      if decoration0.incomplete then Span(`class` = cls(t"pyro-incomplete"), hidden = t"")(t"")
       else Fragment[Flow]()
 
+    val note: Html of Flow =
+      decoration0.note.lay(Fragment[Flow]()) { note => Div(`class` = cls(t"pyro-note"))(renderer.phrase(note)) }
+
     val list: Html of Flow =
-      if completions.nil then Fragment[Flow]()
-      else Ul(`class` = cls(t"pyro-completions"))(completions.map { (completion: Control.Field.Completion) =>
+      if decoration0.completions.nil then Fragment[Flow]()
+      else Ul(`class` = cls(t"pyro-completions"))(decoration0.completions.map { (completion: Control.Field.Completion) =>
         Li(Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature)) }*)
 
-    Fragment(marker, list)
+    Fragment(tokens, marker, note, list)
 
   def panelContent(panel: Panel): Html of Flow =
     Div(id = t"${panelId(panel)}-content", `class` = cls(t"pyro-panel-content"))(renderer.blocks(panel.content()))
@@ -160,7 +179,12 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
   override def recto: Html of Flow = cards(plan.detail)
   def content: Html of Flow = Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
 
+  // The session this page belongs to, if it has one of its own, for the script to name when it
+  // opens its socket.
   protected override def head: Html of Metadata =
-    Fragment[Metadata](Script(src = t"/pyrocosm.js", defer = true), super.head)
+    val named: Html of Metadata = session match
+      case id: Text => PyrocosmPage.SessionMeta(content = id)
+      case _        => Fragment[Metadata]()
+    Fragment[Metadata](Script(src = t"/pyrocosm.js", defer = true), named, super.head)
 
   protected override def styles: Css = super.styles + WebStyles.css(theme)

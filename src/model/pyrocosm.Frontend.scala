@@ -27,3 +27,8 @@ package pyrocosm
 // depends on neither.
 trait Frontend:
   def run(interface: Interface)(handle: Event => Unit): Unit
+
+  // Ends a running `run` from another thread, as when the application's work is complete; the
+  // handler receives `Event.Closed` as it would had the user left. A no-op before `run`, and
+  // `run` returns at once if called after.
+  def stop(): Unit

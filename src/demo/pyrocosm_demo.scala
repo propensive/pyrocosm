@@ -35,6 +35,7 @@ import escapade.*
 import gossamer.*
 import turbulence.*
 import parasite.*
+import quantitative.*
 import profanity.*
 import rudiments.*
 import vacuous.*
@@ -138,8 +139,9 @@ object Samples:
   private val keywords: List[Text] = List(t"val", t"def", t"if", t"else", t"then", t"import", t"given")
   private val words: List[Text] = List(t"println", t"print", t"printf", t"parse", t"partition", t"pyrocosm")
 
-  def decorate(text: Text, caret: Int): Control.Field.Decoration =
-    val tokens: List[Token] = text.cut(t" ").indexed.bind: (word, index) =>
+  // The tokens of one line: words by accent, with the spaces between them.
+  def tokenize(line: Text): List[Token] =
+    line.cut(t" ").indexed.bind: (word, index) =>
       val accent =
         if keywords.has(word) then Token.Accent.Keyword
         else if word.starts(t"\"") then Token.Accent.String
@@ -148,18 +150,32 @@ object Samples:
       val space: List[Token] = if index.n0 == 0 then Nil else List(Token.plain(t" "))
       space + List(Token(word, accent))
 
+  // A code block of the text, one line per line.
+  def code(text: Text): Block =
+    Block.Code(Language.Scala, text.cut(t"\n").map { (line: Text) => Block.Line(tokenize(line)) })
+
+  def decorate(text: Text, caret: Int): Control.Field.Decoration =
+    // The tokens cover the whole text, with a newline token between lines, as a field's
+    // decoration must.
+    val tokens: List[Token] = text.cut(t"\n").indexed.bind: (line, index) =>
+      (if index.n0 == 0 then Nil else List(Token.plain(t"\n"))) + tokenize(line)
+
     val before = text.s.substring(0, caret.min(text.length)).nn
     val stem = before.reverse.takeWhile(_.isLetter).reverse.tt
     val completions =
       if stem.length < 2 then Nil
       else words.filter(_.starts(stem)).map { (word: Text) => Control.Field.Completion(word, t"term", t"…") }
 
-    Control.Field.Decoration(tokens, completions, incomplete = text.s.count(_ == '(') > text.s.count(_ == ')'))
+    // Prose, rather than code: several words and no keyword. A REPL would submit it elsewhere.
+    val prose: Boolean = text.cut(t" ").stdlib.count(_ != t"") >= 3 && !text.cut(t" ").exists(keywords.has(_))
+    val note: Optional[List[Inline]] = if prose then Inline.text(t"reads as prose") else Unset
+
+    Control.Field.Decoration(tokens, completions, incomplete = text.s.count(_ == '(') > text.s.count(_ == ')'), note = note)
 
 // One session of the gallery: the live cells, the ticking gauge, the code field and the event
 // handler. Built once per run, and handed to whichever frontend the arguments choose, so the
 // terminal and the browser show the same interface driven by the same logic.
-class Session():
+class GallerySession():
   val progress: Live[List[Block]] = Live(Nil)
   val log: Live[List[Block]] = Live(List(Block.paragraph(t"Started.")))
   val detail: Live[List[Block]] = Live(List(Block.paragraph(t"Nothing selected.")))
@@ -201,7 +217,7 @@ class Session():
       field.decoration() = Samples.decorate(text, caret)
 
     case Event.Submitted(_, text) =>
-      log.append(Block.Code(Language.Scala, List(Block.Line(Samples.decorate(text, text.length).tokens))))
+      log.append(Samples.code(text))
       field.decoration() = Control.Field.Decoration()
 
     case Event.Toggled(_, state) =>
@@ -212,6 +228,49 @@ class Session():
 
     case _ =>
       ()
+
+object Repl:
+  // A REPL: an inline transcript and a prompt. Each submission becomes a code entry with a
+  // placeholder that settles a moment later, so settled entries are committed to the scrollback
+  // (in the terminal) while the placeholder stays live. Built per session: a web tab or a
+  // terminal each has one of its own.
+  def apply()(using Monitor, Probate): (Interface, Event -> Unit) =
+    val transcript: Live[List[Block]] = Live(Nil)
+    val field = Control.Field(Input(t"repl"), Control.Field.Kind.Code(Language.Scala), notification = Control.Field.Notify.Keystrokes, placeholder = t"type Scala; Tab completes; Escape leaves")
+
+    val interface =
+      Interface
+        ( Inline.text(t"Pyrocosm REPL"),
+          List
+            ( Panel(Panel.Id(t"transcript"), Panel.Role.Transcript, Unset, transcript, Panel.Priority.Essential, hints = Hints(hints.terminal.Border.None)),
+              Panel(Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]), Panel.Priority.Essential, controls = List(field), hints = Hints(hints.terminal.Border.None)) ),
+          hints = Hints(hints.terminal.Occupancy.Inline) )
+
+    var count = 0
+
+    def handle(event: Event): Unit = event match
+      case Event.Edited(_, text, caret) =>
+        field.decoration() = Samples.decorate(text, caret)
+
+      case Event.Submitted(_, text) =>
+        count += 1
+        val n = count
+        val code = Samples.code(text)
+        val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))))
+        transcript.append(pending)
+        field.decoration() = Control.Field.Decoration()
+
+        async:
+          snooze(1.5*Second)
+          val settled = Block.Group(List(code, Block.Paragraph(List(Inline.Toned(Tone.Success, Inline.text(t"res$n: Int = ${text.length.toString}"))))))
+          transcript.amend { entries => entries.map { (entry: Block) => if entry eq pending then settled else entry } }
+
+      case _ =>
+        ()
+
+    // The handler's settle task needs the monitor, which outlives every session; the handler
+    // is vouched pure so a frontend can keep it.
+    (interface, caps.unsafe.unsafeAssumePure(handle))
 
 // `gallery` or `gallery terminal` runs the interface in the terminal; `gallery serve [port]`
 // serves it as a web page; `gallery static [columns]` prints the overview once, for a look
@@ -235,16 +294,32 @@ def gallery(arguments: Text*): Unit = cli:
         renderer.blocks(Samples.overview, number(100)).each { (line: Teletype) => Out.println(line) }
         Exit.Ok
 
-      case Some(t"serve") =>
-        val port = number(8080)
+      // `gallery repl`: the REPL in the terminal.
+      case Some(t"repl") =>
         supervise:
-          val session = Session()
-          Out.println(t"Serving the Pyrocosm gallery at http://localhost:${port.toString}/")
-          WebFrontend(port).run(session.interface)(session.handle)
+          import parasite.probates.cancelProbate
+          val (interface, handle) = Repl()
+          TerminalFrontend().run(interface)(handle)
+        Exit.Ok
+
+      // `gallery serve [port]` serves the gallery, one interface for every tab; `gallery serve
+      // repl [port]` serves the REPL, a session per tab.
+      case Some(t"serve") =>
+        val repl: Boolean = words.stdlib.lift(1).contains(t"repl")
+        val port = words.stdlib.lift(if repl then 2 else 1).flatMap(_.s.toIntOption).getOrElse(8080)
+        supervise:
+          import parasite.probates.cancelProbate
+          if repl then
+            Out.println(t"Serving the Pyrocosm REPL at http://localhost:${port.toString}/")
+            WebFrontend(port).serve(() => Repl())
+          else
+            val session = GallerySession()
+            Out.println(t"Serving the Pyrocosm gallery at http://localhost:${port.toString}/")
+            WebFrontend(port).run(session.interface)(session.handle)
         Exit.Ok
 
       case _ =>
         supervise:
-          val session = Session()
+          val session = GallerySession()
           TerminalFrontend().run(session.interface)(session.handle)
         Exit.Ok

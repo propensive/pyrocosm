@@ -69,7 +69,7 @@ object TerminalArrangement:
 
     Plan
       ( verso = role(Panel.Role.Navigation),
-        centre = role(Panel.Role.Primary),
+        centre = role(Panel.Role.Primary) + role(Panel.Role.Transcript),
         recto = role(Panel.Role.Detail) + role(Panel.Role.Inspector),
         log = role(Panel.Role.Log),
         prompt = role(Panel.Role.Prompt),

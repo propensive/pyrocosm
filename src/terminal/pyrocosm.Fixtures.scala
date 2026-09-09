@@ -40,16 +40,29 @@ import vacuous.*
 
 import ultimatum.{Fixture, Focus, Tick}
 
-// When the form last measured or painted anything: the frontend reads it to tell whether the
-// form's animation timer is pending, which it is for one period after every refresh while any
-// fixture pulses.
-class Repaints():
+// What one running session shares with its fixtures: which fixture was last painted focused
+// (so the frontend can give it Tab), and the state of an inline transcript: how many entries
+// are committed to the scrollback already, so the live block shows only the rest; and, while
+// a commit is being painted as the block's last frame, that every other fixture is to paint
+// nothing and the transcript only the entries being committed.
+class Session():
   @volatile
   @caps.unsafe.untrackedCaptures
-  private var last: Long = 0L
+  var focused: Refreshable | Null = null
 
-  def touch(): Unit = last = System.nanoTime
-  def since: Long = (System.nanoTime - last)/1000000L
+  @volatile
+  @caps.unsafe.untrackedCaptures
+  var frozen: Int = 0
+
+  @volatile
+  @caps.unsafe.untrackedCaptures
+  var hiding: Boolean = false
+
+  @volatile
+  @caps.unsafe.untrackedCaptures
+  var upto: Int = 0
+
+  def focus(fixture: Refreshable, focused: Boolean): Unit = if focused then this.focused = fixture
 
 // A fixture whose appearance an application changes from another thread, through a `Live` cell.
 // A fullscreen form repaints only what it knows has changed: the entry that handled a key, and
@@ -67,12 +80,20 @@ trait Refreshable extends Fixture:
   def mark(): Unit = marked = true
   protected def painted(): Unit = marked = false
   def pulse: Optional[Int] = Unset
+
+  // Whether Tab is this fixture's to handle when it is focused (a code field completes with
+  // it); otherwise Tab is the form's, and moves focus.
+  def claimsTab: Boolean = false
+
+  // Painting nothing, while a transcript's commit is painted: not even a clear, since a
+  // zero-height extent still clears the row it sits on, which is the commit's last.
+  protected def hidden(canvas: Board^): Unit = painted()
   override def period: Optional[Int] = if pulse.present then pulse else if marked then 1 else Unset
 
 // A panel's content, painted from its live cell. Focusable: when the content offers actions
 // (selectable rows, items, tree nodes, vertices), Up and Down move the selection and Enter
 // presses it; otherwise they scroll. Any other key is reported as `Event.Key`.
-class PanelFixture(panel: Panel, renderer: TerminalRenderer, dispatch: Event -> Unit, repaints: Repaints)
+class PanelFixture(panel: Panel, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
 extends Focus, Refreshable:
 
   @caps.unsafe.untrackedCaptures
@@ -122,8 +143,9 @@ extends Focus, Refreshable:
 
   // The minimum height: the content, for the panels which are short by nature; a few rows for
   // the rest, which scroll, so that a long primary panel does not starve the others.
-  def measure(width: Int): (Int, Int) =
-    repaints.touch()
+  def measure(width: Int): (Int, Int) = if session.hiding then (0, 0) else measure0(width)
+
+  private def measure0(width: Int): (Int, Int) =
     val rows = lines(width, false).stdlib.length.max(1)
     val bounded = panel.hints[hints.terminal.MaxRows].lay(rows) { hint => rows.min(hint.rows) }
 
@@ -132,6 +154,10 @@ extends Focus, Refreshable:
       case _                                                             => (0, bounded.min(4))
 
   def render(canvas: Board^, focused: Boolean): Unit =
+    session.focus(this, focused)
+    if session.hiding then hidden(canvas) else paint(canvas, focused)
+
+  private def paint(canvas: Board^, focused: Boolean): Unit =
     val all = lines(canvas.width, focused)
     val total = all.stdlib.length
     val height = canvas.height.max(1)
@@ -149,7 +175,6 @@ extends Focus, Refreshable:
     canvas.cursor(false)
     canvas.flush()
     painted()
-    repaints.touch()
 
   def handle(event: Terminal.Event): Unit = event match
     case Keypress.Up =>
@@ -169,6 +194,55 @@ extends Focus, Refreshable:
     case _ =>
       ()
 
+// A panel painted from its live cell but never focused: a prompt's or a status bar's content,
+// whose keys belong elsewhere, and an inline transcript, which is `windowed`: it shows the
+// entries not yet committed to the scrollback (the session says how many are), or, while a
+// commit is being painted, exactly the entries being committed.
+class PassiveFixture(panel: Panel, renderer: TerminalRenderer, session: Session, windowed: Boolean)
+extends Refreshable:
+
+  @caps.unsafe.untrackedCaptures
+  private val started: Long = System.nanoTime
+
+  private class Rendering(val content: List[Block], val from: Int, val until: Int, val width: Int, val frame: Long, val lines: List[Teletype])
+
+  @caps.unsafe.untrackedCaptures
+  private var rendering: Optional[Rendering] = Unset
+
+  override def pulse: Optional[Int] = if Actions.animated(panel.content()) then 80 else Unset
+
+  private def lines(width: Int): List[Teletype] =
+    val content = panel.content()
+    val from = if windowed then session.frozen else 0
+    val until = if windowed && session.hiding then session.upto else content.stdlib.length
+    val frame: Long = if Actions.animated(content) then (System.nanoTime - started)/80000000L else 0L
+
+    rendering.let { current =>
+      if (current.content.stdlib eq content.stdlib) && current.from == from && current.until == until
+          && current.width == width && current.frame == frame
+      then current.lines else Unset }
+    . or:
+      val window: List[Block] = List.from(content.stdlib.slice(from, until))
+      val tick = Tick.at((System.nanoTime - started)/1000000L, 80)
+      val result = renderer.blocks(window, width.max(1), tick, Unset)
+      rendering = Rendering(content, from, until, width, frame, result)
+      result
+
+  def measure(width: Int): (Int, Int) =
+    if session.hiding && !windowed then (0, 0) else (0, lines(width).stdlib.length)
+
+  def render(canvas: Board^, focused: Boolean): Unit =
+    if session.hiding && !windowed then hidden(canvas) else paint(canvas)
+
+  private def paint(canvas: Board^): Unit =
+    canvas.clear()
+    lines(canvas.width).indexed.each: (line, index) =>
+      canvas.move(Prim, index.n0.z)
+      canvas.put(line)
+    canvas.cursor(false)
+    canvas.flush()
+    painted()
+
 // A fixed run of styled lines: the title bar.
 class TextFixture(lines: List[Teletype]) extends Fixture:
   def measure(width: Int): (Int, Int) = (0, lines.stdlib.length.max(1))
@@ -180,14 +254,18 @@ class TextFixture(lines: List[Teletype]) extends Fixture:
       canvas.put(line)
     canvas.flush()
 
-class ButtonFocus(button: Control.Button, renderer: TerminalRenderer, dispatch: Event -> Unit)
+class ButtonFocus(button: Control.Button, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
 extends Focus, Refreshable:
 
   private def label: Teletype = e"[ ${renderer.phrase(button.label)} ]"
 
-  def measure(width: Int): (Int, Int) = (label.length, 1)
+  def measure(width: Int): (Int, Int) = if session.hiding then (0, 0) else (label.length, 1)
 
   def render(canvas: Board^, focused: Boolean): Unit =
+    session.focus(this, focused)
+    if session.hiding then hidden(canvas) else paint(canvas, focused)
+
+  private def paint(canvas: Board^, focused: Boolean): Unit =
     canvas.clear()
     canvas.move(Prim, Prim)
     val text =
@@ -204,16 +282,20 @@ extends Focus, Refreshable:
     case keypress: Keypress                     => dispatch(Event.Key(keypress))
     case _                                      => ()
 
-class ToggleFocus(toggle: Control.Toggle, renderer: TerminalRenderer, dispatch: Event -> Unit)
+class ToggleFocus(toggle: Control.Toggle, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
 extends Focus, Refreshable:
 
   private def line: Teletype =
     val box = if toggle.state() then t"[x] " else t"[ ] "
     e"$box${renderer.phrase(toggle.label)}"
 
-  def measure(width: Int): (Int, Int) = (line.length, 1)
+  def measure(width: Int): (Int, Int) = if session.hiding then (0, 0) else (line.length, 1)
 
   def render(canvas: Board^, focused: Boolean): Unit =
+    session.focus(this, focused)
+    if session.hiding then hidden(canvas) else paint(canvas, focused)
+
+  private def paint(canvas: Board^, focused: Boolean): Unit =
     canvas.clear()
     canvas.move(Prim, Prim)
     canvas.put(if focused then e"$Reverse($line)" else line)
@@ -229,14 +311,18 @@ extends Focus, Refreshable:
     case keypress: Keypress => dispatch(Event.Key(keypress))
     case _                  => ()
 
-class ChoiceFocus(choice: Control.Choice, renderer: TerminalRenderer, dispatch: Event -> Unit)
+class ChoiceFocus(choice: Control.Choice, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
 extends Focus, Refreshable:
 
   private val count: Int = choice.options.stdlib.length
 
-  def measure(width: Int): (Int, Int) = (0, count.max(1))
+  def measure(width: Int): (Int, Int) = if session.hiding then (0, 0) else (0, count.max(1))
 
   def render(canvas: Board^, focused: Boolean): Unit =
+    session.focus(this, focused)
+    if session.hiding then hidden(canvas) else paint(canvas, focused)
+
+  private def paint(canvas: Board^, focused: Boolean): Unit =
     canvas.clear()
     choice.options.indexed.each: (option, index) =>
       canvas.move(Prim, index.n0.z)
@@ -266,7 +352,7 @@ extends Focus, Refreshable:
 // `incomplete` decides whether Enter submits or inserts a newline. Up and Down move through the
 // completions when there are any, else through the submission history on a single-line value.
 // Tab is the form's focus key, so Right at the end of the text accepts the ghost.
-class CodeField(field: Control.Field, renderer: TerminalRenderer, dispatch: Event -> Unit)
+class CodeField(field: Control.Field, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
 extends Focus, Refreshable:
 
   @caps.unsafe.untrackedCaptures
@@ -344,6 +430,12 @@ extends Focus, Refreshable:
           lines(lines.length - 1) = lines(lines.length - 1).append(renderer.token(token.copy(text = part)))
       lines.to(List)
 
+  override def claimsTab: Boolean = true
+
+  // The note beneath the text: what the input is being read as, say.
+  private def noteLines: List[Teletype] =
+    decoration.note.lay(Nil: List[Teletype]) { note => List(e"${Fg(renderer.theme.muted)}(${renderer.phrase(note)})") }
+
   private def completionLines: List[Teletype] =
     completions.indexed.map: (candidate, index) =>
       val line: Teletype = e"  ${candidate.name}  ${Fg(renderer.theme.muted)}(${candidate.signature})"
@@ -351,10 +443,15 @@ extends Focus, Refreshable:
     . stdlib.take(maxCompletions).to(List)
 
   def measure(width: Int): (Int, Int) =
-    sync()
-    (0, valueLines.stdlib.length.max(1) + completionLines.stdlib.length)
+    if session.hiding then (0, 0) else
+      sync()
+      (0, valueLines.stdlib.length.max(1) + noteLines.stdlib.length + completionLines.stdlib.length)
 
   def render(canvas: Board^, focused: Boolean): Unit =
+    session.focus(this, focused)
+    if session.hiding then hidden(canvas) else paint(canvas, focused)
+
+  private def paint(canvas: Board^, focused: Boolean): Unit =
     sync()
     canvas.clear()
 
@@ -375,8 +472,14 @@ extends Focus, Refreshable:
       canvas.move(column.z, row.z)
       canvas.put(e"${Fg(renderer.theme.muted)}($text)")
 
-    completionLines.indexed.each: (line, index) =>
+    val notes = noteLines
+
+    notes.indexed.each: (line, index) =>
       canvas.move(Prim, (lines.stdlib.length + index.n0).z)
+      canvas.put(line)
+
+    completionLines.indexed.each: (line, index) =>
+      canvas.move(Prim, (lines.stdlib.length + notes.stdlib.length + index.n0).z)
       canvas.put(line)
 
     canvas.showCaret(column.z, row.z)
@@ -401,20 +504,39 @@ extends Focus, Refreshable:
 
   private def multiline: Boolean = editor.value.contains(t"\n")
 
+  // A continued line: when the caret ends its line, the new line starts with the same leading
+  // whitespace, as an editor would; a newline in the middle of text splits it plainly.
+  private def newline(): Unit =
+    val value = editor.value.s
+    val position = editor.position
+    val rest = value.substring(position).nn
+    val indent: String =
+      if rest.isEmpty || rest.startsWith("\n") then
+        val before = value.substring(0, position).nn
+        val line = before.substring(before.lastIndexOf('\n') + 1).nn
+        line.takeWhile(_ == ' ')
+      else ""
+    val text = t"${value.substring(0, position).nn}\n$indent$rest"
+    editor = LineEditor(text, position + 1 + indent.length, LineEditor.Mode.Multiline(_ => false))
+    completion = 0
+    publish()
+
   def handle(event: Terminal.Event): Unit =
     sync()
 
     event match
       case Keypress.Enter =>
         if !completions.nil && ghost.present then accept()
-        else if decoration.incomplete then
-          editor = editor(Keypress.Enter)
-          publish()
+        else if decoration.incomplete then newline()
         else submit()
 
       case Keypress.Shift(Keypress.Enter) =>
-        editor = editor(Keypress.Enter)
-        publish()
+        newline()
+
+      // Tab, delivered by the frontend as Ctrl+Tab so that the form does not take it for
+      // focus, accepts the current completion, or cycles when the candidates are shown.
+      case Keypress.Tab | Keypress.Ctrl(Keypress.Tab) =>
+        if !completions.nil then accept()
 
       case Keypress.Up =>
         if !completions.nil then completion = (completion - 1).max(0)

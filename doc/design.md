@@ -262,19 +262,65 @@ Found while building the model (M1):
     the frontend imports `silentLogging`; honeycomb boolean attributes take `= true`.
   - Reading CSS needs a `Diagnostics` given (`fulminate.errorDiagnostics`) as well as a
     `Tactic[Css.Errors]`; showing it needs a `cataclysm.formatting` given.
-  Not yet: graphs as SVG (a graph is a dependency list), sortable tables, per-connection
-  sessions, `Focus` and `Notify` patches, the `Resized` event, a `Decorate` patch finer than
-  replacing the completions list, and clean shutdown on Ctrl+C under the Ethereal launcher.
+  Not yet: graphs as SVG (a graph is a dependency list), sortable tables, `Focus` and
+  `Notify` patches, the `Resized` event, and clean shutdown on Ctrl+C under the Ethereal
+  launcher. (Per-page sessions and the editor came with M6's groundwork.)
 - **M4 Gallery**: every node, every role and priority, a ticking gauge, a selectable table
   driving a detail panel, a code field with fake decorations; `demo terminal` and
   `demo serve` (both exist, driven by one `Session`); rendered at 40/80/160 columns and
   phone/laptop/wide viewports. Permanent visual regression fixture. Still to do: the width and
   viewport renderings, and tarantula screenshots.
-- **M5 Fume**: `Doc.Document` → blocks; an `Interface` of results, log, status and detail
-  panels fed from `Model.handle`; `fume serve`; palette and figures move here.
-- **M6 Flame**: log panel of records and notices; a `Prompt` panel with `Field.Code(Scala)`
-  decorated from `Repl.tokenize`; sessions as navigation; delete `replScript` and the
-  `WebRequest`/`WebReply` protocol; `Repl.Rendering` collapses to `Presentable`.
+- **M5 Fume** (started): fume's `Blocks` converts its `Doc` (statuses, data, tables,
+  sparklines, histograms, pending lists, groups) and its live table of checks to blocks, and
+  `Board` is an `Interface` of a following primary panel and a progress gauge, rebuilt from
+  `Model.state()` at most ten times a second and shown by `TerminalFrontend` in place of the
+  hand-rolled `Live` board (its own `ScreenRoot`, byte-level key parser, resize probe and
+  ticker are gone). Leaving the board aborts the run; the run finishing stops the board through
+  `Frontend.stop`, added for this. Found while doing it: profanity's `interactive` closes the
+  console's stdin at the end of a session, which under an Ethereal daemon is the client's
+  socket, so anything printed afterwards (fume's report) was lost; the terminal frontend now
+  gives the session a detachable stdin whose close only unblocks the key pump. `fume serve`
+  serves a `Dashboard` interface (the journal's runs as navigation, the chosen run's blocks
+  as the primary panel, its progress as status) on `WebFrontend`; a run started while it
+  serves registers its `Board`, so the page tails the very cells the terminal shows, which
+  is principle 5 made real. Not yet: the static report still goes through fume's `Render`
+  (terse mode and GitHub annotations depend on it); palette and figures moving here; detail
+  and log panels; per-tab selection on the dashboard.
+- **M6 Flame** (groundwork done): what Flame needs and Fume did not, in both media, exercised
+  by `gallery repl` and `gallery serve repl`:
+  - `Panel.Role.Transcript`: a log whose settled entries are history. An entry is settled once
+    nothing in it animates (a result still being computed is a `Gauge(Indeterminate)`
+    placeholder, replaced in place when it arrives), and `Actions.settled` counts the settled
+    prefix. The inline terminal frontend runs in cycles: a newly settled prefix ends the cycle,
+    the form's last frame is those entries alone (every other fixture hides; a hidden fixture
+    must not even clear, since a zero-height extent still clears the row it sits on), the form
+    finishes the block into the scrollback, and the next cycle starts a fresh block below with
+    the rest and the prompt. Fullscreen and the web show a transcript as a following log.
+  - The terminal frontend drives Ultimatum's `Form` itself rather than through `conduct`: it
+    owns the event iterator (Tab reaches a code field as Ctrl+Tab, Shift+Tab moves focus, a
+    sentinel ends a cycle, since stopping the spool drops records batched with the stop), and
+    the animation timer (one at most, and none from an ended cycle, which is the leak from M2
+    solved at its root). A `Prompt` or `Status` panel's content is passive, never focused, so
+    a REPL's first keystroke reaches its field.
+  - `CodeField`: Tab completes (or cycles), a continued line is auto-indented, and
+    `Decoration.note` shows what the input is being read as ("reads as prose").
+  - `WebFrontend.serve(open)`: an interface per page, named by a `pyro-session` meta tag and
+    its socket's `session` parameter; ended with `Event.Closed` once its last tab has been gone
+    for thirty seconds, a tab being noticed gone when a patch cannot be sent to it. `run`
+    remains the shared mode.
+  - The web editor: a code field is an editable `code` element the script paints with the
+    decoration's tokens (arriving as HTML in the decoration patch, applied when they cover the
+    text as it stands), with ghost text from the first completion, a completions list the
+    arrows walk, Tab and Enter accepting, Enter submitting unless the text is incomplete,
+    Shift+Enter and auto-indented newlines, and Up/Down history on a single line.
+  - Found: an extension method named `controls` on `Interface` resolved, unqualified, to the
+    interface's own `controls` field rather than the sibling extension, so a field inside a
+    panel was never found and editing on the web had never worked (`allControls` now).
+  Still to do, in Flame itself: the log panel of records and notices; a `Prompt` panel with
+  `Field.Code(Scala)` decorated from `Repl.tokenize`; sessions as navigation; deleting
+  `replScript` and the `WebRequest`/`WebReply` protocol; `Repl.Rendering` collapsing to
+  `Presentable`. And in Pyrocosm: `/session` and `/classload` style command completion
+  needs completions that replace the whole line, which `Completion` cannot yet say.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,

@@ -315,6 +315,18 @@ object Tests extends Suite(m"Pyrocosm tests"):
       renderer.blocks(List(rich), 32).map(_.plain).filter { (line: Text) => line.length > 32 && line.contains(t" ") }
     . assert(_ == Nil)
 
+    test(m"a settled group renders its result paragraph"):
+      val code = Block.Code(Language.Scala, List(Block.Line(List(Token(t"println(1)", Token.Accent.Term)))))
+      val group = Block.Group(List(code, Block.Paragraph(List(Inline.Toned(Tone.Success, Inline.text(t"res1: Int = 12"))))))
+      renderer.blocks(List(group), 80).map(_.plain).exists(_.contains(t"res1: Int = 12"))
+    . assert(_ == true)
+
+    test(m"settled entries precede the first animated one"):
+      val code = Block.paragraph(t"x")
+      val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate())))
+      (Actions.settled(List(code, pending, code)), Actions.settled(List(code, code)))
+    . assert(_ == (1, 2))
+
     // ── The arrangement solver ────────────────────────────────────────────────────────────
 
     def panel(name: Text, role: Panel.Role, priority: Panel.Priority): Panel =
@@ -379,6 +391,39 @@ object Tests extends Suite(m"Pyrocosm tests"):
       page.contains(t"""<script src="/pyrocosm.js" defer""")
     . assert(_ == true)
 
+    val prompt = Control.Field(Input(t"repl"), Control.Field.Kind.Code(Language.Scala), placeholder = t"scala>")
+
+    val repl: Interface =
+      Interface
+        ( Inline.text(t"REPL"),
+          List
+            ( Panel(Panel.Id(t"transcript"), Panel.Role.Transcript, Unset, Live(Nil: List[Block])),
+              Panel(Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]), controls = List(prompt)) ) )
+
+    test(m"a transcript is main content in both arrangements"):
+      (WebArrangement.plan(repl).primary.map(_.id.label), TerminalArrangement.plan(repl, 80, 24).centre.map(_.id.label))
+    . assert(_ == (List(t"transcript"), List(t"transcript")))
+
+    test(m"a code field is an editable code element with its placeholder"):
+      val page = PyrocosmPage(repl, html, WebTheme.default).html.show
+      page.contains(t"""<code id="${prompt.input.id}" class="pyro-field pyro-editor" contenteditable="true"""") && page.contains(t"""<span class="pyro-placeholder">scala&gt;</span>""")
+    . assert(_ == true)
+
+    test(m"a page with a session of its own names it"):
+      PyrocosmPage(repl, html, WebTheme.default, t"s1").html.show.contains(t"""<meta name="pyro-session" content="s1">""")
+    . assert(_ == true)
+
+    test(m"a decoration carries its tokens, note, marker and completions"):
+      prompt.decoration() = Control.Field.Decoration
+        ( List(Token(t"pri", Token.Accent.Term)),
+          List(Control.Field.Completion(t"println", t"term", t"…")),
+          incomplete = true,
+          note = Inline.text(t"reads as code") )
+
+      val decoration = PyrocosmPage(repl, html, WebTheme.default).decoration(prompt).show
+      List(t"pyro-tokens", t"pyro-incomplete", t"pyro-note", t"pyro-completions", t"println", t"reads as code").all(decoration.contains(_))
+    . assert(_ == true)
+
     val stylesheet: Text = WebStyles.css(WebTheme.default).show
 
     test(m"the stylesheet declares the palette as custom properties"):
@@ -390,7 +435,10 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert(_ == false)
 
     test(m"the stylesheet reads back as CSS"):
-      stylesheet.read[Css].rules.stdlib.length
+      try stylesheet.read[Css].rules.stdlib.length
+      catch case errors: Css.Errors =>
+        java.lang.System.err.nn.println(s"CSS ERRORS: ${errors.errors.stdlib.map(e => s"${e.reason} at ${e.line}:${e.column}")}")
+        0
     . assert(_ > 50)
 
     // ── On a terminal emulator ────────────────────────────────────────────────────────────
