@@ -23,11 +23,22 @@ static: gallery
 serve: gallery
 	./gallery serve
 
-# Publish the libraries to the local ~/.ivy2, for fume/flame to build against.
+# Publish the libraries to the local ~/.ivy2, for fume/flame to build against a version that is
+# not yet released.
 publishLocal:
 	./mill pyrocosm.__.publishLocal
+
+# Stage the release jars (each with its POM and ivy.xml embedded) without publishing them.
+stage:
+	./mill release.stage
+
+# Release to GitHub Releases: `make release VERSION=X.Y.Z`, after bumping `pyrocosmVersion` in
+# build.mill and committing. See etc/ci/release.sh.
+release:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=X.Y.Z" >&2; exit 1; fi
+	./etc/ci/release.sh "$(VERSION)"
 
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: build test gallery demo static serve publishLocal dev
+.PHONY: build test gallery demo static serve publishLocal stage release dev

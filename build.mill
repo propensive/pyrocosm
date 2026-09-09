@@ -320,3 +320,46 @@ object pyrocosm extends Project:
   object test extends Component(model, compiler, terminal, web):
     def mvnDeps = settings.testDeps
     def finalMainClass = "pyrocosm.Tests"
+
+// The release: the four library modules' jars, each with its POM and ivy.xml embedded under
+// `META-INF/maven/<group>/<artifactId>/`, named `<artifactId>-<version>.jar`, exactly as the
+// Soundness build stages its jars. A jar so staged is all a consumer needs: Soundness's
+// `sync_releases.py` (pointed at this repository with `SOUNDNESS_RELEASE_REPO`) reconstructs
+// the ivy2 layout coursier resolves from, and Burdock, given `--github propensive/pyrocosm`,
+// matches the jar on a launcher's classpath to the released asset by digest and externalizes
+// it. `etc/ci/release.sh` uploads what `stage` produces.
+object release extends Module:
+  def modules: Seq[PublishModule] = Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.terminal, pyrocosm.web)
+
+  private def withDescriptors(source: os.Path, target: os.Path, entries: Seq[(String, os.Path)])
+  :   Unit =
+    val input = new java.util.zip.ZipFile(source.toIO)
+    val output = new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(target.toIO))
+    try
+      val existing = input.entries()
+      while existing.hasMoreElements do
+        val entry = existing.nextElement()
+        output.putNextEntry(new java.util.zip.ZipEntry(entry.getName))
+        if !entry.isDirectory then input.getInputStream(entry).transferTo(output)
+        output.closeEntry()
+
+      for (name, file) <- entries do
+        output.putNextEntry(new java.util.zip.ZipEntry(name))
+        output.write(os.read.bytes(file))
+        output.closeEntry()
+    finally
+      output.close()
+      input.close()
+
+  def stage: T[Seq[PathRef]] = Task:
+    val jars: Seq[(PathRef, String, String, String, PathRef, PathRef)] =
+      Task.traverse(modules)(module =>
+        Task.Anon((module.jar(), module.pomSettings().organization, module.artifactId(),
+                   module.publishVersion(), module.pom(), module.ivy())))()
+
+    jars.map: (jar, group, artifactId, version, pom, ivy) =>
+      val target = Task.dest / s"$artifactId-$version.jar"
+      val prefix = s"META-INF/maven/$group/$artifactId"
+      val descriptors = Seq(s"$prefix/pom.xml" -> pom.path, s"$prefix/ivy.xml" -> ivy.path)
+      withDescriptors(jar.path, target, descriptors)
+      PathRef(target)

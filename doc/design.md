@@ -326,6 +326,18 @@ Found while building the model (M1):
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,
   finer `Live` granularity if profiling requires, hint vocabulary revised from real use.
 
+## Releasing
+
+Pyrocosm releases to GitHub Releases, as the rest of the ecosystem does since Soundness #1929:
+`make release VERSION=X.Y.Z` (after bumping `pyrocosmVersion` in `build.mill`) builds from
+clean, stages the four library jars with their POM and ivy.xml embedded under
+`META-INF/maven/`, runs the tests, tags, uploads, checks every asset's digest against the local
+file, and publishes. A consumer installs a release into its local ivy repository with Soundness's
+sync script pointed here (`SOUNDNESS_RELEASE_REPO=propensive/pyrocosm python3 sync_releases.py
+X.Y.Z`; the shared CI workflow does this from an `extra_releases` input), and names this
+repository among Burdock's hints when repackaging a launcher (`--github propensive/pyrocosm`),
+so the jars on its classpath are matched to the release's assets by digest and externalized.
+
 ## Decisions
 
 - Arrangement is renderer-owned; the model carries roles, priorities, relations and hints.
