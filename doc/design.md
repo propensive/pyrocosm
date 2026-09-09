@@ -302,8 +302,13 @@ Found while building the model (M1):
     the animation timer (one at most, and none from an ended cycle, which is the leak from M2
     solved at its root). A `Prompt` or `Status` panel's content is passive, never focused, so
     a REPL's first keystroke reaches its field.
-  - `CodeField`: Tab completes (or cycles), a continued line is auto-indented, and
-    `Decoration.note` shows what the input is being read as ("reads as prose").
+  - `CodeField`: Tab completes as a REPL's does (a lone candidate is taken; several first
+    extend the text to their longest common prefix, then cycle), a continued line is
+    auto-indented, and `Decoration.detail` is a run of blocks shown beneath the text, wrapped
+    to the field's width: what the input is being read as ("reads as prose"), or what the
+    unfinished line has brought into scope, as Flame reports per keystroke ("⤷ scope: x:
+    Int"). A `Completion` may be `whole`, replacing the whole text rather than the identifier
+    before the caret: `/session name`, or a path that drills further on the next Tab.
   - `WebFrontend.serve(open)`: an interface per page, named by a `pyro-session` meta tag and
     its socket's `session` parameter; ended with `Event.Closed` once its last tab has been gone
     for thirty seconds, a tab being noticed gone when a patch cannot be sent to it. `run`
@@ -319,8 +324,7 @@ Found while building the model (M1):
   Still to do, in Flame itself: the log panel of records and notices; a `Prompt` panel with
   `Field.Code(Scala)` decorated from `Repl.tokenize`; sessions as navigation; deleting
   `replScript` and the `WebRequest`/`WebReply` protocol; `Repl.Rendering` collapsing to
-  `Presentable`. And in Pyrocosm: `/session` and `/classload` style command completion
-  needs completions that replace the whole line, which `Completion` cannot yet say.
+  `Presentable`.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,

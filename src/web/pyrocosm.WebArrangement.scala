@@ -138,15 +138,18 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
       if decoration0.incomplete then Span(`class` = cls(t"pyro-incomplete"), hidden = t"")(t"")
       else Fragment[Flow]()
 
-    val note: Html of Flow =
-      decoration0.note.lay(Fragment[Flow]()) { note => Div(`class` = cls(t"pyro-note"))(renderer.phrase(note)) }
+    val detail: Html of Flow =
+      if decoration0.detail.nil then Fragment[Flow]()
+      else Div(`class` = cls(t"pyro-note"))(renderer.blocks(decoration0.detail))
 
+    // A candidate that replaces the whole text says so, for the script.
     val list: Html of Flow =
       if decoration0.completions.nil then Fragment[Flow]()
       else Ul(`class` = cls(t"pyro-completions"))(decoration0.completions.map { (completion: Control.Field.Completion) =>
-        Li(Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature)) }*)
+        val classes: List[Name[CssClass]] = if completion.whole then List(cls(t"pyro-whole")) else Nil
+        Li(`class` = classes)(Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature)) }*)
 
-    Fragment(tokens, marker, note, list)
+    Fragment(tokens, marker, detail, list)
 
   def panelContent(panel: Panel): Html of Flow =
     Div(id = t"${panelId(panel)}-content", `class` = cls(t"pyro-panel-content"))(renderer.blocks(panel.content()))

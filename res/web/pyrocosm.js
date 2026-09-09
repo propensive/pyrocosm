@@ -158,13 +158,16 @@
 
   function nameOf(item) { var code = item.querySelector("code"); return code ? code.textContent : item.textContent; }
 
+  // What a candidate covers: the whole text when it says so, else the identifier before the caret.
+  function coveredBy(editor, item) { return item.classList.contains("pyro-whole") ? editorText(editor) : stemOf(editor); }
+
   // The ghost: what the selected completion adds to the identifier before the caret, when
   // the caret ends the text.
   function ghost(editor) {
     var item = selectedCompletion(editor);
     var text = editorText(editor);
     if (!item || caretOf(editor) !== text.length) { clearGhost(editor); return; }
-    var stem = stemOf(editor), name = nameOf(item);
+    var stem = coveredBy(editor, item), name = nameOf(item);
     if (name.length > stem.length && name.indexOf(stem) === 0) showGhost(editor, name.slice(stem.length));
     else clearGhost(editor);
   }
@@ -183,7 +186,7 @@
     var items = completionsOf(editor);
     if (items.length) items[0].classList.add("pyro-selected");
     items.forEach(function (item) {
-      item.addEventListener("mousedown", function (event) { event.preventDefault(); accept(editor, nameOf(item)); });
+      item.addEventListener("mousedown", function (event) { event.preventDefault(); accept(editor, item); });
     });
     ghost(editor);
     emptiness(editor);
@@ -202,11 +205,36 @@
     edited(editor);
   }
 
-  // Replace the identifier before the caret with a completion.
-  function accept(editor, name) {
-    var text = editorText(editor), caret = caretOf(editor), start = caret;
+  // Replace what the candidate covers (the whole text, or the identifier before the caret).
+  function accept(editor, item, name) {
+    name = name || nameOf(item);
+    var text = editorText(editor), caret = caretOf(editor);
+    if (item && item.classList.contains("pyro-whole")) { setText(editor, name, name.length); return; }
+    var start = caret;
     while (start > 0 && isIdentifier(text.charAt(start - 1))) start--;
     setText(editor, text.slice(0, start) + name + text.slice(caret), start + name.length);
+  }
+
+  function commonPrefix(names) {
+    if (!names.length) return "";
+    var prefix = names[0];
+    for (var i = 1; i < names.length; i++) {
+      var j = 0;
+      while (j < prefix.length && j < names[i].length && prefix.charAt(j) === names[i].charAt(j)) j++;
+      prefix = prefix.slice(0, j);
+    }
+    return prefix;
+  }
+
+  // Tab: a lone candidate is accepted; several first extend the text to their longest common
+  // prefix, when longer than what they cover, and otherwise cycle the selection.
+  function complete(editor) {
+    var items = completionsOf(editor);
+    if (!items.length) return;
+    if (items.length === 1) { accept(editor, items[0]); return; }
+    var prefix = commonPrefix(items.map(nameOf)), covered = coveredBy(editor, items[0]);
+    if (prefix.length > covered.length && prefix.indexOf(covered) === 0) accept(editor, items[0], prefix);
+    else moveCompletion(editor, 1);
   }
 
   function incomplete(editor) {
@@ -244,14 +272,13 @@
 
     if (event.key === "Tab") {
       event.preventDefault();
-      var item = selectedCompletion(editor);
-      if (item) accept(editor, nameOf(item));
+      complete(editor);
     } else if (event.key === "Enter" && event.shiftKey) {
       event.preventDefault();
       newline(editor);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (hasGhost(editor)) accept(editor, nameOf(selectedCompletion(editor)));
+      if (hasGhost(editor)) accept(editor, selectedCompletion(editor));
       else if (incomplete(editor)) newline(editor);
       else submit(editor);
     } else if (event.key === "ArrowDown" && items.length) {
@@ -263,7 +290,7 @@
     } else if (event.key === "ArrowDown" && !multiline && recall < history.length) {
       event.preventDefault(); recall++; setText(editor, recall === history.length ? "" : history[recall], recall === history.length ? 0 : history[recall].length);
     } else if (event.key === "ArrowRight" && hasGhost(editor) && caretOf(editor) === editorText(editor).length) {
-      event.preventDefault(); accept(editor, nameOf(selectedCompletion(editor)));
+      event.preventDefault(); accept(editor, selectedCompletion(editor));
     }
   }
 

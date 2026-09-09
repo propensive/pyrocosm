@@ -37,15 +37,20 @@ object Control:
 
     // What a renderer draws over the user's text: highlighting tokens covering the whole value,
     // completion candidates at the caret, whether the text is an incomplete prefix (which
-    // decides what Enter does), and a note to show beside the text: what the input is being
-    // read as, say. Supplied by the application, usually in response to `Edited`.
+    // decides what Enter does), and `detail`: blocks shown beneath the text while it is being
+    // typed, wrapped to the field's width: what the input is being read as, what the unfinished
+    // line has brought into scope, and so on. Supplied by the application, usually in response
+    // to `Edited`.
     case class Decoration
-      ( tokens:      List[Token]            = Nil,
-        completions: List[Completion]       = Nil,
-        incomplete:  Boolean                = false,
-        note:        Optional[List[Inline]] = Unset )
+      ( tokens:      List[Token]      = Nil,
+        completions: List[Completion] = Nil,
+        incomplete:  Boolean          = false,
+        detail:      List[Block]      = Nil )
 
-    case class Completion(name: Text, kind: Text, signature: Text)
+    // A candidate at the caret. Accepting it replaces the identifier before the caret with
+    // `name`, or, when `whole` is set, the whole text: a REPL's `/session name` completes the
+    // line, and a path drills further on the next Tab.
+    case class Completion(name: Text, kind: Text, signature: Text, whole: Boolean = false)
 
     // Whether the application wants to hear every keystroke (`Edited`) or only submissions.
     enum Notify:

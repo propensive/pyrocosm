@@ -166,11 +166,26 @@ object Samples:
       if stem.length < 2 then Nil
       else words.filter(_.starts(stem)).map { (word: Text) => Control.Field.Completion(word, t"term", t"…") }
 
+    // A `/`-command completes as a whole line, as a REPL's do.
+    val commands: List[Text] = List(t"/session", t"/set", t"/quit")
+    val commanded: List[Control.Field.Completion] =
+      if text.starts(t"/") && !text.contains(t" ") then commands.filter(_.starts(text)).map { (command: Text) => Control.Field.Completion(command, t"command", t"", whole = true) }
+      else Nil
+
     // Prose, rather than code: several words and no keyword. A REPL would submit it elsewhere.
     val prose: Boolean = text.cut(t" ").stdlib.count(_ != t"") >= 3 && !text.cut(t" ").exists(keywords.has(_))
-    val note: Optional[List[Inline]] = if prose then Inline.text(t"reads as prose") else Unset
 
-    Control.Field.Decoration(tokens, completions, incomplete = text.s.count(_ == '(') > text.s.count(_ == ')'), note = note)
+    // What the line has brought into scope, as a REPL reports it: every `val x` so far.
+    val bindings: List[Text] = List.from(text.cut(t" ").stdlib.sliding(2).collect { case scala.List(k, name) if k == t"val" && name != t"" => name }.toList)
+
+    val detail: List[Block] =
+      (if prose then List(Block.Paragraph(List(Inline.Toned(Tone.Muted, Inline.text(t"reads as prose"))))) else Nil)
+        + (if bindings.stdlib.isEmpty then Nil else List(Block.Paragraph(
+            Inline.Toned(Tone.Muted, Inline.text(t"⤷ scope: ")) :: bindings.indexed.bind { (name, index) =>
+              (if index.n0 == 0 then Nil else List(Inline.Textual(t", ")))
+                + List(Inline.Code(Language.Scala, List(Token(name, Token.Accent.Term, Token.Role.Binding), Token(t": ", Token.Accent.Symbol), Token(t"Int", Token.Accent.Typal)))) })))
+
+    Control.Field.Decoration(tokens, commanded + completions, incomplete = text.s.count(_ == '(') > text.s.count(_ == ')'), detail = detail)
 
 // One session of the gallery: the live cells, the ticking gauge, the code field and the event
 // handler. Built once per run, and handed to whichever frontend the arguments choose, so the

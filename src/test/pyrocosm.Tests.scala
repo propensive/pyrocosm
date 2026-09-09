@@ -416,12 +416,12 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"a decoration carries its tokens, note, marker and completions"):
       prompt.decoration() = Control.Field.Decoration
         ( List(Token(t"pri", Token.Accent.Term)),
-          List(Control.Field.Completion(t"println", t"term", t"…")),
+          List(Control.Field.Completion(t"println", t"term", t"…"), Control.Field.Completion(t"/session main", t"command", t"", whole = true)),
           incomplete = true,
-          note = Inline.text(t"reads as code") )
+          detail = List(Block.paragraph(t"reads as code")) )
 
       val decoration = PyrocosmPage(repl, html, WebTheme.default).decoration(prompt).show
-      List(t"pyro-tokens", t"pyro-incomplete", t"pyro-note", t"pyro-completions", t"println", t"reads as code").all(decoration.contains(_))
+      List(t"pyro-tokens", t"pyro-incomplete", t"pyro-note", t"pyro-completions", t"println", t"reads as code", t"""<li class="pyro-whole">""").all(decoration.contains(_))
     . assert(_ == true)
 
     val stylesheet: Text = WebStyles.css(WebTheme.default).show

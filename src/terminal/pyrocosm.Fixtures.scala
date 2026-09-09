@@ -352,6 +352,12 @@ extends Focus, Refreshable:
 // `incomplete` decides whether Enter submits or inserts a newline. Up and Down move through the
 // completions when there are any, else through the submission history on a single-line value.
 // Tab is the form's focus key, so Right at the end of the text accepts the ghost.
+object CodeField:
+  def commonPrefix(left: String, right: String): String =
+    var n = 0
+    while n < left.length && n < right.length && left.charAt(n) == right.charAt(n) do n += 1
+    left.substring(0, n).nn
+
 class CodeField(field: Control.Field, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
 extends Focus, Refreshable:
 
@@ -399,21 +405,41 @@ extends Focus, Refreshable:
 
   private def atEnd: Boolean = editor.position == editor.value.length
 
+  // What a candidate replaces: the whole text, or the identifier before the caret.
+  private def replaced(candidate: Control.Field.Completion): Text = if candidate.whole then editor.value else stem
+
   private def ghost: Optional[Text] =
     completions.at(completion.z).let: candidate =>
-      val current = stem
+      val current = replaced(candidate)
       if atEnd && candidate.name.starts(current) && candidate.name.length > current.length
       then candidate.name.s.substring(current.length).nn.tt
       else Unset
 
+  // Replace what the candidate covers with it.
+  private def insert(candidate: Control.Field.Completion, name: Text): Unit =
+    val current = replaced(candidate)
+    val start = if candidate.whole then 0 else editor.position - current.length
+    val end = if candidate.whole then editor.value.length else editor.position
+    val text = t"${editor.value.s.substring(0, start).nn}$name${editor.value.s.substring(end).nn}"
+    editor = LineEditor(text, start + name.length, LineEditor.Mode.Multiline(_ => false))
+    completion = 0
+    publish()
+
   private def accept(): Unit =
-    completions.at(completion.z).let: candidate =>
-      val current = stem
-      val start = editor.position - current.length
-      val text = t"${editor.value.s.substring(0, start).nn}${candidate.name}${editor.value.s.substring(editor.position).nn}"
-      editor = LineEditor(text, start + candidate.name.length, LineEditor.Mode.Multiline(_ => false))
-      completion = 0
-      publish()
+    completions.at(completion.z).let { candidate => insert(candidate, candidate.name) }
+
+  // Tab: a lone candidate is accepted; several first extend the text to their longest common
+  // prefix, when that is longer than what they cover, and otherwise cycle. So `pri` becomes
+  // `print`, then Tab walks println, print, printf.
+  private def complete(): Unit =
+    val all: scala.List[Control.Field.Completion] = completions.stdlib
+
+    if all.length == 1 then insert(all.head, all.head.name)
+    else if all.length > 1 then
+      val prefix: String = all.map(_.name.s).reduce(CodeField.commonPrefix)
+      val covered = replaced(all.head)
+      if prefix.length > covered.length && prefix.startsWith(covered.s) then insert(all.head, prefix.tt)
+      else completion = (completion + 1)%all.length
 
   private def valueLines: List[Teletype] =
     val value = editor.value
@@ -432,9 +458,15 @@ extends Focus, Refreshable:
 
   override def claimsTab: Boolean = true
 
-  // The note beneath the text: what the input is being read as, say.
-  private def noteLines: List[Teletype] =
-    decoration.note.lay(Nil: List[Teletype]) { note => List(e"${Fg(renderer.theme.muted)}(${renderer.phrase(note)})") }
+  // The detail beneath the text, as blocks wrapped to the width: what the input is being read
+  // as, what it has brought into scope.
+  private def noteLines: List[Teletype] = noteLines(lastWidth)
+
+  private def noteLines(width: Int): List[Teletype] =
+    if decoration.detail.nil then Nil else renderer.blocks(decoration.detail, width.max(1))
+
+  @caps.unsafe.untrackedCaptures
+  private var lastWidth: Int = 80
 
   private def completionLines: List[Teletype] =
     completions.indexed.map: (candidate, index) =>
@@ -445,7 +477,8 @@ extends Focus, Refreshable:
   def measure(width: Int): (Int, Int) =
     if session.hiding then (0, 0) else
       sync()
-      (0, valueLines.stdlib.length.max(1) + noteLines.stdlib.length + completionLines.stdlib.length)
+      lastWidth = width
+      (0, valueLines.stdlib.length.max(1) + noteLines(width).stdlib.length + completionLines.stdlib.length)
 
   def render(canvas: Board^, focused: Boolean): Unit =
     session.focus(this, focused)
@@ -472,7 +505,7 @@ extends Focus, Refreshable:
       canvas.move(column.z, row.z)
       canvas.put(e"${Fg(renderer.theme.muted)}($text)")
 
-    val notes = noteLines
+    val notes = noteLines(canvas.width)
 
     notes.indexed.each: (line, index) =>
       canvas.move(Prim, (lines.stdlib.length + index.n0).z)
@@ -533,10 +566,9 @@ extends Focus, Refreshable:
       case Keypress.Shift(Keypress.Enter) =>
         newline()
 
-      // Tab, delivered by the frontend as Ctrl+Tab so that the form does not take it for
-      // focus, accepts the current completion, or cycles when the candidates are shown.
+      // Tab, delivered by the frontend as Ctrl+Tab so that the form does not take it for focus.
       case Keypress.Tab | Keypress.Ctrl(Keypress.Tab) =>
-        if !completions.nil then accept()
+        complete()
 
       case Keypress.Up =>
         if !completions.nil then completion = (completion - 1).max(0)

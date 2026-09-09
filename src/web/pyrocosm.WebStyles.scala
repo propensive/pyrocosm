@@ -124,7 +124,7 @@ object WebStyles:
         + css".pyro-ghost { color: var(--pyro-muted) }"
         + css".pyro-placeholder { display: none; position: absolute; top: 0.5rem; left: 0.5rem; color: var(--pyro-muted); pointer-events: none; font-family: ui-monospace, monospace }"
         + css".pyro-empty .pyro-placeholder { display: block }"
-        + css".pyro-note { color: var(--pyro-muted); font-size: 0.85rem; margin-top: 0.2rem }"
+        + css".pyro-note { font-size: 0.85rem; margin-top: 0.2rem } .pyro-note p { margin: 0.1rem 0 }"
         + css".pyro-completions { list-style: none; margin: 0.2rem 0 0 0; padding: 0; font-family: ui-monospace, monospace; font-size: 0.9rem }"
         + css".pyro-completions li { padding: 0.1rem 0.5rem; cursor: pointer } .pyro-completions li.pyro-selected { background-color: var(--pyro-selection) }"
         + css".pyro-completions .pyro-signature { color: var(--pyro-muted); margin-left: 1rem }"
