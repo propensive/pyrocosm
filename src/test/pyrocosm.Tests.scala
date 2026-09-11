@@ -169,6 +169,19 @@ object Tests extends Suite(m"Pyrocosm tests"):
       tree.in[Tel].show.read[Tel].as[Node]
     . assert(_ == tree)
 
+    val emptyToken: Block = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"x"))), Block.Line(List(Token.plain(t"")))))
+
+    // An empty text is written as a compound with no atom (see `textTelEncodable`).
+    test(m"a code line with an empty token round-trips as TEL text"):
+      emptyToken.in[Tel].show.read[Tel].as[Block]
+    . assert(_ == emptyToken)
+
+    val emptyCells: Block = Block.Table(List(Block.Column(Inline.text(t""))), List(Block.Row(List(Block.Cell(List(Inline.Textual(t"")))))))
+
+    test(m"empty phrasing and cells round-trip as TEL text"):
+      emptyCells.in[Tel].show.read[Tel].as[Block]
+    . assert(_ == emptyCells)
+
     // The derivation tutorial's own example of a type that "cannot be derived in place": direct
     // recursion, with no collection or `Optional` between the sum and itself.
     val direct: Direct = Direct.Branch(Direct.Leaf, 1, Direct.Branch(Direct.Leaf, 2, Direct.Leaf))
@@ -413,15 +426,37 @@ object Tests extends Suite(m"Pyrocosm tests"):
       PyrocosmPage(repl, html, WebTheme.default, t"s1").html.show.contains(t"""<meta name="pyro-session" content="s1">""")
     . assert(_ == true)
 
-    test(m"a decoration carries its tokens, note, marker and completions"):
+    test(m"a decoration carries its tokens, note, marker, marks and completions"):
       prompt.decoration() = Control.Field.Decoration
         ( List(Token(t"pri", Token.Accent.Term)),
           List(Control.Field.Completion(t"println", t"term", t"…"), Control.Field.Completion(t"/session main", t"command", t"", whole = true)),
           incomplete = true,
-          detail = List(Block.paragraph(t"reads as code")) )
+          detail = List(Block.paragraph(t"reads as code")),
+          marks = List(Block.Note(0, 0, 3, Block.Note.Style.Erroneous)) )
 
       val decoration = PyrocosmPage(repl, html, WebTheme.default).decoration(prompt).show
-      List(t"pyro-tokens", t"pyro-incomplete", t"pyro-note", t"pyro-completions", t"println", t"reads as code", t"""<li class="pyro-whole">""").all(decoration.contains(_))
+      List(t"pyro-tokens", t"pyro-incomplete", t"pyro-note", t"pyro-completions", t"println", t"reads as code", t"""<li class="pyro-whole">""", t"pyro-note-erroneous").all(decoration.contains(_))
+    . assert(_ == true)
+
+    test(m"a page seeds the field's history"):
+      prompt.history() = List(t"val x = 1")
+      PyrocosmPage(repl, html, WebTheme.default).html.show.contains(t"""<span class="pyro-history" hidden="">["val x = 1"]</span>""")
+    . assert(_ == true)
+
+    test(m"captured output renders behind a gutter in both media"):
+      val output = Block.Output(t"one\ntwo\n", error = true)
+      (renderer.plain(List(output), 80), html.block(output).show)
+    . assert { (plain, page) => plain == t"░ one\n░ two" && page.contains(t"pyro-gutter-err") && page.contains(t"one\n") }
+
+    val captured: Block = Block.Output(t"one\ntwo\n", error = true)
+
+    test(m"captured output round-trips as TEL"):
+      captured.in[Tel].show.read[Tel].as[Block]
+    . assert(_ == captured)
+
+    test(m"a sum without a Showable exhibits as its toString, not a record"):
+      val exhibit: Inline | Block = (Node.Leaf(t"a"): Node).exhibit
+      exhibit == Inline.Textual(t"Leaf(a)")
     . assert(_ == true)
 
     val stylesheet: Text = WebStyles.css(WebTheme.default).show

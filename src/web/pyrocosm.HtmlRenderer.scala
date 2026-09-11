@@ -123,7 +123,7 @@ class HtmlRenderer():
       if ordered then Ol(`class` = cls(t"pyro-listing"))(entries*) else Ul(`class` = cls(t"pyro-listing"))(entries*)
 
     case Block.Quotation(content) => Blockquote(`class` = cls(t"pyro-quotation"))(blocks(content))
-    case Block.Rule()             => Hr
+    case Block.Rule(side)         => Hr(`class` = cls(t"pyro-rule-${side.toString.tt.lower}"))
 
     case Block.Code(language, lines, notes) =>
       Pre(`class` = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${language.name}")))
@@ -163,6 +163,18 @@ class HtmlRenderer():
     case Block.Gauge(status, caption) => gauge(status, caption)
     case Block.Group(content) => Div(`class` = cls(t"pyro-group"))(blocks(content))
 
+    // Captured output, verbatim, each line behind a gutter naming its stream.
+    case Block.Output(text, error) =>
+      val gutter = cls(if error then t"pyro-gutter-err" else t"pyro-gutter-out")
+      val lines: List[Text] = text.cut(t"\n")
+      val trimmed: List[Text] = if lines.stdlib.lastOption.contains(t"") then List.from(lines.stdlib.dropRight(1)) else lines
+      val count = trimmed.stdlib.length
+      val rows: List[Html of Phrasing] = trimmed.indexed.map: (line: Text, index: Ordinal) =>
+        val text: Text = if index.n0 == count - 1 then line else t"$line\n"
+        Fragment[Phrasing](Span(`class` = gutter)(t"░ "), text)
+
+      Pre(`class` = List(cls(t"pyro-output"), if error then cls(t"pyro-output-err") else cls(t"pyro-output-out")))(rows*)
+
   private def item(item: Block.Item): Html of "li" =
     item.action.lay(Li(blocks(item.content))) { action => Li(id = action.id, `class` = cls(t"pyro-action"))(blocks(item.content)) }
 
@@ -175,7 +187,7 @@ class HtmlRenderer():
     val label: Html of Phrasing = vertex.tone.lay(phrase(vertex.label)) { tone => Span(`class` = toneClass(tone))(phrase(vertex.label)) }
     vertex.action.lay(label) { action => A(href = t"#", id = action.id, `class` = cls(t"pyro-action"))(label) }
 
-  private def codeLine(line: Block.Line, notes: List[Block.Note], last: Boolean): Html of Phrasing =
+  def codeLine(line: Block.Line, notes: List[Block.Note], last: Boolean): Html of Phrasing =
     var offset = 0
     val pieces = scala.collection.mutable.ListBuffer[Html of Phrasing]()
 

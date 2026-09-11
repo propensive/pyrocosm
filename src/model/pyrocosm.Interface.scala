@@ -43,7 +43,7 @@ case class Interface
   def cells: List[Live[?]] =
     def ofControl(control: Control): List[Live[?]] = control match
       case Control.Button(_, _, enabled)          => List(enabled)
-      case Control.Field(_, _, value, decoration, _, _) => List(value, decoration)
+      case Control.Field(_, _, value, decoration, _, _, history) => List(value, decoration, history)
       case Control.Choice(_, _, current)          => List(current)
       case Control.Toggle(_, _, state)            => List(state)
 

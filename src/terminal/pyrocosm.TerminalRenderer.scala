@@ -57,6 +57,12 @@ import ultimatum.timers.compactElapsed
 // is a pure function of the model, the width, the animation tick and the current selection, so
 // it is testable by calling it and reusable by anything that prints.
 object TerminalRenderer:
+  // The braille ring: six dots with a two-dot gap chasing round the cell, eight frames. The
+  // same design as Ultimatum's `brailleRingSpinner`, added there alongside this and defined
+  // here until the release carrying it; the ASCII line is its fallback.
+  private[pyrocosm] def ring(using Gauging): Fraction is Gaugeable =
+    ultimatum.Spinner.each(t"⣸⢹⠻⠟⡏⣇⣦⣴", 80, Gaugeable.Glyphs.Unicode, ultimatum.Spinner.each(t"-\\|/", 130, Gaugeable.Glyphs.Ascii)).gaugeable
+
   // The columnars fume's tables use: `Stretch` absorbs the spare width so a table spans the
   // line; `Rigid` never shrinks, so figures never wrap.
   object Stretch extends Columnar:
@@ -139,7 +145,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
   private def joined(parts: List[Teletype]): Teletype =
     parts.stdlib.foldLeft(e"")(_.append(_))
 
-  private def blank: Teletype = e""
+  def blank: Teletype = e""
 
   // ── Phrasing ──────────────────────────────────────────────────────────────────────────────
 
@@ -240,12 +246,18 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
         val bar = faint(Teletype(if glyphs == Gaugeable.Glyphs.Ascii then t"| " else t"▎ "))
         blocks(content, width - 2, tick, selected).map { (line: Teletype) => bar.append(line) }
 
-      case Block.Rule() =>
-        val rule = if glyphs == Gaugeable.Glyphs.Ascii then t"-" else t"─"
+      case Block.Rule(side) =>
+        val ascii = glyphs == Gaugeable.Glyphs.Ascii
+        val rule = side match
+          case Block.Side.Above   => if ascii then t"_" else t"⎽"
+          case Block.Side.Below   => if ascii then t"-" else t"‾"
+          case Block.Side.Between => if ascii then t"-" else t"─"
         List(faint(Teletype(rule*width)))
 
+      // A code line longer than the width is wrapped hard, as captured output is: code is not
+      // prose, so a line is broken exactly at the width rather than clipped or reflowed.
       case Block.Code(_, lines, notes) =>
-        lines.indexed.map { (line, index) => codeLine(line, notes.filter(_.line == index.n0)) }
+        lines.indexed.bind { (line, index) => hardWrap(codeLine(line, notes.filter(_.line == index.n0)), width) }
 
       case Block.Table(columns, rows, caption) =>
         table(columns, rows, caption, width, selected)
@@ -295,8 +307,22 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
       case Block.Gauge(status, caption) =>
         gauge(status, caption, width, tick)
 
+      // A group's members belong together: no blank line between them.
       case Block.Group(content) =>
-        blocks(content, width, tick, selected)
+        List.from(content.stdlib.flatMap { (member: Block) => this.block(member, width, tick, selected).stdlib })
+
+      // Captured output, verbatim: every visual row of every line behind a gutter naming the
+      // stream (blue for standard output, red for standard error), and wrapped hard at the
+      // width less the gutter, spaces and all, since a program's output is not prose.
+      case Block.Output(text, error) =>
+        val gutter: Teletype = e"${Fg(theme.tone(if error then Tone.Failure else Tone.Info))}(░) "
+        val inner = (width - 2).max(1)
+        val lines: List[Text] = text.cut(t"\n")
+        val trimmed: List[Text] = if lines.stdlib.lastOption.contains(t"") then List.from(lines.stdlib.dropRight(1)) else lines
+
+        trimmed.bind: (line: Text) =>
+          if line.length <= inner then List(gutter.append(Teletype(line)))
+          else List.from(line.s.grouped(inner).map { (chunk: String) => gutter.append(Teletype(chunk.tt)) }.toList)
 
   private def treeLabel(selected: Optional[Action])(node: Block.TreeNode): Teletype =
     val label = node.tone.lay(phrase(node.label))(toned(_)(phrase(node.label)))
@@ -307,7 +333,18 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
     if vertex.action.present && vertex.action == selected then e"$Reverse($label)" else label
 
   // One line of code: each token coloured by its accent, then the note ranges laid over it.
-  private def codeLine(line: Block.Line, notes: List[Block.Note]): Teletype =
+  // A styled line cut into rows of at most `width` columns, with an empty line kept as one row.
+  def hardWrap(line: Teletype, width: Int): List[Teletype] =
+    val columns = width.max(1)
+    val rows = scala.collection.mutable.ListBuffer[Teletype]()
+    var rest = line
+    while rest.length > columns do
+      rows += rest.takeChars(columns)
+      rest = rest.dropChars(columns)
+    rows += rest
+    List.from(rows.toList)
+
+  def codeLine(line: Block.Line, notes: List[Block.Note]): Teletype =
     var offset = 0
     val pieces = scala.collection.mutable.ListBuffer[Teletype]()
 
@@ -402,9 +439,16 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
     inline def line[status: Gaugeable](value: status): List[Teletype] =
       text.lay(List(gaugeLine(value, width, tick))) { caption => List(gaugeLine(Captioned(value, caption), width, tick)) }
 
+    // Progress of unknown extent is a one-character spinner beside its caption, not a bar
+    // sweeping the width: there is no extent to show. Ultimatum's spinners are designs for a
+    // `Fraction` that animate on the tick's frame.
+    def spinner: List[Teletype] =
+      val mark = gaugeLine(Fraction(0.0), 1, tick)(using TerminalRenderer.ring)
+      List(text.lay(mark) { caption => e"$mark ${caption}" })
+
     status match
       case Status.Fraction(value)        => line(Fraction(value))
-      case Status.Indeterminate()        => line(Fraction.indeterminate)
+      case Status.Indeterminate()        => spinner
       case Status.Reckoning(done, total) => line(Reckoning(done, total))
       case Status.Elapsed(seconds)       => line(Duration((seconds*1000).toLong))
       case Status.Remaining(seconds)     => line(Countdown(Duration((seconds*1000).toLong)))

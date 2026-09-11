@@ -31,7 +31,8 @@ import symbolism.*
 import denominative.dysasymptotics.{linearAccess, linearSize}
 import vacuous.*
 
-import ultimatum.{border, strip, stack, BorderStyle, Pane, Sizing}
+import profanity.Board
+import ultimatum.{strip, stack, BorderStyle, Fixture, Pane, Sizing}
 
 // The terminal's arrangement solver: from the interface's panels, their roles and priorities,
 // and the terminal's size, to an Ultimatum pane tree. A rule table rather than a constraint
@@ -79,12 +80,15 @@ object TerminalArrangement:
 
   // The pane tree for a plan. Every panel becomes a widget pane supplied by `widget`; the
   // title and the controls become fixed rows.
+  // `hidden` says whether every fixture is painting nothing (an inline commit's last frame),
+  // when a border must vanish with its content rather than stand as an empty box.
   def build
     ( interface: Interface,
       plan:      Plan,
       title:     Optional[Pane],
       toolbar:   Optional[Pane],
-      widget:    Panel => Pane )
+      widget:    Panel => Pane,
+      hidden:    () -> Boolean = () => false )
   :   Pane =
 
     def framed(panel: Panel): Pane =
@@ -92,10 +96,11 @@ object TerminalArrangement:
 
       panel.hints[hints.terminal.Border] match
         case hints.terminal.Border.None    => pane
-        case hints.terminal.Border.Heavy   => border(BorderStyle.heavy)(pane)
-        case hints.terminal.Border.Rounded => border(BorderStyle.rounded)(pane)
-        case hints.terminal.Border.Light   => border(BorderStyle.light)(pane)
-        case _                             => border(BorderStyle.light)(pane)
+        case hints.terminal.Border.Heavy   => border(BorderStyle.heavy, hidden)(pane)
+        case hints.terminal.Border.Rounded => border(BorderStyle.rounded, hidden)(pane)
+        case hints.terminal.Border.Light   => border(BorderStyle.light, hidden)(pane)
+        case hints.terminal.Border.Rules   => rules(hidden)(pane)
+        case _                             => border(BorderStyle.light, hidden)(pane)
 
     def column(panels: List[Panel]): Optional[Pane] =
       if panels.nil then Unset else stack(panels.map(framed)*)
@@ -128,6 +133,66 @@ object TerminalArrangement:
         + status.lay(Nil: List[Pane])(List(_))
 
     stack(rowsOf*)
+
+  // A piece of a border: a rule or a corner, of fixed size while shown and of none while
+  // every fixture hides.
+  private class Edge(hidden: () -> Boolean, columns: Int, rows: Int, draw: Board^ -> Unit) extends Fixture:
+    def measure(width: Int): (Int, Int) = if hidden() then (0, 0) else (columns, rows)
+
+    def render(canvas: Board^, focused: Boolean): Unit =
+      if !hidden() then
+        canvas.clear()
+        draw(canvas)
+        canvas.flush()
+
+  // A low rule above and a high rule below, no sides: the frame a transcript keeps of its
+  // entries, drawn here in the foreground's full strength, where the entries' are faint.
+  private def rules(hidden: () -> Boolean)(child: Pane): Pane =
+    def rule(glyph: Text): Pane =
+      Pane.Widget(Sizing(1.0, maxHeight = 1), Edge(hidden, 0, 1, { canvas =>
+        canvas.move(Prim, Prim)
+        canvas.put(Teletype(glyph*canvas.width)) })).weight(0.0)
+
+    val share: Double = child match
+      case Pane.Leaf(sizing, _)      => sizing.fraction
+      case Pane.Widget(sizing, _)    => sizing.fraction
+      case Pane.Branch(sizing, _, _) => sizing.fraction
+
+    stack(rule(t"⎽"), child.weight(share), rule(t"‾"))
+
+  // Ultimatum's `border`, with edges that hide with the content they frame.
+  private def border(style: BorderStyle, hidden: () -> Boolean)(child: Pane): Pane =
+    def horizontalRule: Pane =
+      Pane.Widget(Sizing(1.0, maxHeight = 1), Edge(hidden, 0, 1, { canvas =>
+        canvas.move(Prim, Prim)
+        canvas.put(Teletype(style.horizontal*canvas.width)) }))
+
+    def verticalRule: Pane =
+      Pane.Widget(Sizing(0.0, maxWidth = 1), Edge(hidden, 1, 0, { canvas =>
+        var row = 0
+        while row < canvas.height do
+          canvas.move(Prim, row.z)
+          canvas.put(Teletype(style.vertical))
+          row += 1 }))
+
+    def corner(glyph: Text): Pane =
+      Pane.Widget(Sizing(0.0, maxWidth = 1, maxHeight = 1), Edge(hidden, 1, 1, { canvas =>
+        canvas.move(Prim, Prim)
+        canvas.put(Teletype(glyph)) }))
+
+    // The bands take no share of the stack's height (their rule's weight is for the strip's
+    // width); the middle takes the child's share.
+    def band(left: Text, right: Text): Pane = strip(corner(left), horizontalRule, corner(right)).weight(0.0)
+
+    val share: Double = child match
+      case Pane.Leaf(sizing, _)      => sizing.fraction
+      case Pane.Widget(sizing, _)    => sizing.fraction
+      case Pane.Branch(sizing, _, _) => sizing.fraction
+
+    stack
+      ( band(style.topLeft, style.topRight),
+        strip(verticalRule, child, verticalRule).weight(share),
+        band(style.bottomLeft, style.bottomRight) )
 
   // A pane held to a column band: the sizing of every leaf beneath it is left alone, and the
   // branch itself is bounded.

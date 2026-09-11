@@ -128,3 +128,4 @@ object WebTheme:
       case Token.Accent.Parens   => base01
       case Token.Accent.Error    => red
       case Token.Accent.Unparsed => base0
+      case Token.Accent.Command  => orange

@@ -32,6 +32,9 @@ import vacuous.*
 // Markdown's block nodes, and richer: tables with layout semantics, records, notices, trees,
 // graphs, charts and gauges. Every block is data; nothing here says how it looks.
 object Block:
+  enum Side:
+    case Above, Below, Between
+
   // How a table column may give way when the table is squeezed, mirroring escritoire`s
   // `Columnar` strategies on the terminal; the web maps them to `1fr`, `max-content` and
   // container queries.
@@ -120,7 +123,11 @@ enum Block:
   case Heading(level: Int, content: List[Inline])
   case Listing(ordered: Boolean, items: List[Block.Item])
   case Quotation(content: List[Block])
-  case Rule()
+  // A rule stands between what precedes and follows it, or marks an edge: `Above` is drawn
+  // low in its row (`⎽`), a line above the content that follows; `Below` high (`‾`), a line
+  // beneath the content before it. Both are what a transcript keeps of a submitted line's
+  // frame.
+  case Rule(side: Block.Side = Block.Side.Between)
   case Code(language: Language, lines: List[Block.Line], notes: List[Block.Note] = Nil)
   case Table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] = Unset)
   case Record(entries: List[Block.Entry], title: Optional[List[Inline]] = Unset)
@@ -132,3 +139,4 @@ enum Block:
   case Chart(kind: Block.Chart.Kind, series: List[Block.Series])
   case Gauge(status: Status, caption: Optional[List[Inline]] = Unset)
   case Group(content: List[Block])                      // a run of blocks which belong together
+  case Output(text: Text, error: Boolean = false)      // captured standard output or error, verbatim

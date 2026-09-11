@@ -55,7 +55,8 @@ class Live[value](initial: value):
     val current0 = synchronized(wakes)
     current0.each(_())
 
-  def amend(lambda: value => value): Unit = update(lambda(current))
+  // Atomic: a frontend's thread and the application's may both amend.
+  def amend(lambda: value => value): Unit = synchronized(update(lambda(current)))
 
 object Live:
   extension [element](live: Live[List[element]])

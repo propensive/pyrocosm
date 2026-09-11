@@ -69,6 +69,14 @@ given mathTelDecodable: archimedes.Math is Tel.Decodable =
         val text = tel.primaryAtom
         safely(Ergo.parse(text)).or(abort(Tel.Error(Tel.Error.Reason.NotScalar(text, "ergo"))))
 
+// An empty text is written as a compound with no atom at all (which reads back as the empty
+// string), rather than as an empty inline atom: stratiform writes the latter's preceding
+// space, which its own parser refuses as a trailing space, so a document holding an empty
+// token, cell or phrase could never be read back.
+given textTelEncodable: Text is Tel.Encodable =
+  Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar): text =>
+    if text == t"" then Tel.make(Tel.Compound(t"", Array.empty, Unset, Array.empty)) else Tel.scalar(text)
+
 // The primitives, laundered the same way (their declared types name their tactic capture).
 given textTelDecodable: Text is Tel.Decodable = unsafely(caps.unsafe.unsafeAssumePure(Tel.textDecodable))
 given intTelDecodable: Int is Tel.Decodable = unsafely(caps.unsafe.unsafeAssumePure(Tel.intDecodable))
@@ -125,6 +133,8 @@ private def byName[value](values: scala.Array[value])(text: Text): Optional[valu
 
   found
 
+given sideTelEncodable: Block.Side is Tel.Encodable = scalar(kebab)
+given sideTelDecodable: Block.Side is Tel.Decodable = parsed("side")(byName(Block.Side.values))
 given toneTelEncodable: Tone is Tel.Encodable = scalar(kebab)
 given toneTelDecodable: Tone is Tel.Decodable = parsed("tone")(byName(Tone.values))
 given glyphTelEncodable: Glyph is Tel.Encodable = scalar(kebab)

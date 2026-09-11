@@ -73,7 +73,12 @@ object WebFrontend:
 // bound to a wake that re-renders the element it belongs to and pushes the patch to the
 // session's tabs, and every incoming message is checked against the handles its interface
 // actually offers before it becomes an `Event`. Both serve until `stop()`.
-class WebFrontend(port: Int, theme: WebTheme = WebTheme.default)
+// `fallback` answers any request the frontend does not (an application's own API, say); a
+// request it declines is a 404.
+class WebFrontend
+  ( port:     Int,
+    theme:    WebTheme = WebTheme.default,
+    fallback: Http.Request => Optional[Http.Response] = _ => Unset )
   ( using monitor: Monitor, probate: Probate, errorPage: WebserverErrorPage )
 extends pyrocosm.Frontend:
 
@@ -115,11 +120,12 @@ extends pyrocosm.Frontend:
         panel.content.bindWake { () => broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", renderer.blocks(panel.content()).show)) }
 
       (interface.controls + interface.panels.bind(_.controls)).each:
-        case Control.Field(input, _, value, decoration, _, _) =>
+        case Control.Field(input, _, value, decoration, _, _, history) =>
           decoration.bindWake { () =>
             interface.fields.seek(_.input == input).let: field =>
               broadcast(Patch(t"replace", t"${input.id}-decoration", page.decoration(field).show)) }
           value.bindWake { () => broadcast(Patch(t"value", input.id, value())) }
+          history.bindWake { () => broadcast(Patch(t"history", input.id, history().in[Json].show)) }
 
         case Control.Button(_, action, enabled) =>
           enabled.bindWake { () => broadcast(Patch(if enabled() then t"enable" else t"disable", action.id)) }
@@ -160,6 +166,10 @@ extends pyrocosm.Frontend:
 
           case t"key" =>
             Keypresses.parse(incoming.text).let { keypress => handle(Event.Key(keypress)) }
+
+          // The script's keep-alive; answered so the connection sees traffic both ways.
+          case t"ping" =>
+            broadcast(Patch(t"pong", t""))
 
           case _ =>
             ()
@@ -261,7 +271,8 @@ extends pyrocosm.Frontend:
               ws.asInstanceOf[Websocket[Message, Unit]]
 
         case _ =>
-          Http.Response(Http.NotFound)(t"Not found")
+          val request0: Http.Request = caps.unsafe.unsafeAssumePure(summon[Http.Request])
+          fallback(request0).or(Http.Response(Http.NotFound)(t"Not found"))
 
     try stopped.await()
     finally
