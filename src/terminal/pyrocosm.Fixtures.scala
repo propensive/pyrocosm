@@ -62,6 +62,17 @@ class Session():
   @caps.unsafe.untrackedCaptures
   var upto: Int = 0
 
+  @volatile
+  @caps.unsafe.untrackedCaptures
+  var resetting: Boolean = false
+
+  // Whether the next inline cycle is to replay: the terminal was resized, so what was committed
+  // has reflowed unpredictably; the screen and scrollback are cleared and the settled entries
+  // committed afresh at the new width before the block resumes.
+  @volatile
+  @caps.unsafe.untrackedCaptures
+  var replaying: Boolean = false
+
   def focus(fixture: Refreshable, focused: Boolean): Unit = if focused then this.focused = fixture
 
 // A fixture whose appearance an application changes from another thread, through a `Live` cell.
@@ -82,8 +93,10 @@ trait Refreshable extends Fixture:
   def pulse: Optional[Int] = Unset
 
   // Whether Tab is this fixture's to handle when it is focused (a code field completes with
-  // it); otherwise Tab is the form's, and moves focus.
+  // it); otherwise Tab is the form's, and moves focus. Likewise Escape, which a code field
+  // showing candidates takes to dismiss them; otherwise Escape is the form's, and leaves.
   def claimsTab: Boolean = false
+  def claimsEscape: Boolean = false
 
   // Painting nothing, while a transcript's commit is painted: not even a clear, since a
   // zero-height extent still clears the row it sits on, which is the commit's last.
@@ -224,7 +237,10 @@ extends Refreshable:
     . or:
       val window: List[Block] = List.from(content.stdlib.slice(from, until))
       val tick = Tick.at((System.nanoTime - started)/1000000L, 80)
-      val result = renderer.blocks(window, width.max(1), tick, Unset)
+      // A window that continues committed entries is separated from them by a blank line, as
+      // the entries are from each other.
+      val rendered = renderer.blocks(window, width.max(1), tick, Unset)
+      val result = if from > 0 && !window.nil then List.from(renderer.blank :: rendered.stdlib) else rendered
       rendering = Rendering(content, from, until, width, frame, result)
       result
 
@@ -368,19 +384,28 @@ extends Focus, Refreshable:
   @caps.unsafe.untrackedCaptures
   private var published: Text = field.value()
 
+  // Where in the field's history (oldest first) recall stands: past the end is the draft.
   @caps.unsafe.untrackedCaptures
-  private var history: List[Text] = Nil
+  private var recall: Int = field.history().stdlib.length
 
-  @caps.unsafe.untrackedCaptures
-  private var recall: Int = 0
+  private def history: List[Text] = field.history()
 
+  // The candidates are shown as they arrive, but none is taken until the user picks one with
+  // Tab or Down: only then does Enter accept it, and the ghost preview it. Escape dismisses
+  // them until the next keystroke.
   @caps.unsafe.untrackedCaptures
   private var completion: Int = 0
+
+  @caps.unsafe.untrackedCaptures
+  private var selected: Boolean = false
+
+  @caps.unsafe.untrackedCaptures
+  private var dismissed: Boolean = false
 
   private val maxCompletions: Int = 6
 
   private def decoration: Control.Field.Decoration = field.decoration()
-  private def completions: List[Control.Field.Completion] = decoration.completions
+  private def completions: List[Control.Field.Completion] = if dismissed then Nil else decoration.completions
 
   // The application may replace the value (clearing it after a submission, say); adopt it.
   private def sync(): Unit =
@@ -409,7 +434,7 @@ extends Focus, Refreshable:
   private def replaced(candidate: Control.Field.Completion): Text = if candidate.whole then editor.value else stem
 
   private def ghost: Optional[Text] =
-    completions.at(completion.z).let: candidate =>
+    if !selected then Unset else completions.at(completion.z).let: candidate =>
       val current = replaced(candidate)
       if atEnd && candidate.name.starts(current) && candidate.name.length > current.length
       then candidate.name.s.substring(current.length).nn.tt
@@ -423,23 +448,31 @@ extends Focus, Refreshable:
     val text = t"${editor.value.s.substring(0, start).nn}$name${editor.value.s.substring(end).nn}"
     editor = LineEditor(text, start + name.length, LineEditor.Mode.Multiline(_ => false))
     completion = 0
+    selected = false
     publish()
 
   private def accept(): Unit =
     completions.at(completion.z).let { candidate => insert(candidate, candidate.name) }
 
   // Tab: a lone candidate is accepted; several first extend the text to their longest common
-  // prefix, when that is longer than what they cover, and otherwise cycle. So `pri` becomes
-  // `print`, then Tab walks println, print, printf.
+  // prefix, when that is longer than what they cover, then select the first, then cycle. So
+  // `pri` becomes `print`, then Tab walks println, print, printf.
   private def complete(): Unit =
     val all: scala.List[Control.Field.Completion] = completions.stdlib
 
-    if all.length == 1 then insert(all.head, all.head.name)
+    // No candidates yet: the application hears the Tab and may supply some.
+    if all.isEmpty then dispatch(Event.Key(Keypress.Tab))
+    else if all.length == 1 then insert(all.head, all.head.name)
     else if all.length > 1 then
       val prefix: String = all.map(_.name.s).reduce(CodeField.commonPrefix)
       val covered = replaced(all.head)
       if prefix.length > covered.length && prefix.startsWith(covered.s) then insert(all.head, prefix.tt)
+      else if !selected then
+        selected = true
+        completion = 0
       else completion = (completion + 1)%all.length
+
+  override def claimsEscape: Boolean = !completions.nil
 
   private def valueLines: List[Teletype] =
     val value = editor.value
@@ -447,14 +480,18 @@ extends Focus, Refreshable:
     val covered = !tokens.nil && tokens.map(_.text).join == value
 
     if !covered then value.cut(t"\n").map(Teletype(_)) else
-      // Split the token run at newlines into lines, so each token is coloured on its own line.
-      val lines = scala.collection.mutable.ListBuffer[Teletype](Teletype(t""))
+      // Split the token run at newlines into lines, so each token is coloured on its own line,
+      // then lay the decoration's marks (error and warning spans) over each line as a code
+      // block's notes.
+      val lines = scala.collection.mutable.ListBuffer[scala.List[Token]](scala.Nil)
       tokens.each: token =>
         val parts = token.text.cut(t"\n")
         parts.indexed.each: (part, index) =>
-          if index.n0 > 0 then lines += Teletype(t"")
-          lines(lines.length - 1) = lines(lines.length - 1).append(renderer.token(token.copy(text = part)))
-      lines.to(List)
+          if index.n0 > 0 then lines += scala.Nil
+          if part != t"" then lines(lines.length - 1) = lines(lines.length - 1) :+ token.copy(text = part)
+
+      List.from(lines.toList.zipWithIndex.map { (line, index) =>
+        renderer.codeLine(Block.Line(List.from(line)), decoration.marks.filter(_.line == index)) })
 
   override def claimsTab: Boolean = true
 
@@ -468,17 +505,35 @@ extends Focus, Refreshable:
   @caps.unsafe.untrackedCaptures
   private var lastWidth: Int = 80
 
-  private def completionLines: List[Teletype] =
+  // One row per candidate, cut to the width: a signature can run long, and a wrapped row
+  // would push the rows beneath it out of the field.
+  private def completionLines: List[Teletype] = completionLines(lastWidth)
+
+  private def completionLines(width: Int): List[Teletype] =
     completions.indexed.map: (candidate, index) =>
       val line: Teletype = e"  ${candidate.name}  ${Fg(renderer.theme.muted)}(${candidate.signature})"
-      if index.n0 == completion then e"$Reverse($line)" else line
+      val cut: Teletype = if line.length > width.max(1) then line.takeChars(width.max(1)) else line
+      if selected && index.n0 == completion then e"$Reverse($cut)" else cut
     . stdlib.take(maxCompletions).to(List)
 
   def measure(width: Int): (Int, Int) =
     if session.hiding then (0, 0) else
       sync()
       lastWidth = width
-      (0, valueLines.stdlib.length.max(1) + noteLines(width).stdlib.length + completionLines.stdlib.length)
+      (0, visualLines(width).stdlib.length.max(1) + noteLines(width).stdlib.length + completionLines(width).stdlib.length)
+
+  // The value's lines as rows of the width: a line longer than the field wraps hard, and the
+  // caret's column beyond the width falls onto the row below. A caret at the very end of a
+  // line exactly the width long sits at the start of the next row, which is where a wrapped
+  // line's next character would go.
+  private def visualLines(width: Int): List[Teletype] =
+    valueLines.bind { (line: Teletype) => renderer.hardWrap(line, width) }
+
+  private def visualCaret(width: Int): (Int, Int) =
+    val columns = width.max(1)
+    val (row, column) = caret
+    val above: Int = valueLines.stdlib.take(row).map { line => (line.length/columns).max(0) + (if line.length % columns == 0 && line.length > 0 then 0 else 1) }.sum
+    (above + column/columns, column % columns)
 
   def render(canvas: Board^, focused: Boolean): Unit =
     session.focus(this, focused)
@@ -488,7 +543,7 @@ extends Focus, Refreshable:
     sync()
     canvas.clear()
 
-    val lines = valueLines
+    val lines = visualLines(canvas.width)
     val placeholder = field.placeholder.let(Teletype(_))
 
     lines.indexed.each: (line, index) =>
@@ -500,7 +555,7 @@ extends Focus, Refreshable:
       canvas.move(Prim, Prim)
       placeholder.let { text => canvas.put(e"${Fg(renderer.theme.muted)}($text)") }
 
-    val (row, column) = caret
+    val (row, column) = visualCaret(canvas.width)
     ghost.let: text =>
       canvas.move(column.z, row.z)
       canvas.put(e"${Fg(renderer.theme.muted)}($text)")
@@ -528,8 +583,7 @@ extends Focus, Refreshable:
 
   private def submit(): Unit =
     val value = editor.value
-    if value != t"" then history = history :+ value
-    recall = history.stdlib.length
+    recall = history.stdlib.length + (if value == t"" then 0 else 1)
     completion = 0
     editor = LineEditor(t"", mode = LineEditor.Mode.Multiline(_ => false))
     publish()
@@ -559,7 +613,7 @@ extends Focus, Refreshable:
 
     event match
       case Keypress.Enter =>
-        if !completions.nil && ghost.present then accept()
+        if selected && ghost.present then accept()
         else if decoration.incomplete then newline()
         else submit()
 
@@ -570,8 +624,15 @@ extends Focus, Refreshable:
       case Keypress.Tab | Keypress.Ctrl(Keypress.Tab) =>
         complete()
 
+      // Escape, delivered by the frontend as Ctrl+Escape so that the form does not take it for
+      // leaving: the candidates are dismissed until the next keystroke.
+      case Keypress.Ctrl(Keypress.Escape) =>
+        dismissed = true
+        selected = false
+
       case Keypress.Up =>
-        if !completions.nil then completion = (completion - 1).max(0)
+        if !completions.nil && selected then
+          if completion == 0 then selected = false else completion -= 1
         else if !multiline && recall > 0 then
           recall -= 1
           editor = LineEditor(history.at(recall.z).or(t""), mode = LineEditor.Mode.Multiline(_ => false))
@@ -580,7 +641,11 @@ extends Focus, Refreshable:
           editor = editor(event)
 
       case Keypress.Down =>
-        if !completions.nil then completion = (completion + 1).min(completions.stdlib.length - 1)
+        if !completions.nil then
+          if !selected then
+            selected = true
+            completion = 0
+          else completion = (completion + 1).min(completions.stdlib.length - 1)
         else if !multiline && recall < history.stdlib.length then
           recall += 1
           editor = LineEditor(history.at(recall.z).or(t""), mode = LineEditor.Mode.Multiline(_ => false))
@@ -594,6 +659,8 @@ extends Focus, Refreshable:
       case keypress: Keypress =>
         editor = editor(keypress)
         completion = 0
+        selected = false
+        dismissed = false
         publish()
 
       case _ =>

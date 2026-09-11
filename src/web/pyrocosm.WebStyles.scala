@@ -58,6 +58,8 @@ object WebStyles:
         + css"h1 { font-size: 1.5rem } h2 { font-size: 1.2rem } h3, h4 { font-size: 1rem }"
         + css"p { margin: 0.4rem 0 }"
         + css"hr { border: 0; border-top: 1px solid var(--pyro-border) }"
+        + css"hr.pyro-rule-above { border-top: 0; border-bottom: 1px solid var(--pyro-border); margin-bottom: 0 }"
+        + css"hr.pyro-rule-below { margin-top: 0 }"
 
     val phrasing: Css =
       css"em { font-weight: 600; font-style: normal }"
@@ -125,6 +127,8 @@ object WebStyles:
         + css".pyro-placeholder { display: none; position: absolute; top: 0.5rem; left: 0.5rem; color: var(--pyro-muted); pointer-events: none; font-family: ui-monospace, monospace }"
         + css".pyro-empty .pyro-placeholder { display: block }"
         + css".pyro-note { font-size: 0.85rem; margin-top: 0.2rem } .pyro-note p { margin: 0.1rem 0 }"
+        + css".pyro-output { white-space: pre-wrap; word-break: break-word; margin: 0.3rem 0; font-family: ui-monospace, monospace }"
+        + css".pyro-gutter-out { color: var(--pyro-tone-info) } .pyro-gutter-err { color: var(--pyro-tone-failure) }"
         + css".pyro-completions { list-style: none; margin: 0.2rem 0 0 0; padding: 0; font-family: ui-monospace, monospace; font-size: 0.9rem }"
         + css".pyro-completions li { padding: 0.1rem 0.5rem; cursor: pointer } .pyro-completions li.pyro-selected { background-color: var(--pyro-selection) }"
         + css".pyro-completions .pyro-signature { color: var(--pyro-muted); margin-left: 1rem }"

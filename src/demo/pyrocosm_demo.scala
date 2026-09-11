@@ -185,7 +185,12 @@ object Samples:
               (if index.n0 == 0 then Nil else List(Inline.Textual(t", ")))
                 + List(Inline.Code(Language.Scala, List(Token(name, Token.Accent.Term, Token.Role.Binding), Token(t": ", Token.Accent.Symbol), Token(t"Int", Token.Accent.Typal)))) })))
 
-    Control.Field.Decoration(tokens, commanded + completions, incomplete = text.s.count(_ == '(') > text.s.count(_ == ')'), detail = detail)
+    // Any `oops` is an error, marked on its line and span, as a compiler's diagnostic would be.
+    val marks: List[Block.Note] = text.cut(t"\n").indexed.bind: (line, index) =>
+      val at = line.s.indexOf("oops")
+      if at < 0 then Nil else List(Block.Note(index.n0, at, at + 4, Block.Note.Style.Erroneous))
+
+    Control.Field.Decoration(tokens, commanded + completions, incomplete = text.s.count(_ == '(') > text.s.count(_ == ')'), detail = detail, marks = marks)
 
 // One session of the gallery: the live cells, the ticking gauge, the code field and the event
 // handler. Built once per run, and handed to whichever frontend the arguments choose, so the
@@ -251,7 +256,7 @@ object Repl:
   // terminal each has one of its own.
   def apply()(using Monitor, Probate): (Interface, Event -> Unit) =
     val transcript: Live[List[Block]] = Live(Nil)
-    val field = Control.Field(Input(t"repl"), Control.Field.Kind.Code(Language.Scala), notification = Control.Field.Notify.Keystrokes, placeholder = t"type Scala; Tab completes; Escape leaves")
+    val field = Control.Field(Input(t"repl"), Control.Field.Kind.Code(Language.Scala), notification = Control.Field.Notify.Keystrokes, placeholder = t"type Scala; Tab completes; Escape leaves", history = Live(List(t"val earlier = 1")))
 
     val interface =
       Interface
@@ -268,17 +273,24 @@ object Repl:
         field.decoration() = Samples.decorate(text, caret)
 
       case Event.Submitted(_, text) =>
-        count += 1
-        val n = count
-        val code = Samples.code(text)
-        val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))))
-        transcript.append(pending)
-        field.decoration() = Control.Field.Decoration()
+        if text == t"/clear" then transcript() = Nil else
+          count += 1
+          val n = count
+          field.history.append(text)
+          val marks = Samples.decorate(text, text.length).marks
+          val code = Samples.code(text) match
+            case Block.Code(language, lines, _) => Block.Code(language, lines, marks)
+            case other                          => other
 
-        async:
-          snooze(1.5*Second)
-          val settled = Block.Group(List(code, Block.Paragraph(List(Inline.Toned(Tone.Success, Inline.text(t"res$n: Int = ${text.length.toString}"))))))
-          transcript.amend { entries => entries.map { (entry: Block) => if entry eq pending then settled else entry } }
+          val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))))
+          transcript.append(pending)
+          field.decoration() = Control.Field.Decoration()
+
+          async:
+            snooze(1.5*Second)
+            val output = Block.Output(t"printed by the program\nand a second line\n")
+            val settled = Block.Group(List(code, output, Block.Output(t"a complaint\n", error = true), Block.Paragraph(List(Inline.Toned(Tone.Success, Inline.text(t"res$n: Int = ${text.length.toString}"))))))
+            transcript.amend { entries => entries.map { (entry: Block) => if entry eq pending then settled else entry } }
 
       case _ =>
         ()

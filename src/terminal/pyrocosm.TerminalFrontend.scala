@@ -49,7 +49,7 @@ import turbulence.*
 import denominative.dysasymptotics.{linearAccess, linearSize}
 import vacuous.*
 
-import ultimatum.{strip, Form, Gaugeable, Gauging, InlineRoot, Occupancy, Pane, ScreenRoot, Sizing}
+import ultimatum.{strip, Form, Gaugeable, Gauging, InlineAnchoring, InlineGrowth, InlineRoot, InlineShrink, Occupancy, Pane, ScreenRoot, Sizing}
 
 // An input stream over the console's own, which profanity's `interactive` closes when a session
 // ends. Under an Ethereal daemon the console's stdin is the client's socket, so closing it would
@@ -100,7 +100,10 @@ class TerminalFrontend(occupancy: Optional[Occupancy] = Unset, theme: TerminalTh
           hyphenation: Hyphenation,
           tableStyle:  TableStyle,
           gauging:     Gauging,
-          glyphs:      Gaugeable.Glyphs )
+          glyphs:      Gaugeable.Glyphs,
+          anchoring:   InlineAnchoring,
+          growth:      InlineGrowth,
+          shrink:      InlineShrink )
 extends Frontend:
 
   // The running session's event spool, for `stop` to end; and whether `stop` has been called,
@@ -214,7 +217,7 @@ extends Frontend:
           val spacer = ultimatum.panel(0.0, minWidth = 1, maxWidth = 1) { () }
           strip(interface.controls.bind { (control0: Control) => List(control(control0), spacer) }*).weight(0.0)
 
-      val pane = TerminalArrangement.build(interface, plan, title, toolbar, widget)
+      val pane = TerminalArrangement.build(interface, plan, title, toolbar, widget, () => session.hiding)
 
       // Whether the current inline cycle is ending to commit transcript entries. The cycle is
       // ended by this sentinel on the spool, which the frontend's iterator stops at: stopping
@@ -248,7 +251,17 @@ extends Frontend:
         val settled: Int = panel.lay(0): panel =>
           if inlined && panel.role == Panel.Role.Transcript then Actions.settled(panel.content()) else 0
 
-        if settled > session.frozen && !session.hiding && committing.compareAndSet(false, true) then
+        val entries: Int = panel.lay(0): panel =>
+          if inlined && panel.role == Panel.Role.Transcript then panel.content().stdlib.length else 0
+
+        val transcript: Boolean = panel.lay(false) { panel => inlined && panel.role == Panel.Role.Transcript }
+
+        // A transcript with fewer entries than are committed has been cleared: the cycle ends,
+        // and the next starts on a cleared screen and scrollback.
+        if transcript && entries < session.frozen && committing.compareAndSet(false, true) then
+          session.resetting = true
+          terminal.events.put(sentinel)
+        else if settled > session.frozen && !session.hiding && committing.compareAndSet(false, true) then
           session.upto = settled
           session.hiding = true
           terminal.events.put(Terminal.Info.Redraw)
@@ -257,13 +270,43 @@ extends Frontend:
 
       bindings.foreach { (cell, fixture, panel) => cell.bindWake(wake(fixture, panel)) }
 
+      // The settled entries of an inline transcript, for a replay after a resize.
+      def settledEntries: Int =
+        interface.panels.stdlib.find(_.role == Panel.Role.Transcript).map { panel => Actions.settled(panel.content()) }.getOrElse(0)
+
+      // A resize reflows the committed scrollback unpredictably, so an inline session replays:
+      // once the size has settled (a drag fires many events), the cycle ends, the screen and
+      // scrollback are cleared, and the settled entries are committed again at the new width.
+      // Meanwhile each event clears the screen and resets the block, so a drag shows a blank
+      // screen rather than frames painted against a geometry that no longer holds, and a
+      // keystroke in the meantime draws cleanly from the top; the form never sees the event.
+      val resizes: juca.AtomicInteger = juca.AtomicInteger(0)
+
+      @volatile var inlineRoot: InlineRoot | Null = null
+
+      def resized(): Unit =
+        terminal.stdio.print(t"\u001b[2J\u001b[H")
+        val root = inlineRoot
+        if root != null then root.reset()
+        val current = resizes.incrementAndGet()
+
+        async:
+          snooze(150.0*Milli(Second))
+          if resizes.get == current && !stopped && committing.compareAndSet(false, true) then
+            session.replaying = true
+            terminal.events.put(sentinel)
+
+        ()
+
       // The form's events, with Tab given to a focused fixture that claims it (as Ctrl+Tab, which
       // the form passes on), Shift+Tab moving focus in its place, and the commit sentinel ending
       // the iteration, so the form returns.
       def events(): scala.collection.Iterator[Terminal.Event] =
         val underlying = terminal.eventIterator()
 
-        new scala.collection.Iterator[Terminal.Event]:
+        // The iterator holds the monitor (a resize schedules a replay), which outlives the form
+        // that drains it; vouched pure so the form can take it.
+        caps.unsafe.unsafeAssumePure(new scala.collection.Iterator[Terminal.Event]:
           private var peeked: Optional[Terminal.Event] = Unset
           private var ended: Boolean = false
 
@@ -272,11 +315,19 @@ extends Frontend:
               if peeked.absent then
                 if underlying.hasNext then peeked = underlying.next() else ended = true
 
-              if ended then false
-              else if peeked == sentinel then
-                ended = true
-                false
-              else true
+              // An inline session's resize is handled here, not by the form.
+              peeked match
+                case _: Terminal.Info.WindowSize if inlined && !ended =>
+                  resized()
+                  peeked = Unset
+                  hasNext
+
+                case _ =>
+                  if ended then false
+                  else if peeked == sentinel then
+                    ended = true
+                    false
+                  else true
 
           def next(): Terminal.Event =
             val event = peeked.or(underlying.next())
@@ -288,7 +339,12 @@ extends Frontend:
                 if focused != null && focused.claimsTab then Keypress.Ctrl(Keypress.Tab) else Keypress.Tab
 
               case Keypress.Shift(Keypress.Tab) => Keypress.Tab
-              case other                        => other
+
+              case Keypress.Escape =>
+                val focused = session.focused
+                if focused != null && focused.claimsEscape then Keypress.Ctrl(Keypress.Escape) else Keypress.Escape
+
+              case other                        => other)
 
       val formWake: () => Unit = () => terminal.events.put(Terminal.Info.Redraw)
 
@@ -311,14 +367,38 @@ extends Frontend:
             // coalesces resizes), so the commit's redraw, queued just before the form's end,
             // is painted rather than deferred past it.
             def cycle(): Unit =
-              val root = InlineRoot(terminal)
+              val root = InlineRoot(terminal)(using anchoring, growth, shrink)
+              inlineRoot = caps.unsafe.unsafeAssumePure(root)
               Form(root, mode, pane, formWake, 0, 0, scheduleWake).run(events())
 
               if committing.get && !stopped then
                 generation.incrementAndGet()
-                session.frozen = session.upto
-                session.hiding = false
-                committing.set(false)
+
+                if session.replaying then
+                  // Cleared, then the settled entries as one commit cycle (a frame painted
+                  // once, so a transcript taller than the screen scrolls cleanly into the
+                  // scrollback), then the rest and the prompt as usual.
+                  terminal.stdio.print(t"\u001b[2J\u001b[3J\u001b[H")
+                  session.frozen = 0
+                  session.replaying = false
+                  val settled = settledEntries
+
+                  if settled > 0 then
+                    session.upto = settled
+                    session.hiding = true
+                    terminal.events.put(Terminal.Info.Redraw)
+                    terminal.events.put(sentinel)
+                  else committing.set(false)
+                else if session.resetting then
+                  terminal.stdio.print(t"\u001b[2J\u001b[3J\u001b[H")
+                  session.frozen = 0
+                  session.resetting = false
+                  committing.set(false)
+                else
+                  session.frozen = session.upto
+                  session.hiding = false
+                  committing.set(false)
+
                 cycle()
 
             cycle()

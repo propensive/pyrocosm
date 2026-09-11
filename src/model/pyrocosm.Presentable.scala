@@ -204,10 +204,14 @@ trait Presentable2 extends Presentable3:
       Block.Listing(false, list.map { (element: element) => Block.Item(Presentable.blocks(presentable.exhibit(element))) })
 
 trait Presentable3:
+  // The structural fallback applies to products only: a sum (a stdlib `List` or `Option`,
+  // say, whose variants are not the point) falls through to its `Showable` or its `toString`
+  // rather than to a record of its variant. A sum exhibits by variant through an explicit
+  // `derives Presentable`.
   inline given derived: [value] => value is Presentable = compiletime.summonFrom:
-    case given (`value` is Showable) => Presentable.phrase[value] { value => Inline.Textual(value.show) }
-    case given Reflection[`value`]   => Presentable.Derivation.derived[value]
-    case _                           => Presentable.phrase[value] { value => Inline.Textual(value.toString.tt) }
+    case given (`value` is Showable)       => Presentable.phrase[value] { value => Inline.Textual(value.show) }
+    case given ProductReflection[`value`]  => Presentable.Derivation.derived[value]
+    case _                                 => Presentable.phrase[value] { value => Inline.Textual(value.toString.tt) }
 
 trait Presentable extends Typeclass.Pure, Formal:
   type Form <: Inline | Block

@@ -27,6 +27,7 @@
   }
 
   function apply(patch) {
+    if (patch.kind === "pong") return;
     var element = document.getElementById(patch.id);
     if (!element) return;
     switch (patch.kind) {
@@ -50,14 +51,26 @@
       case "check": element.checked = true; break;
       case "uncheck": element.checked = false; break;
       case "select": element.value = patch.html; break;
+      case "history":
+        try { histories[patch.id] = JSON.parse(patch.html); recalls[patch.id] = histories[patch.id].length; } catch (error) { console.error(error); }
+        break;
     }
   }
 
+  // A socket refused before it ever opened is a session the server no longer knows (it has
+  // restarted); after a few such refusals the page reloads to get a fresh one.
+  var refusals = 0;
+
   function connect() {
     var protocol = location.protocol === "https:" ? "wss://" : "ws://";
+    var opened = false;
     socket = new WebSocket(protocol + location.host + "/socket" + sessionQuery());
-    socket.onopen = function () { status(true); };
-    socket.onclose = function () { status(false); setTimeout(connect, 1000); };
+    socket.onopen = function () { opened = true; refusals = 0; status(true); };
+    socket.onclose = function () {
+      status(false);
+      if (!opened && sessionQuery() !== "" && ++refusals >= 5) { location.reload(); return; }
+      setTimeout(connect, 1000);
+    };
     socket.onmessage = function (event) {
       try { apply(JSON.parse(event.data)); } catch (error) { console.error(error); }
     };
@@ -135,25 +148,40 @@
 
   function completionsOf(editor) {
     var decoration = document.getElementById(editor.id + "-decoration");
-    return decoration ? Array.prototype.slice.call(decoration.querySelectorAll(".pyro-completions li")) : [];
+    if (!decoration || dismissed[editor.id]) return [];
+    return Array.prototype.slice.call(decoration.querySelectorAll(".pyro-completions li"));
   }
+
+  // The candidates are shown as they arrive, but none is taken until the user picks one with
+  // Tab or Down: only then does Enter accept it, and the ghost preview it. Escape dismisses
+  // them until the next edit.
+  var dismissed = {};
 
   function selectedCompletion(editor) {
     var items = completionsOf(editor);
     for (var i = 0; i < items.length; i++) if (items[i].classList.contains("pyro-selected")) return items[i];
-    return items[0] || null;
+    return null;
   }
 
   function moveCompletion(editor, delta) {
     var items = completionsOf(editor);
     if (!items.length) return false;
-    var index = 0;
+    var index = -1;
     for (var i = 0; i < items.length; i++) if (items[i].classList.contains("pyro-selected")) index = i;
-    items[index].classList.remove("pyro-selected");
-    index = (index + delta + items.length) % items.length;
-    items[index].classList.add("pyro-selected");
+    if (index >= 0) items[index].classList.remove("pyro-selected");
+    if (index < 0) index = delta > 0 ? 0 : -1;
+    else index = Math.min(items.length - 1, index + delta);
+    if (index >= 0) items[index].classList.add("pyro-selected");
     ghost(editor);
     return true;
+  }
+
+  function dismiss(editor) {
+    dismissed[editor.id] = true;
+    var decoration = document.getElementById(editor.id + "-decoration");
+    var list = decoration && decoration.querySelector(".pyro-completions");
+    if (list) list.hidden = true;
+    clearGhost(editor);
   }
 
   function nameOf(item) { var code = item.querySelector("code"); return code ? code.textContent : item.textContent; }
@@ -184,7 +212,6 @@
       placeCaret(editor, caret);
     }
     var items = completionsOf(editor);
-    if (items.length) items[0].classList.add("pyro-selected");
     items.forEach(function (item) {
       item.addEventListener("mousedown", function (event) { event.preventDefault(); accept(editor, item); });
     });
@@ -193,6 +220,7 @@
   }
 
   function edited(editor) {
+    dismissed[editor.id] = false;
     clearGhost(editor);
     emptiness(editor);
     send({ kind: "edit", id: editor.id, text: editorText(editor), caret: caretOf(editor), index: 0 });
@@ -230,11 +258,19 @@
   // prefix, when longer than what they cover, and otherwise cycle the selection.
   function complete(editor) {
     var items = completionsOf(editor);
-    if (!items.length) return;
+    // No candidates yet: the application hears the Tab and may supply some.
+    if (!items.length) { send({ kind: "key", id: "", text: "[⇥]", caret: 0, index: 0 }); return; }
     if (items.length === 1) { accept(editor, items[0]); return; }
     var prefix = commonPrefix(items.map(nameOf)), covered = coveredBy(editor, items[0]);
     if (prefix.length > covered.length && prefix.indexOf(covered) === 0) accept(editor, items[0], prefix);
-    else moveCompletion(editor, 1);
+    else if (!selectedCompletion(editor)) moveCompletion(editor, 1);
+    else {
+      // Cycle: the last selected wraps to the first.
+      var index = items.indexOf(selectedCompletion(editor));
+      items[index].classList.remove("pyro-selected");
+      items[(index + 1) % items.length].classList.add("pyro-selected");
+      ghost(editor);
+    }
   }
 
   function incomplete(editor) {
@@ -253,13 +289,23 @@
     setText(editor, text.slice(0, caret) + "\n" + indent + rest, caret + 1 + indent.length);
   }
 
-  var history = [];
-  var recall = 0;
+  // The field's history is the application's: seeded in the page, replaced by `history` patches
+  // when the application appends to it. Recall past the end is the draft.
+  var histories = {};
+  var recalls = {};
+
+  function historyOf(editor) {
+    if (!histories[editor.id]) {
+      var seed = editor.parentNode && editor.parentNode.querySelector(".pyro-history");
+      try { histories[editor.id] = seed ? JSON.parse(seed.textContent) : []; } catch (error) { histories[editor.id] = []; }
+      recalls[editor.id] = histories[editor.id].length;
+    }
+    return histories[editor.id];
+  }
 
   function submit(editor) {
     var text = editorText(editor);
-    if (text !== "") { history.push(text); }
-    recall = history.length;
+    recalls[editor.id] = historyOf(editor).length + (text === "" ? 0 : 1);
     send({ kind: "submit", id: editor.id, text: text, caret: 0, index: 0 });
     clearGhost(editor);
     editor.textContent = "";
@@ -278,17 +324,22 @@
       newline(editor);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (hasGhost(editor)) accept(editor, selectedCompletion(editor));
+      if (selectedCompletion(editor) && hasGhost(editor)) accept(editor, selectedCompletion(editor));
       else if (incomplete(editor)) newline(editor);
       else submit(editor);
+    } else if (event.key === "Escape" && items.length) {
+      event.preventDefault(); dismiss(editor);
     } else if (event.key === "ArrowDown" && items.length) {
       event.preventDefault(); moveCompletion(editor, 1);
-    } else if (event.key === "ArrowUp" && items.length) {
+    } else if (event.key === "ArrowUp" && items.length && selectedCompletion(editor)) {
       event.preventDefault(); moveCompletion(editor, -1);
-    } else if (event.key === "ArrowUp" && !multiline && recall > 0) {
-      event.preventDefault(); recall--; setText(editor, history[recall], history[recall].length);
-    } else if (event.key === "ArrowDown" && !multiline && recall < history.length) {
-      event.preventDefault(); recall++; setText(editor, recall === history.length ? "" : history[recall], recall === history.length ? 0 : history[recall].length);
+    } else if (event.key === "ArrowUp" && !multiline && recalls[editor.id] > 0) {
+      event.preventDefault(); var history = historyOf(editor); recalls[editor.id]--;
+      setText(editor, history[recalls[editor.id]], history[recalls[editor.id]].length);
+    } else if (event.key === "ArrowDown" && !multiline && recalls[editor.id] < historyOf(editor).length) {
+      event.preventDefault(); var history = historyOf(editor); recalls[editor.id]++;
+      var recalled = recalls[editor.id] === history.length ? "" : history[recalls[editor.id]];
+      setText(editor, recalled, recalled.length);
     } else if (event.key === "ArrowRight" && hasGhost(editor) && caretOf(editor) === editorText(editor).length) {
       event.preventDefault(); accept(editor, selectedCompletion(editor));
     }
@@ -372,4 +423,5 @@
   var first = document.querySelector(".pyro-editor");
   if (first) first.focus();
   connect();
+  setInterval(function () { send({ kind: "ping", id: "", text: "", caret: 0, index: 0 }); }, 20000);
 })();

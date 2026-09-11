@@ -34,8 +34,11 @@ import quantitative.*
 import rudiments.*
 import symbolism.*
 import vacuous.*
+import jacinta.*
+import spectacular.*
 
 import honeycomb.attributives.textAttributive
+import jacinta.formatting.compactJsonFormatting
 import htmlDoms.whatwg.*
 import nomenclature.CssClass.nominative
 
@@ -115,6 +118,7 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
         Div(`class` = List(holder, cls(t"pyro-empty")))
           ( Code(id = field.input.id, `class` = List(cls(t"pyro-field"), cls(t"pyro-editor")), contenteditable = t"true", spellcheck = t"false")(field.value()),
             Span(`class` = cls(t"pyro-placeholder"))(field.placeholder.or(t"")),
+            Span(`class` = cls(t"pyro-history"), hidden = t"")(field.history().in[Json].show),
             decorated )
 
       case kind =>
@@ -130,9 +134,24 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
   def decoration(field: Control.Field): Html of Flow =
     val decoration0 = field.decoration()
 
+    // The tokens as code lines, so the decoration's marks lay over them as a code block's notes.
     val tokens: Html of Flow =
       if decoration0.tokens.nil then Fragment[Flow]()
-      else Span(`class` = cls(t"pyro-tokens"), hidden = t"")(renderer.tokens(decoration0.tokens))
+      else
+        val lines = scala.collection.mutable.ListBuffer[scala.List[Token]](scala.Nil)
+        decoration0.tokens.each: (token: Token) =>
+          token.text.cut(t"\n").indexed.each: (part: Text, index: Ordinal) =>
+            if index.n0 > 0 then lines += scala.Nil
+            if part != t"" then lines(lines.length - 1) = lines(lines.length - 1) :+ token.copy(text = part)
+
+        val count: Int = lines.length
+        val rendered: scala.List[Html of Phrasing] =
+          lines.toList.zipWithIndex.map { (pair: (scala.List[Token], Int)) =>
+            val line: Block.Line = Block.Line(List.from(pair(0)))
+            val notes: List[Block.Note] = decoration0.marks.filter(_.line == pair(1))
+            renderer.codeLine(line, notes, pair(1) == count - 1) }
+
+        Span(`class` = cls(t"pyro-tokens"), hidden = t"")(rendered*)
 
     val marker: Html of Flow =
       if decoration0.incomplete then Span(`class` = cls(t"pyro-incomplete"), hidden = t"")(t"")

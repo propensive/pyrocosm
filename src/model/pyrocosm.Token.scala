@@ -32,7 +32,7 @@ import vacuous.*
 object Token:
   // An accent is a colour category and nothing more; one palette maps each to one colour.
   enum Accent:
-    case Error, Number, String, Term, Typal, Keyword, Symbol, Parens, Modifier, Unparsed
+    case Error, Number, String, Term, Typal, Keyword, Symbol, Parens, Modifier, Unparsed, Command
 
   // Whether a term or type token is a definition or a use of one; a styling policy may set
   // bindings in italic, say, on top of the accent's colour.

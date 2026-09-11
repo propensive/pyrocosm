@@ -45,7 +45,8 @@ object Control:
       ( tokens:      List[Token]      = Nil,
         completions: List[Completion] = Nil,
         incomplete:  Boolean          = false,
-        detail:      List[Block]      = Nil )
+        detail:      List[Block]      = Nil,
+        marks:       List[Block.Note] = Nil )  // error and warning spans over the tokens, by line
 
     // A candidate at the caret. Accepting it replaces the identifier before the caret with
     // `name`, or, when `whole` is set, the whole text: a REPL's `/session name` completes the
@@ -59,13 +60,16 @@ object Control:
 enum Control:
   case Button(label: List[Inline], action: Action, enabled: Live[Boolean] = Live(true))
 
+  // `history` is the field's recall list, oldest first, owned by the application: it seeds it
+  // (from a file, say) and appends to it on `Submitted`; a frontend only walks it.
   case Field
     ( input:      Input,
       kind:       Control.Field.Kind,
       value:      Live[Text]                     = Live(""),
       decoration: Live[Control.Field.Decoration] = Live(Control.Field.Decoration()),
       notification: Control.Field.Notify         = Control.Field.Notify.Submissions,
-      placeholder: Optional[Text]                = Unset )
+      placeholder: Optional[Text]                = Unset,
+      history:    Live[List[Text]]               = Live(Nil) )
 
   case Choice(choice: pyrocosm.Choice, options: List[List[Inline]], current: Live[Int] = Live(0))
   case Toggle(toggle: pyrocosm.Toggle, label: List[Inline], state: Live[Boolean] = Live(false))

@@ -286,45 +286,60 @@ Found while building the model (M1):
   is principle 5 made real. Not yet: the static report still goes through fume's `Render`
   (terse mode and GitHub annotations depend on it); palette and figures moving here; detail
   and log panels; per-tab selection on the dashboard.
-- **M6 Flame** (groundwork done): what Flame needs and Fume did not, in both media, exercised
-  by `gallery repl` and `gallery serve repl`:
-  - `Panel.Role.Transcript`: a log whose settled entries are history. An entry is settled once
-    nothing in it animates (a result still being computed is a `Gauge(Indeterminate)`
-    placeholder, replaced in place when it arrives), and `Actions.settled` counts the settled
-    prefix. The inline terminal frontend runs in cycles: a newly settled prefix ends the cycle,
-    the form's last frame is those entries alone (every other fixture hides; a hidden fixture
-    must not even clear, since a zero-height extent still clears the row it sits on), the form
-    finishes the block into the scrollback, and the next cycle starts a fresh block below with
-    the rest and the prompt. Fullscreen and the web show a transcript as a following log.
-  - The terminal frontend drives Ultimatum's `Form` itself rather than through `conduct`: it
-    owns the event iterator (Tab reaches a code field as Ctrl+Tab, Shift+Tab moves focus, a
-    sentinel ends a cycle, since stopping the spool drops records batched with the stop), and
-    the animation timer (one at most, and none from an ended cycle, which is the leak from M2
-    solved at its root). A `Prompt` or `Status` panel's content is passive, never focused, so
-    a REPL's first keystroke reaches its field.
-  - `CodeField`: Tab completes as a REPL's does (a lone candidate is taken; several first
-    extend the text to their longest common prefix, then cycle), a continued line is
-    auto-indented, and `Decoration.detail` is a run of blocks shown beneath the text, wrapped
-    to the field's width: what the input is being read as ("reads as prose"), or what the
-    unfinished line has brought into scope, as Flame reports per keystroke ("⤷ scope: x:
-    Int"). A `Completion` may be `whole`, replacing the whole text rather than the identifier
-    before the caret: `/session name`, or a path that drills further on the next Tab.
-  - `WebFrontend.serve(open)`: an interface per page, named by a `pyro-session` meta tag and
-    its socket's `session` parameter; ended with `Event.Closed` once its last tab has been gone
-    for thirty seconds, a tab being noticed gone when a patch cannot be sent to it. `run`
-    remains the shared mode.
-  - The web editor: a code field is an editable `code` element the script paints with the
-    decoration's tokens (arriving as HTML in the decoration patch, applied when they cover the
-    text as it stands), with ghost text from the first completion, a completions list the
-    arrows walk, Tab and Enter accepting, Enter submitting unless the text is incomplete,
-    Shift+Enter and auto-indented newlines, and Up/Down history on a single line.
-  - Found: an extension method named `controls` on `Interface` resolved, unqualified, to the
-    interface's own `controls` field rather than the sibling extension, so a field inside a
-    panel was never found and editing on the web had never worked (`allControls` now).
-  Still to do, in Flame itself: the log panel of records and notices; a `Prompt` panel with
-  `Field.Code(Scala)` decorated from `Repl.tokenize`; sessions as navigation; deleting
-  `replScript` and the `WebRequest`/`WebReply` protocol; `Repl.Rendering` collapsing to
-  `Presentable`.
+- **M6 Flame** (done): Flame's user interface is one `ReplInterface` in flame.core, an
+  `Interface` (a transcript, a code prompt, and on the web a navigation panel of sessions) and
+  an event handler, driven by an `Engine`: the socket to the server process in the terminal
+  (`SocketEngine`), the in-process `Sessions.Connection` on the web (`LocalEngine`). Every
+  submission appends a pending entry ending in a `Gauge(Indeterminate)`, which streamed output
+  grows with `Block.Output` chunks and the reply replaces in place, so an async fill and a
+  synchronous answer are the same path; the entry is made as the request is, once its id is
+  known, since an in-process engine answers before `request` returns. The server, under
+  `Repl.Rendering.Exhibit`, sends results as blocks: the value through Pyrocosm's
+  `Presentable` cascade inside the compiled wrapper (`ExhibitRender`), diagnostics as notices
+  with highlighted types and code, captured output by stream, stack traces through the model's
+  own `StackTrace` exhibit; carried on the wire as the TEL text of a product wrapping the
+  blocks, since BinTEL cannot yet derive a codec for `List[Block]` and a TEL document is a
+  record, not a sum. The hand-written terminal client (its live-highlighting replay, completion
+  and scope tables, transcript replay) and the web's bespoke JSON protocol, script, page and
+  `HtmlRender` are gone; `--basic` and the REST API are kept, on `Inspect`. Exercised by
+  `gallery repl`, `gallery serve repl`, Flame's suite (a fake engine drives the interface; an
+  exhibiting session's replies are checked as blocks) and pseudo-terminal and raw WebSocket
+  sessions against a running server.
+  - Added here for it: `Decoration.marks` (error spans underlined in the field),
+    `Block.Output` (captured output behind a stream gutter, wrapped hard), an
+    application-owned `Field.history`, transcript clearing (a transcript shrinking below what
+    is committed clears the screen and scrollback at the next cycle), `WebFrontend`'s
+    `fallback` for an application's own routes, `TerminalFrontend` taking the inline anchoring,
+    growth and shrink policies, the products-only structural fallback of `Presentable`, a Tab
+    with no candidates reaching the application as `Event.Key(Tab)`, a keep-alive ping and a
+    reload after refused handshakes in the script, atomic `Live.amend`, and
+    `Token.Accent.Command`.
+  - Found: a wake from any cell but the transcript's reported no entries, which read as a
+    cleared transcript once anything was committed, so every keystroke after the first commit
+    reset the screen (the blank rows it left looked like a separator arriving one commit late);
+    a bordered panel hid its content but not its border during a commit, leaving an empty box
+    in the scrollback (the border is now built of edges that hide with the content, and its
+    bands take no share of the stack's height); a `Group`'s members are rendered tightly, with
+    no blank line between a submission and its result; a completion row longer than the field
+    wrapped and pushed the value row out (rows are cut to the width); stratiform wrote an empty
+    atom's preceding space, which its own parser refused as a trailing space, so a document
+    holding an empty token, cell or phrase could never be read back, and a compiler message
+    with a blank line inside it made Flame drop the whole reply's blocks. Fixed in the
+    Soundness tree (pending a release), and sidestepped here: the model's `Text` encoder
+    writes an empty text as a compound with no atom, which reads back as the empty string.
+  - A resize reflows the committed scrollback unpredictably, so an inline session replays:
+    once the size has settled (a drag fires many events), the cycle ends, the screen and
+    scrollback are cleared, and the settled entries are committed again at the new width in
+    one frame painted once, then the rest and the prompt resume. The form never sees a
+    resize: each event clears the screen and resets the block at once, so a drag shows a blank
+    screen rather than frames painted against a geometry that no longer holds (which read as a
+    slow response, since the picture did not change until the replay). Code lines and a field's
+    value wrap hard at the width, with the caret following, so nothing is clipped at a narrow
+    width. An async run's streamed chunks show while it is pending; its reply carries the
+    whole output itself, so the chunks are not kept beside it.
+  - Knowingly left: the code-versus-prose border colour (the verdict shows as a detail note);
+    a Flame theme (the default palettes are used); `/tasty` and `/bytecode` as tables (they
+    arrive as output text).
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,
