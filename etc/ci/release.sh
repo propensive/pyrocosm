@@ -129,6 +129,16 @@ if ! gh release create "$VERSION" --repo "$REPO" --draft --target "$HEAD_SHA" \
 fi
 drafted="yes"
 
+# The release is addressed by its id, not its tag: `releases/tags/<tag>` finds PUBLISHED releases
+# only, and this one is a draft whose tag is not pushed until the digests below have been checked.
+# The list endpoint does include drafts, for a caller with push access.
+RELEASE_ID=$(gh api "repos/$REPO/releases" \
+  --jq ".[] | select(.tag_name == \"$VERSION\") | .id" 2>/dev/null | head -1 || true)
+
+if [[ -z "$RELEASE_ID" ]]; then
+  fail "could not find the draft release $VERSION on $REPO"
+fi
+
 if ! gh release upload "$VERSION" --repo "$REPO" --clobber "${jars[@]}" >/dev/null; then
   fail "uploading the jars failed"
 fi
@@ -140,11 +150,14 @@ for jar in "${jars[@]}"; do
   local_digest=$(shasum -a 256 "$jar" | cut -d' ' -f1)
   digest=""
   for i in $(seq 1 60); do
-    digest=$(gh api "repos/$REPO/releases/tags/$VERSION" \
+    digest=$(gh api "repos/$REPO/releases/$RELEASE_ID" \
       --jq ".assets[] | select(.name == \"$name\") | .digest // \"\"" 2>/dev/null || true)
     [[ -n "$digest" ]] && break
     sleep 5
   done
+  if [[ -z "$digest" ]]; then
+    fail "GitHub reported no digest for $name within five minutes of its upload"
+  fi
   if [[ "$digest" != "sha256:$local_digest" ]]; then
     fail "released digest '$digest' for $name does not match local sha256:$local_digest"
   fi

@@ -32,6 +32,16 @@ publishLocal:
 stage:
 	./mill release.stage
 
+# Install a release into the local ivy repository, as CI does, so a build resolves the RELEASED
+# jars rather than a local compile: the pinned version, or `VERSION=X.Y.Z`. `sync-staged` installs
+# the jars of a local `make stage` instead, for trying a release candidate in fume or flame before
+# it is tagged. Both overwrite what `publishLocal` installed; run that again to undo.
+sync-releases:
+	./etc/ci/sync-releases.sh $(VERSION)
+
+sync-staged:
+	./etc/ci/sync-releases.sh --staged
+
 # Release to GitHub Releases: `make release VERSION=X.Y.Z`, after bumping `pyrocosmVersion` in
 # build.mill and committing. See etc/ci/release.sh.
 release:
@@ -41,4 +51,4 @@ release:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: build test gallery demo static serve publishLocal stage release dev
+.PHONY: build test gallery demo static serve publishLocal stage sync-releases sync-staged release dev

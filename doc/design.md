@@ -357,6 +357,14 @@ X.Y.Z`; the shared CI workflow does this from an `extra_releases` input), and na
 repository among Burdock's hints when repackaging a launcher (`--github propensive/pyrocosm`),
 so the jars on its classpath are matched to the release's assets by digest and externalized.
 
+`make sync-releases` wraps that script here and in each consumer, defaulting to the version
+`build.mill` pins: in a consumer it installs the released jars a local build then resolves,
+instead of whatever a Pyrocosm checkout's `publishLocal` last left in `~/.ivy2/local`; here it
+installs the published bytes, which is how a release is verified once it is out. `make
+sync-staged` installs the jars of a local `make stage` under the same version, so a release
+candidate can be tried in Fume or Flame before anything is tagged. Both overwrite what
+`publishLocal` installed, and `publishLocal` puts it back.
+
 ## Decisions
 
 - Arrangement is renderer-owned; the model carries roles, priorities, relations and hints.
