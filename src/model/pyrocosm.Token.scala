@@ -22,8 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import vacuous.*
+import soundness.*
 
 // Syntax highlighting is done by the compiler (harlequin), which only exists on the JVM, so the
 // model carries the *result* of highlighting: tokens with their accents, exactly harlequin's

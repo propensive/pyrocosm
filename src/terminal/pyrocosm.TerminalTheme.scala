@@ -22,8 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import iridescence.*
+// Excluded from the umbrella: `Token` (harlequin), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Token as _, *}
 
 // The terminal's colours, by role. A theme answers for every tone, every syntax accent and the
 // handful of other roles the renderer distinguishes, so that no colour literal appears in the

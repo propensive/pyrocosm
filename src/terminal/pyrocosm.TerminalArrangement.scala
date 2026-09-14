@@ -22,18 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import denominative.*
-import escapade.*
-import gossamer.*
-import hypotenuse.*
-import rudiments.*
-import symbolism.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import vacuous.*
+import soundness.*
 
-import profanity.Board
-import ultimatum.{strip, stack, BorderStyle, Fixture, Pane, Sizing}
+import dysasymptotics.{linearAccess, linearSize}
 
 // The terminal's arrangement solver: from the interface's panels, their roles and priorities,
 // and the terminal's size, to an Ultimatum pane tree. A rule table rather than a constraint
@@ -153,7 +144,7 @@ object TerminalArrangement:
   // entries, drawn here in the foreground's full strength, where the entries' are faint.
   private def rules(hidden: () -> Boolean)(child: Pane): Pane =
     def rule(glyph: Text): Pane =
-      Pane.Widget(Sizing(1.0, maxHeight = 1), Edge(hidden, 0, 1, { canvas =>
+      Pane.Widget(Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { canvas =>
         canvas.move(Prim, Prim)
         canvas.put(Teletype(glyph*canvas.width)) })).weight(0.0)
 
@@ -167,12 +158,12 @@ object TerminalArrangement:
   // Ultimatum's `border`, with edges that hide with the content they frame.
   private def border(style: BorderStyle, hidden: () -> Boolean)(child: Pane): Pane =
     def horizontalRule: Pane =
-      Pane.Widget(Sizing(1.0, maxHeight = 1), Edge(hidden, 0, 1, { canvas =>
+      Pane.Widget(Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { canvas =>
         canvas.move(Prim, Prim)
         canvas.put(Teletype(style.horizontal*canvas.width)) }))
 
     def verticalRule: Pane =
-      Pane.Widget(Sizing(0.0, maxWidth = 1), Edge(hidden, 1, 0, { canvas =>
+      Pane.Widget(Sizing(0.0, maxWidth = 1), new Edge(hidden, 1, 0, { canvas =>
         var row = 0
         while row < canvas.height do
           canvas.move(Prim, row.z)
@@ -180,7 +171,7 @@ object TerminalArrangement:
           row += 1 }))
 
     def corner(glyph: Text): Pane =
-      Pane.Widget(Sizing(0.0, maxWidth = 1, maxHeight = 1), Edge(hidden, 1, 1, { canvas =>
+      Pane.Widget(Sizing(0.0, maxWidth = 1, maxHeight = 1), new Edge(hidden, 1, 1, { canvas =>
         canvas.move(Prim, Prim)
         canvas.put(Teletype(glyph)) }))
 

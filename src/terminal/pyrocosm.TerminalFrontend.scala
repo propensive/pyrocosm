@@ -26,30 +26,14 @@ import java.io as ji
 import java.util.concurrent as juc
 import java.util.concurrent.atomic as juca
 import java.util.concurrent.locks as jucl
-
 import scala.caps
 
-import ambience.*
-import anticipation.*
-import denominative.*
-import clavichord.*
-import contingency.*
-import escapade.*
-import escritoire.*
-import gigantism.Every
-import gossamer.*
-import hieroglyph.*
-import parasite.*
-import polysyllabic.*
-import profanity.*
-import quantitative.*
-import rudiments.*
-import symbolism.*
-import turbulence.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import vacuous.*
+import soundness.*
 
-import ultimatum.{strip, Form, Gaugeable, Gauging, InlineAnchoring, InlineGrowth, InlineRoot, InlineShrink, Occupancy, Pane, ScreenRoot, Sizing}
+import clavichord.Keypress
+
+import gigantism.Every
+import dysasymptotics.{linearAccess, linearSize}
 
 // An input stream over the console's own, which profanity's `interactive` closes when a session
 // ends. Under an Ethereal daemon the console's stdin is the client's socket, so closing it would

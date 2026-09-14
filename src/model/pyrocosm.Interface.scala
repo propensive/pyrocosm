@@ -22,9 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import clavichord.*
-import rudiments.*
-import symbolism.*
+import soundness.*
 
 // A keyboard shortcut the interface claims. Declared, so the web frontend intercepts only these
 // chords and leaves the rest to the browser, and so a help panel can list them.

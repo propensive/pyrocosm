@@ -24,8 +24,9 @@ package pyrocosm
 
 import scala.caps
 
-import denominative.dysasymptotics.linearSize
-import rudiments.*
+import soundness.*
+
+import dysasymptotics.linearSize
 
 // A reactive cell: the one place where the model is mutable. An application assigns to it from
 // any thread — a benchmark reporter, a compile task, an event handler — and every frontend

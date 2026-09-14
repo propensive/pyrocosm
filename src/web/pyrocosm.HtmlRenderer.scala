@@ -22,23 +22,16 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import archimedes.*
-import contingency.*
-import denominative.{Span as _, *}
-import gossamer.*
-import murmuration.sortingAlgorithms.timsort
-import hypotenuse.*
-import honeycomb.*
-import nomenclature.*
-import prepositional.*
-import rudiments.*
-import spectacular.*
-import symbolism.*
-import vacuous.*
+// Excluded from the umbrella: `Glyph` (phoenicia), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file. Excluded
+// too: `Em` (cataclysm), `Span` (denominative), so the name is the HTML element `htmlDoms`
+// supplies.
+import soundness.{Em as _, Glyph as _, Span as _, *}
 
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import honeycomb.attributives.textAttributive
+import murmuration.zip
+import sortingAlgorithms.timsort
+import dysasymptotics.{linearAccess, linearSize}
+import attributives.textAttributive
 import htmlDoms.whatwg.*
 import nomenclature.CssClass.nominative
 
@@ -192,33 +185,42 @@ class HtmlRenderer():
   def codeLine(line: Block.Line, notes: List[Block.Note], last: Boolean): Html of Phrasing =
     // Each token, cut at the boundaries where a note begins or ends inside it, with a running
     // offset into the line.
-    type State = (Int, List[Html of Phrasing])
+    var offset: Int = 0
+    var pieces: List[Html of Phrasing] = Nil
 
-    val (_, pieces) = line.tokens.fold[State]((0, Nil)): (state: State, token: Token) =>
-      val (offset, pieces) = state
+    line.tokens.each: (token: Token) =>
       val end = offset + token.text.length
       val ends: List[Int] = notes.bind { (note: Block.Note) => List(note.start, note.end) }
       val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
-      val styled: List[Html of Phrasing] = cuts.zip(cuts.tail).map: (from: Int, to: Int) =>
+      cuts.zip(cuts.tail).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
-        notes.seek { (note: Block.Note) => note.start <= from && note.end >= to }.lay(base): (note: Block.Note) =>
-          Span(`class` = cls(t"pyro-note-${note.style.toString.tt.lower}"), title = note.caption.or(t""))(base)
 
-      (end, pieces + styled)
+        val styled: Html of Phrasing =
+          notes.seek { (note: Block.Note) => note.start <= from && note.end >= to }.lay(base): (note: Block.Note) =>
+            Span(`class` = cls(t"pyro-note-${note.style.toString.tt.lower}"), title = note.caption.or(t""))(base)
 
-    Span(`class` = cls(t"pyro-line"))(Fragment(pieces*), if last then Fragment[Phrasing]() else t"\n")
+        pieces = styled :: pieces
+
+      offset = end
+
+    val ordered: List[Html of Phrasing] = pieces.reverse
+
+    Span(`class` = cls(t"pyro-line"))(Fragment(ordered*), if last then Fragment[Phrasing]() else t"\n")
 
   private def table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]]): Html of Flow =
     def columnClasses(column: Block.Column): List[Name[CssClass]] =
-      List(cls(t"pyro-align-${column.alignment.toString.tt.lower}"))
-        + (if column.numeric then List(cls(t"pyro-numeric")) else Nil)
-        + (column.sizing match
-            case Block.Sizing.Stretch        => List(cls(t"pyro-stretch"))
-            case Block.Sizing.Rigid          => List(cls(t"pyro-rigid"))
-            case Block.Sizing.Paragraph      => Nil
-            case Block.Sizing.Collapsible(_) => List(cls(t"pyro-collapsible")))
+      val alignment: List[Name[CssClass]] = List(cls(t"pyro-align-${column.alignment.toString.tt.lower}"))
+      val numeric: List[Name[CssClass]] = if column.numeric then List(cls(t"pyro-numeric")) else Nil
+
+      val sizing: List[Name[CssClass]] = column.sizing match
+        case Block.Sizing.Stretch        => List(cls(t"pyro-stretch"))
+        case Block.Sizing.Rigid          => List(cls(t"pyro-rigid"))
+        case Block.Sizing.Paragraph      => Nil
+        case Block.Sizing.Collapsible(_) => List(cls(t"pyro-collapsible"))
+
+      alignment + numeric + sizing
 
     val head = Thead(Tr(columns.map { (column: Block.Column) => Th(`class` = columnClasses(column))(phrase(column.title)) }*))
 

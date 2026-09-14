@@ -22,39 +22,26 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import archimedes.*
-import cataclysm.*
-import clavichord.*
-import contingency.*
-import denominative.*
-import escapade.*
-import fulminate.*
-import gossamer.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import harlequin.Scala
-import symbolism.*
-import jacinta.*
-import probably.*
-import punctuation.*
-import quantitative.*
-import rudiments.*
-import spectacular.*
-import stratiform.*
-import turbulence.*
-import vacuous.*
-import yossarian.*
+// Excluded from the umbrella: `Control` (coaxial), `Glyph` (phoenicia), `Language` (cosmopolite),
+// `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which would outrank this
+// package's own definitions, since a wildcard import beats a package member declared in another
+// file.
+import soundness.{Control as _, Glyph as _, Language as _, Standing as _, Step as _, Token as _, *}
 
-import anticipation.termcapDefinitions.xtermTrueColorTermcap
-import contingency.strategies.throwUnsafely
-import cataclysm.formatting.indentedCssFormatting
-import escritoire.tableStyles.thickTableStyle
-import fulminate.errorDiagnostics.emptyDiagnostics
-import hieroglyph.charEncoders.utf8Encoder
-import hieroglyph.textMetrics.uniformMetric
-import ultimatum.palettes.solarizedDarkGaugePalette
-import jacinta.discriminables.jsonByKindDiscriminable
-import jacinta.formatting.compactJsonFormatting
+import clavichord.Keypress
+
+import dysasymptotics.{linearAccess, linearSize}
+import harlequin.Scala
+import termcapDefinitions.xtermTrueColorTermcap
+import strategies.throwUnsafely
+import formatting.indentedCssFormatting
+import tableStyles.thickTableStyle
+import errorDiagnostics.emptyDiagnostics
+import charEncoders.utf8Encoder
+import textMetrics.uniformMetric
+import palettes.solarizedDarkGaugePalette
+import discriminables.jsonByKindDiscriminable
+import formatting.compactJsonFormatting
 
 case class Person(name: Text, age: Int)
 

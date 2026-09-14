@@ -22,18 +22,10 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import delicious.*
-import gossamer.*
-import prepositional.*
-import denominative.*
-import rudiments.*
-import symbolism.*
-import vacuous.*
-
-// Named imports only: a wildcard import of harlequin would outrank this package's own `Token`
-// (a wildcard import beats a same-package definition from another file).
-import harlequin.{Java, ProgrammingLanguage, Scala, SourceCode}
+// Excluded from the umbrella: `Language` (cosmopolite), `Token` (harlequin), which would outrank
+// this package's own definitions, since a wildcard import beats a package member declared in
+// another file.
+import soundness.{Language as _, Token as _, *}
 
 // The exhibitions which need the compiler, and so exist only on the JVM: highlighted source from
 // harlequin, and the semantic markup the compiler embeds in its diagnostics, parsed by
@@ -52,7 +44,7 @@ extension (token: harlequin.Token)
 
 extension (code: SourceCode)
   def modelLines: List[Block.Line] =
-    List.from(code.lines.readable).map { (line: List[harlequin.Token]) => Block.Line(line.map(_.model)) }
+    List.from(code.lines.readable.map { (line: List[harlequin.Token]) => Block.Line(line.map(_.model)) })
 
   // The model's language for the language that highlighted the source.
   def modelLanguage: Language = code.language match

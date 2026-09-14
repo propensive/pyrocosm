@@ -24,33 +24,25 @@ package pyrocosm
 
 import scala.caps
 
-import ambience.*
-import anticipation.*
-import clavichord.*
-import ethereal.cli
-import exoskeleton.{execute, Argument}
-import symbolism.*
-import contingency.*
-import escapade.*
-import gossamer.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import turbulence.*
-import parasite.*
-import quantitative.*
-import profanity.*
-import rudiments.*
-import vacuous.*
+// Excluded from the umbrella: `Control` (coaxial), `Glyph` (phoenicia), `Language` (cosmopolite),
+// `Standing` (ultimatum), `Status` (exoskeleton), `Step` (ultimatum), `Token` (harlequin), which
+// would outrank this package's own definitions, since a wildcard import beats a package member
+// declared in another file.
+import soundness.{Control as _, Glyph as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
 
-import contingency.strategies.throwUnsafely
-import exoskeleton.backstops.silentBackstop
-import escritoire.tableStyles.thickTableStyle
-import exoskeleton.executives.completionsExecutive
-import exoskeleton.interpreters.posixInterpreter
-import hieroglyph.textMetrics.uniformMetric
-import parasite.probates.cancelProbate
-import parasite.threading.platformThreading
-import ultimatum.palettes.solarizedDarkGaugePalette
-import scintillate.webserverErrorPages.minimalErrorPage
+import murmuration.zip
+
+import dysasymptotics.{linearAccess, linearSize}
+import strategies.throwUnsafely
+import backstops.silentBackstop
+import tableStyles.thickTableStyle
+import executives.completionsExecutive
+import interpreters.posixInterpreter
+import textMetrics.uniformMetric
+import probates.cancelProbate
+import threading.platformThreading
+import palettes.solarizedDarkGaugePalette
+import webserverErrorPages.minimalErrorPage
 
 // The gallery: one interface with every kind of node, every role and priority, a ticking gauge,
 // a selectable table driving a detail panel, a log a button appends to, and a code field with
@@ -64,9 +56,11 @@ object Samples:
 
   case class Benchmark(name: Text, mean: Double, ratio: Double)
 
-  val benchmarks: List[(Benchmark, Action)] =
+  val samples: List[Benchmark] =
     List(Benchmark(t"parse", 0.00042, 1.0), Benchmark(t"encode", 0.0011, 2.6), Benchmark(t"decode", 0.00087, 2.1))
-    . map { (benchmark: Benchmark) => benchmark -> Action(benchmark.name) }
+
+  val benchmarks: List[(Benchmark, Action)] =
+    samples.map { (benchmark: Benchmark) => benchmark -> Action(benchmark.name) }
 
   def results: Block =
     Block.Table
@@ -158,8 +152,9 @@ object Samples:
   def decorate(text: Text, caret: Int): Control.Field.Decoration =
     // The tokens cover the whole text, with a newline token between lines, as a field's
     // decoration must.
-    val tokens: List[Token] = text.cut(t"\n").indexed.bind: (line, index) =>
-      (if index.n0 == 0 then Nil else List(Token.plain(t"\n"))) + tokenize(line)
+    val tokens: List[Token] = text.cut(t"\n").indexed.bind: (line: Text, index: Ordinal) =>
+      val break: List[Token] = if index.n0 == 0 then Nil else List(Token.plain(t"\n"))
+      break + tokenize(line)
 
     val before = text.s.substring(0, caret.min(text.length)).nn
     val stem = before.reverse.takeWhile(_.isLetter).reverse.tt
@@ -174,18 +169,28 @@ object Samples:
       else Nil
 
     // Prose, rather than code: several words and no keyword. A REPL would submit it elsewhere.
-    val words: List[Text] = text.cut(t" ")
-    val prose: Boolean = words.count(_ != t"") >= 3 && !words.exists(keywords.has(_))
+    val parts: List[Text] = text.cut(t" ")
+    val prose: Boolean = parts.count(_ != t"") >= 3 && !parts.exists(keywords.has(_))
 
     // What the line has brought into scope, as a REPL reports it: every `val x` so far.
-    val bindings: List[Text] = words.zip(words.tail).sweep { case (t"val", name) if name != t"" => name }
+    val bindings: List[Text] = parts.zip(parts.skip(1)).sweep { case (t"val", name) if name != t"" => name }
 
-    val detail: List[Block] =
-      (if prose then List(Block.Paragraph(List(Inline.Toned(Tone.Muted, Inline.text(t"reads as prose"))))) else Nil)
-        + (if bindings.nil then Nil else List(Block.Paragraph(
-            Inline.Toned(Tone.Muted, Inline.text(t"⤷ scope: ")) :: bindings.indexed.bind { (name, index) =>
-              (if index.n0 == 0 then Nil else List(Inline.Textual(t", ")))
-                + List(Inline.Code(Language.Scala, List(Token(name, Token.Accent.Term, Token.Role.Binding), Token(t": ", Token.Accent.Symbol), Token(t"Int", Token.Accent.Typal)))) })))
+    val read: List[Block] =
+      if prose then List(Block.Paragraph(List(Inline.Toned(Tone.Muted, Inline.text(t"reads as prose"))))) else Nil
+
+    val scope: List[Inline] = bindings.indexed.bind: (name: Text, index: Ordinal) =>
+      val comma: List[Inline] = if index.n0 == 0 then Nil else List(Inline.Textual(t", "))
+      val binding: List[Inline] =
+        List(Inline.Code(Language.Scala, List(Token(name, Token.Accent.Term, Token.Role.Binding),
+            Token(t": ", Token.Accent.Symbol), Token(t"Int", Token.Accent.Typal))))
+
+      comma + binding
+
+    val scoped: List[Block] =
+      if bindings.nil then Nil
+      else List(Block.Paragraph(Inline.Toned(Tone.Muted, Inline.text(t"⤷ scope: ")) :: scope))
+
+    val detail: List[Block] = read + scoped
 
     // Any `oops` is an error, marked on its line and span, as a compiler's diagnostic would be.
     val marks: List[Block.Note] = text.cut(t"\n").indexed.bind: (line, index) =>
@@ -315,7 +320,7 @@ def gallery(arguments: Text*): Unit = cli:
     given Stdio = caps.unsafe.unsafeAssumePure(summon[exoskeleton.Invocation].stdio)
 
     val words: List[Text] = summon[exoskeleton.Cli].arguments.map { (argument: Argument) => argument() }
-    def number(default: Int): Int = words.at(Sec).let { (word: Text) => safely(word.decode[Int]) }.or(default)
+    def number(default: Int): Int = words.at(Sec).let { (word: Text) => safely(word.as[Int]) }.or(default)
 
     words.at(Prim) match
       case t"static" =>
@@ -335,7 +340,7 @@ def gallery(arguments: Text*): Unit = cli:
       // repl [port]` serves the REPL, a session per tab.
       case t"serve" =>
         val repl: Boolean = words.at(Sec) == t"repl"
-        val port = words.at(if repl then Ter else Sec).let { (word: Text) => safely(word.decode[Int]) }.or(8080)
+        val port = words.at(if repl then Ter else Sec).let { (word: Text) => safely(word.as[Int]) }.or(8080)
         supervise:
           import parasite.probates.cancelProbate
           if repl then

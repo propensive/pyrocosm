@@ -22,9 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import gossamer.*
-import vacuous.*
+import soundness.*
 
 // Numbers as a person reads them, shared by every renderer so that a figure or an amount is the
 // same text in the terminal and on the web.

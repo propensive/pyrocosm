@@ -22,35 +22,21 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import archimedes.*
-import contingency.*
-import dendrology.*
-import denominative.*
-import escapade.*
-import escritoire.*
-import gossamer.*
-import hieroglyph.*
-import hypotenuse.*
-import polysyllabic.*
-import rudiments.*
-import symbolism.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import spectacular.*
-import tessellate.*
-import vacuous.*
+// Excluded from the umbrella: `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin),
+// which would outrank this package's own definitions, since a wildcard import beats a package
+// member declared in another file.
+import soundness.{Standing as _, Step as _, Token as _, *}
 
-import ultimatum.{gaugeLine, gaugeRows, Captioned, Countdown, Fraction, Gaugeable, Gauging,
-    Reckoning, Tick}
+import dysasymptotics.{linearAccess, linearSize}
 
-import aviation.Duration
-import murmuration.sortingAlgorithms.timsort
+import murmuration.zip
+import sortingAlgorithms.timsort
 import columnAttenuation.ignoreAttenuation
-import dendrology.laneDagStyles.boxDrawingLaneDagStyle
-import dendrology.treeStyles.roundedTreeStyle
-import ultimatum.processions.checklistProcession
-import ultimatum.sparklines.blockSparkline
-import ultimatum.timers.compactElapsed
+import laneDagStyles.boxDrawingLaneDagStyle
+import treeStyles.roundedTreeStyle
+import processions.checklistProcession
+import sparklines.blockSparkline
+import timers.compactElapsed
 
 // The static half of the terminal frontend: phrasing to a styled line, and a block to styled
 // lines at a width. Everything effectful (repainting, focus, scrolling) is in the fixtures; this
@@ -79,7 +65,8 @@ object TerminalRenderer:
       ( using Text is Measurable, Hyphenation )
     :   Sequence[text] =
 
-      List.from(lines.readable).bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
+      val all: List[text] = List.from(lines.readable)
+      all.bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
 
   object Rigid extends Columnar:
     def flex[text: Textual { type Result = Char }](lines: Array[text]^{}, maxWidth: Int)
@@ -95,7 +82,8 @@ object TerminalRenderer:
       ( using Text is Measurable, Hyphenation )
     :   Sequence[text] =
 
-      List.from(lines.readable).bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
+      val all: List[text] = List.from(lines.readable)
+      all.bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
 
   def glyph(glyph: Glyph)(using glyphs: Gaugeable.Glyphs): Text =
     val unicode = glyphs != Gaugeable.Glyphs.Ascii
@@ -198,13 +186,17 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
 
   // A paragraph's phrasing, split at hard breaks and wrapped to the width.
   private def wrapped(content: List[Inline], width: Int): List[Teletype] =
-    type Lines = (List[List[Inline]], List[Inline])   // the lines done (reversed), and the current one (reversed)
+    var done: List[List[Inline]] = Nil      // the lines already broken off, most recent first
+    var current: List[Inline] = Nil         // the line being gathered, in reverse
 
-    val (done, current) = content.fold[Lines]((Nil, Nil)): (state: Lines, node: Inline) =>
-      val (done, current) = state
+    content.each: (node: Inline) =>
       node match
-        case Inline.Break() => (current.reverse :: done, Nil)
-        case other          => (done, other :: current)
+        case Inline.Break() =>
+          done = current.reverse :: done
+          current = Nil
+
+        case other =>
+          current = other :: current
 
     (current.reverse :: done).reverse.bind { (line: List[Inline]) => Flow.wrap(phrase(line), width.max(1)) }
 
@@ -338,27 +330,30 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
   def codeLine(line: Block.Line, notes: List[Block.Note]): Teletype =
     // Each token, cut at the boundaries where the styling may change within it (the ends of
     // the notes that fall inside it), with a running offset into the line.
-    type State = (Int, List[Teletype])
+    var offset: Int = 0
+    var pieces: List[Teletype] = Nil
 
-    val (_, pieces) = line.tokens.fold[State]((0, Nil)): (state: State, token: Token) =>
-      val (offset, pieces) = state
+    line.tokens.each: (token: Token) =>
       val end = offset + token.text.length
       val ends: List[Int] = notes.bind { (note: Block.Note) => List(note.start, note.end) }
       val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
-      val styled: List[Teletype] = cuts.zip(cuts.tail).map: (from: Int, to: Int) =>
+      cuts.zip(cuts.tail).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
-        notes.seek { (note: Block.Note) => note.start <= from && note.end >= to }.let(_.style) match
+
+        val styled = notes.seek { (note: Block.Note) => note.start <= from && note.end >= to }.let(_.style) match
           case Block.Note.Style.Erroneous => e"$Underline(${toned(Tone.Failure)(base)})"
           case Block.Note.Style.Caution   => e"$Underline(${toned(Tone.Warning)(base)})"
           case Block.Note.Style.Highlight => e"${Bg(theme.selection)}($base)"
           case Block.Note.Style.Param     => e"$Italic($base)"
           case _                          => base
 
-      (end, pieces + styled)
+        pieces = styled :: pieces
 
-    joined(pieces)
+      offset = end
+
+    joined(pieces.reverse)
 
   private def table
     ( columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]],

@@ -22,15 +22,10 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import cataclysm.*
-import gossamer.*
-import symbolism.*
-import spectacular.*
-import turbulence.*
+import soundness.*
 
-import contingency.strategies.throwUnsafely
-import fulminate.errorDiagnostics.emptyDiagnostics
+import strategies.throwUnsafely
+import errorDiagnostics.emptyDiagnostics
 
 // The one stylesheet. Every rule is a `css"…"` value, validated as the code compiles; every
 // colour is a `var(--pyro-…)` reference to the theme's `:root` block, so a second theme is a

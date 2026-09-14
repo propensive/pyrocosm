@@ -22,14 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import clavichord.*
-import gossamer.*
-import quantitative.*
-import rudiments.*
-import spectacular.*
-import stratiform.*
-import vacuous.*
+// Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Language as _, *}
 
 // Phrasing content: the things which occur *within* a line of text. Comparable to Markdown's
 // inline nodes, with a single kind of emphasis, and richer in the ways an application needs —

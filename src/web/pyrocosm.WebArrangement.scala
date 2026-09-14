@@ -22,24 +22,14 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import cataclysm.*
-import denominative.{Span as _, *}
-import prepositional.*
-import gossamer.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import graffiti.*
-import honeycomb.*
-import nomenclature.*
-import quantitative.*
-import rudiments.*
-import symbolism.*
-import vacuous.*
-import jacinta.*
-import spectacular.*
+// Excluded from the umbrella: `Control` (coaxial), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file. Excluded
+// too: `Span` (denominative), so the name is the HTML element `htmlDoms` supplies.
+import soundness.{Control as _, Span as _, *}
 
-import honeycomb.attributives.textAttributive
-import jacinta.formatting.compactJsonFormatting
+import dysasymptotics.{linearAccess, linearSize}
+import attributives.textAttributive
+import formatting.compactJsonFormatting
 import htmlDoms.whatwg.*
 import nomenclature.CssClass.nominative
 

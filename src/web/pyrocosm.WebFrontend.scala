@@ -24,34 +24,19 @@ package pyrocosm
 
 import java.util.concurrent as juc
 import java.util.concurrent.atomic as juca
-
 import scala.caps
 
-import anticipation.*
-import clavichord.*
-import contingency.*
-import denominative.*
-import gossamer.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import hieroglyph.*
-import honeycomb.*
-import jacinta.*
-import parasite.*
-import perihelion.*
-import quantitative.*
-import rudiments.*
-import scintillate.*
-import spectacular.*
-import symbolism.*
-import telekinesis.*
-import turbulence.*
-import vacuous.*
+// Excluded from the umbrella: `Control` (coaxial), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Control as _, *}
 
-import denominative.dysasymptotics.linearSize
-import hieroglyph.charEncoders.utf8Encoder
-import jacinta.formatting.compactJsonFormatting
-import contingency.strategies.throwUnsafely
-import eucalyptus.logging.silentLogging
+import perihelion.{Channel, Message}
+
+import dysasymptotics.{linearAccess, linearSize}
+import charEncoders.utf8Encoder
+import formatting.compactJsonFormatting
+import strategies.throwUnsafely
+import logging.silentLogging
 
 // The messages the frontend and its script exchange as JSON. Flat case classes, so the shape is
 // plain for the script: a patch replaces the inner HTML of an element by id; an incoming message

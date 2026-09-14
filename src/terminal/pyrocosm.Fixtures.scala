@@ -24,21 +24,13 @@ package pyrocosm
 
 import scala.caps
 
-import anticipation.*
-import denominative.*
-import clavichord.*
-import denominative.*
-import escapade.*
-import gossamer.*
-import hieroglyph.*
-import profanity.*
-import rudiments.*
-import symbolism.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import spectacular.*
-import vacuous.*
+// Excluded from the umbrella: `Token` (harlequin), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Token as _, *}
 
-import ultimatum.{Fixture, Focus, Tick}
+import clavichord.Keypress
+
+import dysasymptotics.{linearAccess, linearSize}
 
 // What one running session shares with its fixtures: which fixture was last painted focused
 // (so the frontend can give it Tab), and the state of an inline transcript: how many entries
@@ -110,7 +102,7 @@ class PanelFixture(panel: Panel, renderer: TerminalRenderer, dispatch: Event -> 
 extends Focus, Refreshable:
 
   @caps.unsafe.untrackedCaptures
-  private val started: Long = System.nanoTime
+  private val started: Long = java.lang.System.nanoTime
 
   @caps.unsafe.untrackedCaptures
   private var selection: Int = 0
@@ -120,7 +112,7 @@ extends Focus, Refreshable:
 
   private def follow: Boolean = panel.hints.has[hints.Follow.type]
 
-  private def tick: Tick = Tick.at((System.nanoTime - started)/1000000L, 80)
+  private def tick: Tick = Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
   private def actions: List[Action] = Actions.of(panel.content())
   private def selected: Optional[Action] = actions.at(selection.z)
 
@@ -142,7 +134,7 @@ extends Focus, Refreshable:
 
   private def lines(width: Int, focused: Boolean): List[Teletype] =
     val content = panel.content()
-    val frame: Long = if Actions.animated(content) then (System.nanoTime - started)/80000000L else 0L
+    val frame: Long = if Actions.animated(content) then (java.lang.System.nanoTime - started)/80000000L else 0L
     val selection0: Int = if focused then selection else -1
 
     rendering.let { current => if current.matches(content, width, focused, selection0, frame) then current.lines else Unset }.or:
@@ -212,7 +204,7 @@ class PassiveFixture(panel: Panel, renderer: TerminalRenderer, session: Session,
 extends Refreshable:
 
   @caps.unsafe.untrackedCaptures
-  private val started: Long = System.nanoTime
+  private val started: Long = java.lang.System.nanoTime
 
   private class Rendering(val content: List[Block], val from: Int, val until: Int, val width: Int, val frame: Long, val lines: List[Teletype])
 
@@ -225,7 +217,7 @@ extends Refreshable:
     val content = panel.content()
     val from = if windowed then session.frozen else 0
     val until = if windowed && session.hiding then session.upto else content.size
-    val frame: Long = if Actions.animated(content) then (System.nanoTime - started)/80000000L else 0L
+    val frame: Long = if Actions.animated(content) then (java.lang.System.nanoTime - started)/80000000L else 0L
 
     rendering.let { current =>
       if current.content == content && current.from == from && current.until == until
@@ -233,7 +225,7 @@ extends Refreshable:
       then current.lines else Unset }
     . or:
       val window: List[Block] = content.excerpt(from, until)
-      val tick = Tick.at((System.nanoTime - started)/1000000L, 80)
+      val tick = Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
       // A window that continues committed entries is separated from them by a blank line, as
       // the entries are from each other.
       val rendered = renderer.blocks(window, width.max(1), tick, Unset)

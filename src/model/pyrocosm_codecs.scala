@@ -24,16 +24,7 @@ package pyrocosm
 
 import scala.caps
 
-import anticipation.*
-import archimedes.*
-import clavichord.*
-import contingency.*
-import distillate.*
-import gossamer.*
-import prepositional.*
-import spectacular.*
-import stratiform.*
-import vacuous.*
+import soundness.*
 
 // TEL codecs for the two leaf types with no serial form of their own. Each is a scalar: a
 // keypress is its rendering (`[⌃]+[C]`), and a mathematical expression is its Ergo shorthand.

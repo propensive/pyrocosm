@@ -24,7 +24,7 @@ package pyrocosm
 
 import java.util.concurrent.atomic as juca
 
-import anticipation.*
+import soundness.*
 
 // The handles an application creates to name the things a user can act upon. Each carries a
 // process-unique id, so that a handle is a plain value: it serialises as its id, an event
@@ -34,7 +34,7 @@ object Handles:
   // A random per-process prefix keeps ids from two processes (a server and a replayed
   // recording, say) from colliding; the counter keeps them unique within one.
   private val prefix: String =
-    java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(Math.random()) & 0xffffffL).nn
+    java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(java.lang.Math.random()) & 0xffffffL).nn
 
   private val counter: juca.AtomicLong = juca.AtomicLong(0L)
 

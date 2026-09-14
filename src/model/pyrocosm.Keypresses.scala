@@ -22,16 +22,13 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import clavichord.*
-import contingency.*
-import distillate.*
-import gossamer.*
-import denominative.*
-import rudiments.*
-import denominative.dysasymptotics.linearSize
-import spectacular.*
-import vacuous.*
+import soundness.*
+
+// The umbrella's re-export widens `Keypress.Tab` and its siblings to `Keypress`, losing the
+// singleton types `EditKey` and `Modifier` are unions of, so clavichord's own path is used here.
+import clavichord.Keypress
+
+import dysasymptotics.linearSize
 
 // The inverse of clavichord's rendering of a keypress: `[⌃]+[C]` back to `Ctrl('C')`, `[⇧]+[↵]`
 // to `Shift(Enter)`, `[F5]` to `FunctionKey(5)`, `[a]` to `CharKey('a')`. Every piece of the

@@ -22,8 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import vacuous.*
+// Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Language as _, *}
 
 // The interactive elements. Each names a handle the application created, and holds its state
 // in `Live` cells so that the application can enable a button, replace a field's text or move

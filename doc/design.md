@@ -366,4 +366,10 @@ so the jars on its classpath are matched to the release's assets by digest and e
   control.
 - Pyrocosm is its own repository depending on published Soundness components; the typeclass and
   every instance live here.
+- Every source file imports the ecosystem through the umbrella, `import soundness.*`, as Fume and
+  Flame do, rather than naming each library. A name the umbrella also carries is excluded from it
+  (`import soundness.{Token as _, *}`), since a wildcard import outranks a definition made in
+  another file of the same package; what the umbrella leaves out (`murmuration.zip`,
+  `perihelion.Channel`, `clavichord.Keypress`, whose re-export widens its cases) is imported by
+  name, with the reason stated where it is not obvious.
 - `Presentable` / `exhibit`; `portray` is the fallback verb.

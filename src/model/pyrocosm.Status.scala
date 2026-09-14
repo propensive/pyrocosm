@@ -22,9 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import aviation.*
-import quantitative.*
-import vacuous.*
+import soundness.*
 
 // How one unit of work has turned out, or has not yet. The same six-way vocabulary as
 // ultimatum's `Standing`, defined here so that the model does not depend on the terminal.

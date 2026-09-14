@@ -22,13 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import acyclicity.*
-import gossamer.*
-import anticipation.*
-import denominative.*
-import rudiments.*
-import stratiform.*
-import vacuous.*
+// Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Language as _, *}
 
 // Flow content: the things which occur one after another down a page or a pane. Comparable to
 // Markdown's block nodes, and richer: tables with layout semantics, records, notices, trees,
@@ -65,14 +61,16 @@ object Block:
     // between keep the token's accent and role. An empty part adds no token, so an empty line
     // is a line of none.
     def split(tokens: List[Token]): List[Line] =
-      type State = (List[Line], List[Token])
+      var done: List[Line] = Nil
+      var current: List[Token] = Nil
 
-      val (done, current) = tokens.fold[State]((Nil, Nil)): (state: State, token: Token) =>
-        token.text.cut(t"\n").indexed.fold[State](state): (state: State, part: (Text, Ordinal)) =>
-          val (done, current) = state
-          val next: State = if part(1).n0 == 0 then (done, current) else (Line(current.reverse) :: done, Nil)
-          val (done2, current2) = next
-          (done2, if part(0) == t"" then current2 else token.copy(text = part(0)) :: current2)
+      tokens.each: (token: Token) =>
+        token.text.cut(t"\n").indexed.each: (part: Text, index: Ordinal) =>
+          if index.n0 > 0 then
+            done = Line(current.reverse) :: done
+            current = Nil
+
+          if part != t"" then current = token.copy(text = part) :: current
 
       (Line(current.reverse) :: done).reverse
 
@@ -114,7 +112,7 @@ object Block:
 
   object Graph:
     def of(dag: Dag[Vertex]): Graph =
-      val edges = List.from(dag.edges).map { (edge: (Vertex, Vertex)) => Edge(edge(0).id, edge(1).id) }
+      val edges: List[Edge] = List.from(dag.edges.map { (edge: (Vertex, Vertex)) => Edge(edge(0).id, edge(1).id) })
       Graph(List.from(dag.keys), edges)
 
     extension (graph: Graph)

@@ -24,20 +24,11 @@ package pyrocosm
 
 import scala.compiletime
 
-import anticipation.*
-import clavichord.*
-import denominative.*
-import digression.*
-import fulminate.*
-import gossamer.*
-import prepositional.*
-import punctuation.*
-import quantitative.*
-import rudiments.*
-import spectacular.*
-import vacuous.*
-import wisteria.*
-import denominative.dysasymptotics.{linearAccess, linearSize}
+// Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Language as _, *}
+
+import dysasymptotics.{linearAccess, linearSize}
 
 // A value's rich rendering: what `show` is to text and `inspect` is to a debugger, `exhibit` is
 // to an interface. An instance yields phrasing (`in Inline`) or flow (`in Block`) content, and
@@ -180,7 +171,7 @@ object Presentable extends Presentable2:
   private def layout(node: Layout): Block = node match
     case Layout.Paragraph(_, prose*)      => Block.Paragraph(phrasing(List.from(prose)))
     case Layout.Heading(_, level, prose*) => Block.Heading(level, phrasing(List.from(prose)))
-    case Layout.BlockQuote(_, layouts*)   => Block.Quotation(List.from(layouts).map(layout))
+    case Layout.BlockQuote(_, layouts*)   => Block.Quotation(List.from(layouts.map(layout)))
     case Layout.ThematicBreak(_)          => Block.Rule()
     case Layout.HtmlBlock(_, html)        => Block.Code(Language("html"), lines(html))
 
@@ -188,10 +179,10 @@ object Presentable extends Presentable2:
       Block.Code(info.prim.lay(Language.Plain)(Language(_)), lines(content))
 
     case Layout.BulletList(_, _, items*) =>
-      Block.Listing(false, List.from(items).map { (item: List[Layout]) => Block.Item(item.map(layout)) })
+      Block.Listing(false, List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) }))
 
     case Layout.OrderedList(_, _, _, _, items*) =>
-      Block.Listing(true, List.from(items).map { (item: List[Layout]) => Block.Item(item.map(layout)) })
+      Block.Listing(true, List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) }))
 
   private def lines(content: Text): List[Block.Line] =
     content.cut(t"\n").map { (line: Text) => Block.Line(List(Token.plain(line))) }

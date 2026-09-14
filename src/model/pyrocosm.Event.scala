@@ -22,8 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import clavichord.*
+import soundness.*
 
 // What a user did, in the vocabulary both media can honour. An application handles these in one
 // function and mutates `Live` cells in response; it never sees a key code, a click or a DOM

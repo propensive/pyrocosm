@@ -24,9 +24,9 @@ package pyrocosm
 
 import scala.reflect.ClassTag
 
-import denominative.dysasymptotics.linearSize
-import rudiments.*
-import vacuous.*
+import soundness.*
+
+import dysasymptotics.linearSize
 
 // A hint is something a renderer *may* honour, never something the application depends on. The
 // bag is open and typed: any renderer looks up the hint types it understands and ignores the

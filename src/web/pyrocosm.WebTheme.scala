@@ -22,17 +22,11 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import cataclysm.*
-import gossamer.*
-import rudiments.*
-import spectacular.*
-import symbolism.*
-import turbulence.*
+import soundness.*
 
-import contingency.strategies.throwUnsafely
-import denominative.dysasymptotics.linearSize
-import fulminate.errorDiagnostics.emptyDiagnostics
+import strategies.throwUnsafely
+import dysasymptotics.linearSize
+import errorDiagnostics.emptyDiagnostics
 
 // The web's colours by role: the same solarized values the terminal theme uses, as the seed of
 // one palette for both media. Emitted once as CSS custom properties (`variables`), so every rule

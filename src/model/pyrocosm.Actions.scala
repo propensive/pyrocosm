@@ -22,11 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import denominative.*
-import rudiments.*
-import denominative.dysasymptotics.linearSize
-import symbolism.*
-import vacuous.*
+import soundness.*
+
+import dysasymptotics.linearSize
 
 // What a run of blocks can do: the actions it offers for selection, and whether anything in it
 // animates. Both frontends recompute these from the live content on every paint, so they are

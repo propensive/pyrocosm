@@ -22,8 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import anticipation.*
-import vacuous.*
+import soundness.*
 
 // A panel is a region of the interface with a purpose. The interface level says what each panel
 // is *for*, how important it is, and how it relates to the others; where it goes is the
