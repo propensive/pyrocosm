@@ -23,7 +23,9 @@
 package pyrocosm
 
 import acyclicity.*
+import gossamer.*
 import anticipation.*
+import denominative.*
 import rudiments.*
 import stratiform.*
 import vacuous.*
@@ -58,6 +60,22 @@ object Block:
   // A cell and a line are records of their own, not nested lists: a repeated TEL field cannot
   // nest, so `List[List[_]]` would flatten on the wire.
   case class Cell(content: List[Inline])
+  object Line:
+    // Tokens as lines: a token's text may hold newlines, each of which ends a line; the parts
+    // between keep the token's accent and role. An empty part adds no token, so an empty line
+    // is a line of none.
+    def split(tokens: List[Token]): List[Line] =
+      type State = (List[Line], List[Token])
+
+      val (done, current) = tokens.fold[State]((Nil, Nil)): (state: State, token: Token) =>
+        token.text.cut(t"\n").indexed.fold[State](state): (state: State, part: (Text, Ordinal)) =>
+          val (done, current) = state
+          val next: State = if part(1).n0 == 0 then (done, current) else (Line(current.reverse) :: done, Nil)
+          val (done2, current2) = next
+          (done2, if part(0) == t"" then current2 else token.copy(text = part(0)) :: current2)
+
+      (Line(current.reverse) :: done).reverse
+
   case class Line(tokens: List[Token])
 
   case class Row
@@ -103,8 +121,11 @@ object Block:
       def dag: Dag[Vertex] =
         val byId: Map[Text, Vertex] = graph.vertices.map { (vertex: Vertex) => vertex.id -> vertex }.to[Map]
 
-        Dag(graph.vertices.stdlib.toSet): (vertex: Vertex) =>
-          graph.edges.filter(_.from == vertex.id).stdlib.flatMap { (edge: Edge) => byId(edge.to).option }.toSet
+        // Acyclicity's graphs are still keyed by the stdlib's sets, so the prelude's are handed
+        // over at its boundary.
+        Dag(graph.vertices.to[Set].stdlib): (vertex: Vertex) =>
+          graph.edges.filter(_.from == vertex.id).map { (edge: Edge) => byId(edge.to) }.sweep { case vertex: Vertex => vertex }
+          . to[Set].stdlib
 
   object Chart:
     enum Kind:

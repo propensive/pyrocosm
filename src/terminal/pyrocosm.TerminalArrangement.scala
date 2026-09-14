@@ -26,6 +26,7 @@ import anticipation.*
 import denominative.*
 import escapade.*
 import gossamer.*
+import hypotenuse.*
 import rudiments.*
 import symbolism.*
 import denominative.dysasymptotics.{linearAccess, linearSize}
@@ -105,8 +106,11 @@ object TerminalArrangement:
     def column(panels: List[Panel]): Optional[Pane] =
       if panels.nil then Unset else stack(panels.map(framed)*)
 
-    val versoWidth = plan.verso.stdlib.flatMap(_.hints[hints.Minimum].option).map(_.columns).maxOption.getOrElse(24)
-    val rectoWidth = plan.recto.stdlib.flatMap(_.hints[hints.Minimum].option).map(_.columns).maxOption.getOrElse(32)
+    def widest(panels: List[Panel]): Optional[Int] =
+      panels.map(_.hints[hints.Minimum]).sweep { case minimum: hints.Minimum => minimum.columns }.maximum
+
+    val versoWidth = widest(plan.verso).or(24)
+    val rectoWidth = widest(plan.recto).or(32)
 
     val verso: Optional[Pane] = column(plan.verso).let(_.weight(0.0)).let: pane =>
       sized(pane, minWidth = versoWidth, maxWidth = versoWidth + 8)

@@ -33,6 +33,7 @@ import symbolism.*
 import contingency.*
 import escapade.*
 import gossamer.*
+import denominative.dysasymptotics.{linearAccess, linearSize}
 import turbulence.*
 import parasite.*
 import quantitative.*
@@ -173,14 +174,15 @@ object Samples:
       else Nil
 
     // Prose, rather than code: several words and no keyword. A REPL would submit it elsewhere.
-    val prose: Boolean = text.cut(t" ").stdlib.count(_ != t"") >= 3 && !text.cut(t" ").exists(keywords.has(_))
+    val words: List[Text] = text.cut(t" ")
+    val prose: Boolean = words.count(_ != t"") >= 3 && !words.exists(keywords.has(_))
 
     // What the line has brought into scope, as a REPL reports it: every `val x` so far.
-    val bindings: List[Text] = List.from(text.cut(t" ").stdlib.sliding(2).collect { case scala.List(k, name) if k == t"val" && name != t"" => name }.toList)
+    val bindings: List[Text] = words.zip(words.tail).sweep { case (t"val", name) if name != t"" => name }
 
     val detail: List[Block] =
       (if prose then List(Block.Paragraph(List(Inline.Toned(Tone.Muted, Inline.text(t"reads as prose"))))) else Nil)
-        + (if bindings.stdlib.isEmpty then Nil else List(Block.Paragraph(
+        + (if bindings.nil then Nil else List(Block.Paragraph(
             Inline.Toned(Tone.Muted, Inline.text(t"⤷ scope: ")) :: bindings.indexed.bind { (name, index) =>
               (if index.n0 == 0 then Nil else List(Inline.Textual(t", ")))
                 + List(Inline.Code(Language.Scala, List(Token(name, Token.Accent.Term, Token.Role.Binding), Token(t": ", Token.Accent.Symbol), Token(t"Int", Token.Accent.Typal)))) })))
@@ -313,16 +315,16 @@ def gallery(arguments: Text*): Unit = cli:
     given Stdio = caps.unsafe.unsafeAssumePure(summon[exoskeleton.Invocation].stdio)
 
     val words: List[Text] = summon[exoskeleton.Cli].arguments.map { (argument: Argument) => argument() }
-    def number(default: Int): Int = words.stdlib.lift(1).flatMap(_.s.toIntOption).getOrElse(default)
+    def number(default: Int): Int = words.at(Sec).let { (word: Text) => safely(word.decode[Int]) }.or(default)
 
-    words.stdlib.headOption match
-      case Some(t"static") =>
+    words.at(Prim) match
+      case t"static" =>
         val renderer = TerminalRenderer()
         renderer.blocks(Samples.overview, number(100)).each { (line: Teletype) => Out.println(line) }
         Exit.Ok
 
       // `gallery repl`: the REPL in the terminal.
-      case Some(t"repl") =>
+      case t"repl" =>
         supervise:
           import parasite.probates.cancelProbate
           val (interface, handle) = Repl()
@@ -331,9 +333,9 @@ def gallery(arguments: Text*): Unit = cli:
 
       // `gallery serve [port]` serves the gallery, one interface for every tab; `gallery serve
       // repl [port]` serves the REPL, a session per tab.
-      case Some(t"serve") =>
-        val repl: Boolean = words.stdlib.lift(1).contains(t"repl")
-        val port = words.stdlib.lift(if repl then 2 else 1).flatMap(_.s.toIntOption).getOrElse(8080)
+      case t"serve" =>
+        val repl: Boolean = words.at(Sec) == t"repl"
+        val port = words.at(if repl then Ter else Sec).let { (word: Text) => safely(word.decode[Int]) }.or(8080)
         supervise:
           import parasite.probates.cancelProbate
           if repl then

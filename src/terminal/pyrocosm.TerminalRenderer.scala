@@ -22,8 +22,6 @@
                                                                                                   */
 package pyrocosm
 
-import scala.collection.immutable as sci
-
 import anticipation.*
 import archimedes.*
 import contingency.*
@@ -33,6 +31,7 @@ import escapade.*
 import escritoire.*
 import gossamer.*
 import hieroglyph.*
+import hypotenuse.*
 import polysyllabic.*
 import rudiments.*
 import symbolism.*
@@ -45,6 +44,7 @@ import ultimatum.{gaugeLine, gaugeRows, Captioned, Countdown, Fraction, Gaugeabl
     Reckoning, Tick}
 
 import aviation.Duration
+import murmuration.sortingAlgorithms.timsort
 import columnAttenuation.ignoreAttenuation
 import dendrology.laneDagStyles.boxDrawingLaneDagStyle
 import dendrology.treeStyles.roundedTreeStyle
@@ -79,8 +79,7 @@ object TerminalRenderer:
       ( using Text is Measurable, Hyphenation )
     :   Sequence[text] =
 
-      Sequence.from:
-        lines.readable.to(sci.IndexedSeq).flatMap { line => Flow.wrap(line, width).stdlib }.toVector
+      List.from(lines.readable).bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
 
   object Rigid extends Columnar:
     def flex[text: Textual { type Result = Char }](lines: Array[text]^{}, maxWidth: Int)
@@ -96,8 +95,7 @@ object TerminalRenderer:
       ( using Text is Measurable, Hyphenation )
     :   Sequence[text] =
 
-      Sequence.from:
-        lines.readable.to(sci.IndexedSeq).flatMap { line => Flow.wrap(line, width).stdlib }.toVector
+      List.from(lines.readable).bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
 
   def glyph(glyph: Glyph)(using glyphs: Gaugeable.Glyphs): Text =
     val unicode = glyphs != Gaugeable.Glyphs.Ascii
@@ -143,7 +141,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
   private def faint(text: Teletype): Teletype = tint(theme.muted)(text)
 
   private def joined(parts: List[Teletype]): Teletype =
-    parts.stdlib.foldLeft(e"")(_.append(_))
+    parts.fold(e"") { (joined: Teletype, part: Teletype) => joined.append(part) }
 
   def blank: Teletype = e""
 
@@ -194,25 +192,24 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
 
     val rendered: List[List[Teletype]] = blocks.map { (block0: Block) => block(block0, width, tick, selected) }
 
-    rendered.stdlib.zipWithIndex.flatMap { (lines, index) =>
-      (if index == 0 then scala.Nil else scala.List(blank)) ++ lines.stdlib
-    } .to(List)
+    rendered.indexed.bind: (lines: List[Teletype], index: Ordinal) =>
+      val separator: List[Teletype] = if index.n0 == 0 then Nil else List(blank)
+      separator + lines
 
   // A paragraph's phrasing, split at hard breaks and wrapped to the width.
   private def wrapped(content: List[Inline], width: Int): List[Teletype] =
-    val hard: scala.List[scala.List[Inline]] =
-      content.stdlib.foldLeft(scala.List(scala.List.empty[Inline])): (acc, node) =>
-        node match
-          case Inline.Break() => scala.Nil :: acc
-          case other          => (other :: acc.head) :: acc.tail
-      . map(_.reverse).reverse
+    type Lines = (List[List[Inline]], List[Inline])   // the lines done (reversed), and the current one (reversed)
 
-    hard.flatMap { line => Flow.wrap(phrase(line.to(List)), width.max(1)).stdlib }.to(List)
+    val (done, current) = content.fold[Lines]((Nil, Nil)): (state: Lines, node: Inline) =>
+      val (done, current) = state
+      node match
+        case Inline.Break() => (current.reverse :: done, Nil)
+        case other          => (done, other :: current)
+
+    (current.reverse :: done).reverse.bind { (line: List[Inline]) => Flow.wrap(phrase(line), width.max(1)) }
 
   private def indented(lines: List[Teletype], prefix: Teletype, continuation: Teletype): List[Teletype] =
-    lines.stdlib.zipWithIndex.map { (line, index) =>
-      (if index == 0 then prefix else continuation).append(line)
-    } .to(List)
+    lines.indexed.map { (line: Teletype, index: Ordinal) => (if index.n0 == 0 then prefix else continuation).append(line) }
 
   def block(block: Block, width: Int, tick: Tick = Tick.zero, selected: Optional[Action] = Unset)
   :   List[Teletype] =
@@ -232,15 +229,14 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
           if ordered then items.indexed.map { (_, index) => t"${index.n1}. " }
           else items.map { (_: Block.Item) => t"${glyph(Glyph.Bullet)} " }
 
-        val indent = marks.map(_.length).stdlib.maxOption.getOrElse(2)
+        val indent = marks.map(_.length).maximum.or(2)
 
-        items.stdlib.zip(marks.stdlib).flatMap { (item, mark) =>
+        items.zip(marks).bind: (item: Block.Item, mark: Text) =>
           val chosen = item.action.present && item.action == selected
           val body = blocks(item.content, width - indent, tick, selected)
           val prefix0 = Teletype(mark.pad(indent))
           val prefix = if chosen then e"$Reverse($prefix0)" else prefix0
-          indented(body, prefix, Teletype(t" "*indent)).stdlib
-        } .to(List)
+          indented(body, prefix, Teletype(t" "*indent))
 
       case Block.Quotation(content) =>
         val bar = faint(Teletype(if glyphs == Gaugeable.Glyphs.Ascii then t"| " else t"▎ "))
@@ -263,14 +259,13 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
         table(columns, rows, caption, width, selected)
 
       case Block.Record(entries, title) =>
-        val keyWidth = entries.map(_.key).map(phrase).map(_.length).stdlib.maxOption.getOrElse(0)
+        val keyWidth = entries.map(_.key).map(phrase).map(_.length).maximum.or(0)
         val heading = title.lay(Nil: List[Teletype]) { title => List(bold(phrase(title))) }
 
-        val body = entries.stdlib.flatMap { entry =>
+        val body = entries.bind: (entry: Block.Entry) =>
           val key = bold(phrase(entry.key).pad(keyWidth))
           val value = blocks(entry.value, (width - keyWidth - 2).max(10), tick, selected)
-          indented(value, e"$key  ", Teletype(t" "*(keyWidth + 2))).stdlib
-        } .to(List)
+          indented(value, e"$key  ", Teletype(t" "*(keyWidth + 2)))
 
         heading + body
 
@@ -294,7 +289,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
       case Block.Tree(roots) =>
         val diagram = TreeDiagram.by[Block.TreeNode](_.children)(roots*)
         val style = roundedTreeStyle[Teletype]
-        List.from(diagram.render(treeLabel(selected))(using style).stdlib)
+        diagram.render(treeLabel(selected))(using style).to[List]
 
       case Block.Graph(vertices, edges) =>
         safely(LaneDagDiagram(Block.Graph(vertices, edges).dag)).lay(vertices.map { (vertex: Block.Vertex) => vertexLabel(selected)(vertex) }): diagram =>
@@ -309,7 +304,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
 
       // A group's members belong together: no blank line between them.
       case Block.Group(content) =>
-        List.from(content.stdlib.flatMap { (member: Block) => this.block(member, width, tick, selected).stdlib })
+        content.bind { (member: Block) => this.block(member, width, tick, selected) }
 
       // Captured output, verbatim: every visual row of every line behind a gutter naming the
       // stream (blue for standard output, red for standard error), and wrapped hard at the
@@ -318,11 +313,8 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
         val gutter: Teletype = e"${Fg(theme.tone(if error then Tone.Failure else Tone.Info))}(░) "
         val inner = (width - 2).max(1)
         val lines: List[Text] = text.cut(t"\n")
-        val trimmed: List[Text] = if lines.stdlib.lastOption.contains(t"") then List.from(lines.stdlib.dropRight(1)) else lines
-
-        trimmed.bind: (line: Text) =>
-          if line.length <= inner then List(gutter.append(Teletype(line)))
-          else List.from(line.s.grouped(inner).map { (chunk: String) => gutter.append(Teletype(chunk.tt)) }.toList)
+        val trimmed: List[Text] = if lines.last == t"" then lines.keep(lines.size - 1) else lines
+        trimmed.bind { (line: Text) => hardWrap(Teletype(line), inner).map { (row: Teletype) => gutter.append(row) } }
 
   private def treeLabel(selected: Optional[Action])(node: Block.TreeNode): Teletype =
     val label = node.tone.lay(phrase(node.label))(toned(_)(phrase(node.label)))
@@ -336,40 +328,37 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
   // A styled line cut into rows of at most `width` columns, with an empty line kept as one row.
   def hardWrap(line: Teletype, width: Int): List[Teletype] =
     val columns = width.max(1)
-    val rows = scala.collection.mutable.ListBuffer[Teletype]()
-    var rest = line
-    while rest.length > columns do
-      rows += rest.takeChars(columns)
-      rest = rest.dropChars(columns)
-    rows += rest
-    List.from(rows.toList)
+
+    def recur(rest: Teletype, rows: List[Teletype]): List[Teletype] =
+      if rest.length > columns then recur(rest.dropChars(columns), rest.takeChars(columns) :: rows)
+      else (rest :: rows).reverse
+
+    recur(line, Nil)
 
   def codeLine(line: Block.Line, notes: List[Block.Note]): Teletype =
-    var offset = 0
-    val pieces = scala.collection.mutable.ListBuffer[Teletype]()
+    // Each token, cut at the boundaries where the styling may change within it (the ends of
+    // the notes that fall inside it), with a running offset into the line.
+    type State = (Int, List[Teletype])
 
-    line.tokens.each: token =>
+    val (_, pieces) = line.tokens.fold[State]((0, Nil)): (state: State, token: Token) =>
+      val (offset, pieces) = state
       val end = offset + token.text.length
-      // The boundaries at which the styling may change within this token.
-      val cuts: scala.List[Int] =
-        (offset :: end :: notes.stdlib.flatMap { note => scala.List(note.start, note.end) })
-        . filter { cut => cut >= offset && cut <= end }.distinct.sorted
+      val ends: List[Int] = notes.bind { (note: Block.Note) => List(note.start, note.end) }
+      val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
-      cuts.zip(cuts.tail).foreach { (from, to) =>
+      val styled: List[Teletype] = cuts.zip(cuts.tail).map: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
-        val styled = notes.stdlib.find { note => note.start <= from && note.end >= to }.map(_.style) match
-          case Some(Block.Note.Style.Erroneous) => e"$Underline(${toned(Tone.Failure)(base)})"
-          case Some(Block.Note.Style.Caution)   => e"$Underline(${toned(Tone.Warning)(base)})"
-          case Some(Block.Note.Style.Highlight) => e"${Bg(theme.selection)}($base)"
-          case Some(Block.Note.Style.Param)     => e"$Italic($base)"
-          case None                             => base
-        pieces += styled
-      }
+        notes.seek { (note: Block.Note) => note.start <= from && note.end >= to }.let(_.style) match
+          case Block.Note.Style.Erroneous => e"$Underline(${toned(Tone.Failure)(base)})"
+          case Block.Note.Style.Caution   => e"$Underline(${toned(Tone.Warning)(base)})"
+          case Block.Note.Style.Highlight => e"${Bg(theme.selection)}($base)"
+          case Block.Note.Style.Param     => e"$Italic($base)"
+          case _                          => base
 
-      offset = end
+      (end, pieces + styled)
 
-    joined(pieces.to(List))
+    joined(pieces)
 
   private def table
     ( columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]],
@@ -401,13 +390,13 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
           row => row.cells.at(index).lay(blank) { cell => phrase(cell.content) }
 
     val grid = Scaffold[Block.Row](definitions*).tabulate(rows).grid(width.max(4))
-    val lines = List.from(grid.render.stdlib)
+    val lines = grid.render.to[List]
     caption.lay(lines) { caption => lines :+ faint(e"$Italic(${phrase(caption)})") }
 
   private def chart(kind: Block.Chart.Kind, series: List[Block.Series], width: Int): List[Teletype] =
-    val labelWidth = series.map(_.label).map(phrase).map(_.length).stdlib.maxOption.getOrElse(0)
+    val labelWidth = series.map(_.label).map(phrase).map(_.length).maximum.or(0)
     val room = (width - labelWidth - 2).max(4)
-    val most = series.stdlib.flatMap(_.values.stdlib).maxOption.getOrElse(1.0).max(1e-9)
+    val most = series.bind(_.values).maximum.or(1.0).max(1e-9)
 
     def label(series0: Block.Series): Teletype =
       val text = phrase(series0.label).pad(labelWidth)
@@ -416,20 +405,18 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
     kind match
       case Block.Chart.Kind.Sparkline =>
         series.map { (series0: Block.Series) =>
-          label(series0).append(gaugeLine(Sequence.from(series0.values.stdlib.toVector), room))
+          label(series0).append(gaugeLine(series0.values.to[Sequence], room))
         }
 
       case Block.Chart.Kind.Bars | Block.Chart.Kind.Histogram =>
         val fill = if glyphs == Gaugeable.Glyphs.Ascii then t"#" else t"█"
 
-        series.stdlib.flatMap { series0 =>
-          series0.values.stdlib.zipWithIndex.map { (value, index) =>
+        series.bind: (series0: Block.Series) =>
+          series0.values.indexed.map: (value: Double, index: Ordinal) =>
             val cells = ((value/most)*(room - 8)).toInt.max(if value > 0 then 1 else 0)
             val bar = series0.tone.lay(toned(Tone.Accent)(Teletype(fill*cells)))(toned(_)(Teletype(fill*cells)))
-            val prefix = if index == 0 then label(series0) else Teletype(t" "*(labelWidth + 2))
+            val prefix = if index.n0 == 0 then label(series0) else Teletype(t" "*(labelWidth + 2))
             prefix.append(bar).append(faint(Teletype(t" ${figure(value)}")))
-          }
-        } .to(List)
 
   private def gauge(status: Status, caption: Optional[List[Inline]], width: Int, tick: Tick)
   :   List[Teletype] =
@@ -467,18 +454,17 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
 
       case Status.Steps(steps) =>
         val mapped: Sequence[ultimatum.Step] =
-          Sequence.from:
-            steps.stdlib.map { step =>
-              val standing = step.standing match
-                case Standing.Pending   => ultimatum.Standing.Pending
-                case Standing.Running   => ultimatum.Standing.Running
-                case Standing.Succeeded => ultimatum.Standing.Succeeded
-                case Standing.Failed    => ultimatum.Standing.Failed
-                case Standing.Warned    => ultimatum.Standing.Warned
-                case Standing.Skipped   => ultimatum.Standing.Skipped
+          steps.map { (step: Step) =>
+            val standing = step.standing match
+              case Standing.Pending   => ultimatum.Standing.Pending
+              case Standing.Running   => ultimatum.Standing.Running
+              case Standing.Succeeded => ultimatum.Standing.Succeeded
+              case Standing.Failed    => ultimatum.Standing.Failed
+              case Standing.Warned    => ultimatum.Standing.Warned
+              case Standing.Skipped   => ultimatum.Standing.Skipped
 
-              ultimatum.Step(Inline.plain(step.name), standing, step.detail.let(Inline.plain(_)))
-            } .toVector
+            ultimatum.Step(Inline.plain(step.name), standing, step.detail.let(Inline.plain(_)))
+          } .to[Sequence]
 
         val rows = gaugeRows(mapped, width, tick)
         text.lay(rows) { caption => bold(Teletype(caption)) :: rows }

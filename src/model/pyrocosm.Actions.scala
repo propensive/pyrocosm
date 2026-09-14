@@ -22,7 +22,9 @@
                                                                                                   */
 package pyrocosm
 
+import denominative.*
 import rudiments.*
+import denominative.dysasymptotics.linearSize
 import symbolism.*
 import vacuous.*
 
@@ -56,8 +58,7 @@ object Actions:
   // transcript's settled entries are history, which an inline frontend commits to the
   // scrollback.
   def settled(blocks: List[Block]): Int =
-    val index = blocks.stdlib.indexWhere(animatedBlock)
-    if index < 0 then blocks.stdlib.length else index
+    blocks.where { (block: Block) => animatedBlock(block) }.lay(blocks.size) { (index: Ordinal) => index.n0 }
 
   private def animatedBlock(block: Block): Boolean = block match
     case Block.Gauge(Status.Indeterminate(), _)            => true

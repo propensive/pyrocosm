@@ -27,6 +27,8 @@ import archimedes.*
 import contingency.*
 import denominative.{Span as _, *}
 import gossamer.*
+import murmuration.sortingAlgorithms.timsort
+import hypotenuse.*
 import honeycomb.*
 import nomenclature.*
 import prepositional.*
@@ -127,7 +129,7 @@ class HtmlRenderer():
 
     case Block.Code(language, lines, notes) =>
       Pre(`class` = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${language.name}")))
-        (Code(lines.indexed.map { (line, index) => codeLine(line, notes.filter(_.line == index.n0), index.n0 == lines.stdlib.length - 1) }*))
+        (Code(lines.indexed.map { (line: Block.Line, index: Ordinal) => codeLine(line, notes.filter(_.line == index.n0), index.n0 == lines.size - 1) }*))
 
     case Block.Table(columns, rows, caption) => table(columns, rows, caption)
 
@@ -167,8 +169,8 @@ class HtmlRenderer():
     case Block.Output(text, error) =>
       val gutter = cls(if error then t"pyro-gutter-err" else t"pyro-gutter-out")
       val lines: List[Text] = text.cut(t"\n")
-      val trimmed: List[Text] = if lines.stdlib.lastOption.contains(t"") then List.from(lines.stdlib.dropRight(1)) else lines
-      val count = trimmed.stdlib.length
+      val trimmed: List[Text] = if lines.last == t"" then lines.keep(lines.size - 1) else lines
+      val count = trimmed.size
       val rows: List[Html of Phrasing] = trimmed.indexed.map: (line: Text, index: Ordinal) =>
         val text: Text = if index.n0 == count - 1 then line else t"$line\n"
         Fragment[Phrasing](Span(`class` = gutter)(t"░ "), text)
@@ -188,25 +190,25 @@ class HtmlRenderer():
     vertex.action.lay(label) { action => A(href = t"#", id = action.id, `class` = cls(t"pyro-action"))(label) }
 
   def codeLine(line: Block.Line, notes: List[Block.Note], last: Boolean): Html of Phrasing =
-    var offset = 0
-    val pieces = scala.collection.mutable.ListBuffer[Html of Phrasing]()
+    // Each token, cut at the boundaries where a note begins or ends inside it, with a running
+    // offset into the line.
+    type State = (Int, List[Html of Phrasing])
 
-    line.tokens.each: token =>
+    val (_, pieces) = line.tokens.fold[State]((0, Nil)): (state: State, token: Token) =>
+      val (offset, pieces) = state
       val end = offset + token.text.length
-      val cuts: scala.List[Int] =
-        (offset :: end :: notes.stdlib.flatMap { note => scala.List(note.start, note.end) })
-        . filter { cut => cut >= offset && cut <= end }.distinct.sorted
+      val ends: List[Int] = notes.bind { (note: Block.Note) => List(note.start, note.end) }
+      val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
-      cuts.zip(cuts.tail).foreach { (from, to) =>
+      val styled: List[Html of Phrasing] = cuts.zip(cuts.tail).map: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
-        val note = notes.stdlib.find { note => note.start <= from && note.end >= to }
-        pieces += note.map { note => Span(`class` = cls(t"pyro-note-${note.style.toString.tt.lower}"), title = note.caption.or(t""))(base): Html of Phrasing }.getOrElse(base)
-      }
+        notes.seek { (note: Block.Note) => note.start <= from && note.end >= to }.lay(base): (note: Block.Note) =>
+          Span(`class` = cls(t"pyro-note-${note.style.toString.tt.lower}"), title = note.caption.or(t""))(base)
 
-      offset = end
+      (end, pieces + styled)
 
-    Span(`class` = cls(t"pyro-line"))(Fragment(pieces.to(List)*), if last then Fragment[Phrasing]() else t"\n")
+    Span(`class` = cls(t"pyro-line"))(Fragment(pieces*), if last then Fragment[Phrasing]() else t"\n")
 
   private def table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]]): Html of Flow =
     def columnClasses(column: Block.Column): List[Name[CssClass]] =
@@ -233,7 +235,7 @@ class HtmlRenderer():
 
   // Bars and histograms as proportionally sized divs; a sparkline as a run of block glyphs.
   private def chart(kind: Block.Chart.Kind, series: List[Block.Series]): Html of Flow =
-    val most = series.stdlib.flatMap(_.values.stdlib).maxOption.getOrElse(1.0).max(1e-9)
+    val most = series.bind(_.values).maximum.or(1.0).max(1e-9)
 
     kind match
       case Block.Chart.Kind.Sparkline =>

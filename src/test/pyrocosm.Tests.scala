@@ -31,6 +31,7 @@ import denominative.*
 import escapade.*
 import fulminate.*
 import gossamer.*
+import denominative.dysasymptotics.{linearAccess, linearSize}
 import harlequin.Scala
 import symbolism.*
 import jacinta.*
@@ -112,7 +113,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
       exhibit match
         case Block.Record(entries, title) =>
-          entries.stdlib.length == 2 && title == Inline.text(t"Person")
+          entries.size == 2 && title == Inline.text(t"Person")
 
         case _ =>
           false
@@ -122,7 +123,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val exhibit: Inline | Block = (List(1, 2, 3): List[Int]).exhibit
 
       exhibit match
-        case Block.Listing(false, items) => items.stdlib.length == 3
+        case Block.Listing(false, items) => items.size == 3
         case _                           => false
     . assert(_ == true)
 
@@ -131,7 +132,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
       exhibit match
         case Block.Group(Block.Heading(1, _) :: Block.Paragraph(content) :: Nil) =>
-          content.stdlib.exists:
+          content.exists:
             case Inline.Emphasis(_) => true
             case _                  => false
 
@@ -151,7 +152,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
             controls = List(Control.Button(Inline.text(t"Run"), run)) )
 
       val verbose = Control.Toggle(Toggle(), Inline.text(t"Verbose"))
-      Interface(Inline.text(t"Gallery"), List(panel), List(verbose)).cells.stdlib.length
+      Interface(Inline.text(t"Gallery"), List(panel), List(verbose)).cells.size
     . assert(_ == 3)
 
     val tree: Node =
@@ -266,7 +267,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
       exhibit match
         case Block.Table(columns, rows, _) =>
-          columns.map(_.numeric) == List(false, true) && rows.stdlib.length == 2
+          columns.map(_.numeric) == List(false, true) && rows.size == 2
         case _ =>
           false
     . assert(_ == true)
@@ -274,7 +275,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"highlighted source exhibits as a code block"):
       val exhibit: Block = Scala.highlight(t"val x = 1").exhibit
       exhibit match
-        case Block.Code(Language.Scala, lines, _) => lines.stdlib.head.tokens.stdlib.head.accent == Token.Accent.Keyword
+        case Block.Code(Language.Scala, lines, _) => lines.at(Prim).let(_.tokens.at(Prim)).let(_.accent) == Token.Accent.Keyword
         case _                                    => false
     . assert(_ == true)
 
@@ -290,7 +291,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert(_ == true)
 
     test(m"a paragraph wraps onto several lines"):
-      renderer.block(prose, 40).stdlib.length
+      renderer.block(prose, 40).size
     . assert(_ > 2)
 
     val stretched: Block =
@@ -301,21 +302,21 @@ object Tests extends Suite(m"Pyrocosm tests"):
           List(Block.Row(List(Block.Cell(Inline.text(t"parse")), Block.Cell(List(Inline.Amount(0.5, t"s")))))) )
 
     test(m"a table with a stretch column spans exactly the width"):
-      renderer.block(stretched, 60).stdlib.filter(_.plain.starts(t"┃")).map(_.length)
-    . assert(_.forall(_ == 60))
+      renderer.block(stretched, 60).filter(_.plain.starts(t"┃")).map(_.length)
+    . assert(_.all(_ == 60))
 
     test(m"a table without a stretch column fits within the width"):
-      renderer.block(rich, 60).stdlib.filter(_.plain.starts(t"┃")).map(_.length)
-    . assert(_.forall(_ <= 60))
+      renderer.block(rich, 60).filter(_.plain.starts(t"┃")).map(_.length)
+    . assert(_.all(_ <= 60))
 
     test(m"a gauge line is exactly the width"):
-      renderer.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work")), 50).stdlib.head.length
+      renderer.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work")), 50).at(Prim).let(_.length)
     . assert(_ == 50)
 
     test(m"code notes leave the text intact"):
       val code = Block.Code(Language.Scala, List(Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" xs = 1")))),
           List(Block.Note(0, 2, 6, Block.Note.Style.Erroneous)))
-      renderer.block(code, 80).stdlib.head.plain
+      renderer.block(code, 80).at(Prim).let(_.plain)
     . assert(_ == t"val xs = 1")
 
     test(m"the plain rendering carries no escape sequences"):
@@ -470,9 +471,9 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert(_ == false)
 
     test(m"the stylesheet reads back as CSS"):
-      try stylesheet.read[Css].rules.stdlib.length
+      try stylesheet.read[Css].rules.size
       catch case errors: Css.Errors =>
-        java.lang.System.err.nn.println(s"CSS ERRORS: ${errors.errors.stdlib.map(e => s"${e.reason} at ${e.line}:${e.column}")}")
+        java.lang.System.err.nn.println(s"CSS ERRORS: ${errors.errors.map { e => s"${e.reason} at ${e.line}:${e.column}" }}")
         0
     . assert(_ > 50)
 
@@ -482,7 +483,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val lines = renderer.blocks(List(rich), 80)
       val rendered = lines.map(_.render(xtermTrueColorTermcap)).join(t"\r\n")
       val pty = Pty(80, 40).consume(rendered)
-      val first = lines.stdlib.head.plain
+      val first = lines.at(Prim).let(_.plain).or(t"")
 
       (0 until first.length).forall { column => pty.buffer.char(column.z, Prim) == first.s.charAt(column) }
     . assert(_ == true)
