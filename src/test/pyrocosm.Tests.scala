@@ -29,6 +29,7 @@ package pyrocosm
 import soundness.{Control as _, Glyph as _, Language as _, Standing as _, Step as _, Token as _, *}
 
 import clavichord.Keypress
+import probably.TestEvent
 
 import dysasymptotics.{linearAccess, linearSize}
 import harlequin.Scala
@@ -56,6 +57,35 @@ enum Direct derives CanEqual:
   case Branch(left: Direct, value: Int, right: Direct)
 
 object Tests extends Suite(m"Pyrocosm tests"):
+  // The plain-`java` entry point the release script and CI use (`java -cp <test jar>
+  // pyrocosm.Tests`): since Soundness 0.65.0 a `Suite` has no `main` of its own — the host,
+  // normally fume, drives it through `invoke` — so this prints one line per completed test and
+  // exits with the suite's status (0 = every test passed, 1 = failures, 2 = the suite threw).
+  // `fume run -c <test jar>` remains the full experience, with the rendered report.
+  def main(args: Array[String]): Unit =
+    val tally = Tally()
+    val out = java.lang.System.out.nn
+
+    val status = invoke(t"", event => event match
+      case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
+        tally.record(outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass")
+        out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}".s)
+
+      case TestEvent.DetailMessage(_, message) =>
+        out.println(t"    $message".s)
+
+      case TestEvent.DetailCompare(_, expected, found, _) =>
+        out.println(t"    expected: $expected".s)
+        out.println(t"    found:    $found".s)
+
+      case TestEvent.RunTerminated(error, _, _) =>
+        out.println(t"suite threw: ${error.components.map(_.message).join(t"; ")}".s)
+
+      case _ => ())
+
+    out.println(t"${tally.passed} passed, ${tally.failed} failed".s)
+    java.lang.System.exit(status)
+
   def run(): Unit =
     test(m"a live cell's assignment publishes the value"):
       val live = Live(1)
@@ -474,3 +504,12 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
       (0 until first.length).forall { column => pty.buffer.char(column.z, Prim) == first.s.charAt(column) }
     . assert(_ == true)
+
+// Counts the outcomes for the summary line. A class rather than local `var`s, because the event
+// sink is a pure `TestEvent -> Unit` and may capture nothing tracked.
+private final class Tally:
+  private var passes: Int = 0
+  private var failures: Int = 0
+  def passed: Int = passes
+  def failed: Int = failures
+  def record(pass: Boolean): Unit = if pass then passes += 1 else failures += 1
