@@ -26,7 +26,9 @@ import anticipation.*
 import delicious.*
 import gossamer.*
 import prepositional.*
+import denominative.*
 import rudiments.*
+import symbolism.*
 import vacuous.*
 
 // Named imports only: a wildcard import of harlequin would outrank this package's own `Token`
@@ -59,11 +61,9 @@ extension (code: SourceCode)
 
   // The tokens of every line, joined by newline tokens, for phrasing use.
   def flattened: List[Token] =
-    val lines: scala.List[List[Token]] = code.modelLines.stdlib.map(_.tokens)
-
-    lines.zipWithIndex.flatMap { (line, index) =>
-      (if index == 0 then scala.Nil else scala.List(Token.plain("\n"))) ++ line.stdlib
-    } .to(List)
+    code.modelLines.indexed.bind: (line: Block.Line, index: Ordinal) =>
+      val break: List[Token] = if index.n0 == 0 then Nil else List(Token.plain("\n"))
+      break + line.tokens
 
 given sourceCodePresentable: SourceCode is Presentable in Block = code =>
   Block.Code(code.modelLanguage, code.modelLines)

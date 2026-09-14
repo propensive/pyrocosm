@@ -136,12 +136,12 @@ extends Frontend:
 
     // Every fixture, with the cells whose assignment should repaint it, and the panel it shows.
     val session = Session()
-    val fixtures = scala.collection.mutable.ListBuffer[Refreshable]()
-    val bindings = scala.collection.mutable.ListBuffer[(Live[?], Refreshable, Optional[Panel])]()
+    var fixtures: List[Refreshable] = Nil
+    var bindings: List[(Live[?], Refreshable, Optional[Panel])] = Nil
 
     def register[fixture <: Refreshable](fixture: fixture, panel: Optional[Panel], cells: Live[?]*): fixture =
-      fixtures += fixture
-      cells.foreach { cell => bindings += ((cell, fixture, panel)) }
+      fixtures = fixtures :+ fixture
+      List.from(cells).each { (cell: Live[?]) => bindings = bindings :+ (cell, fixture, panel) }
       fixture
 
     def control(control: Control): Pane = control match
@@ -179,7 +179,7 @@ extends Frontend:
       val mode: Occupancy = interface.hints[hints.terminal.Occupancy] match
         case hints.terminal.Occupancy.Inline     => Occupancy.Inline
         case hints.terminal.Occupancy.Fullscreen => Occupancy.Fullscreen
-        case _ => occupancy.or(if interface.panels.stdlib.length > 1 && interface.panels.all(_.role != Panel.Role.Transcript) then Occupancy.Fullscreen else Occupancy.Inline)
+        case _ => occupancy.or(if interface.panels.size > 1 && interface.panels.all(_.role != Panel.Role.Transcript) then Occupancy.Fullscreen else Occupancy.Inline)
 
       val inlined: Boolean = mode == Occupancy.Inline
 
@@ -252,7 +252,7 @@ extends Frontend:
           if inlined && panel.role == Panel.Role.Transcript then Actions.settled(panel.content()) else 0
 
         val entries: Int = panel.lay(0): panel =>
-          if inlined && panel.role == Panel.Role.Transcript then panel.content().stdlib.length else 0
+          if inlined && panel.role == Panel.Role.Transcript then panel.content().size else 0
 
         val transcript: Boolean = panel.lay(false) { panel => inlined && panel.role == Panel.Role.Transcript }
 
@@ -268,11 +268,11 @@ extends Frontend:
           terminal.events.put(sentinel)
         else terminal.events.put(Terminal.Info.Redraw)
 
-      bindings.foreach { (cell, fixture, panel) => cell.bindWake(wake(fixture, panel)) }
+      bindings.each { (binding: (Live[?], Refreshable, Optional[Panel])) => binding(0).bindWake(wake(binding(1), binding(2))) }
 
       // The settled entries of an inline transcript, for a replay after a resize.
       def settledEntries: Int =
-        interface.panels.stdlib.find(_.role == Panel.Role.Transcript).map { panel => Actions.settled(panel.content()) }.getOrElse(0)
+        interface.panels.seek(_.role == Panel.Role.Transcript).let { (panel: Panel) => Actions.settled(panel.content()) }.or(0)
 
       // A resize reflows the committed scrollback unpredictably, so an inline session replays:
       // once the size has settled (a drag fires many events), the cycle ends, the screen and

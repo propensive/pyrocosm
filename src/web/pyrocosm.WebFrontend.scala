@@ -30,7 +30,9 @@ import scala.caps
 import anticipation.*
 import clavichord.*
 import contingency.*
+import denominative.*
 import gossamer.*
+import denominative.dysasymptotics.{linearAccess, linearSize}
 import hieroglyph.*
 import honeycomb.*
 import jacinta.*
@@ -224,7 +226,7 @@ extends pyrocosm.Frontend:
   // The session a request is for: the shared one, the one its `session` parameter names, or,
   // for a page in per-page mode, a new one.
   private def sessionFor(target: Text, fresh: Boolean): Optional[Session] =
-    val query: Text = target.cut(t"?").stdlib.lift(1).getOrElse(t"")
+    val query: Text = target.cut(t"?").at(Sec).or(t"")
 
     val named: Optional[Text] =
       query.cut(t"&").seek(_.starts(t"session=")).let(_.skip(t"session=".length))
@@ -239,7 +241,7 @@ extends pyrocosm.Frontend:
 
   private def serving(): Unit =
     val service = SocketServer(port).handle:
-      val path: Text = request.target.cut(t"?").stdlib.headOption.getOrElse(t"/")
+      val path: Text = request.target.cut(t"?").at(Prim).or(t"/")
 
       path match
         case t"/" | t"/index.html" =>

@@ -27,7 +27,9 @@ import clavichord.*
 import contingency.*
 import distillate.*
 import gossamer.*
+import denominative.*
 import rudiments.*
+import denominative.dysasymptotics.linearSize
 import spectacular.*
 import vacuous.*
 
@@ -122,13 +124,14 @@ object Keypresses:
 
       val present: List[Piece] = pieces.sweep { case piece: Piece => piece }
 
-      if present.stdlib.length != pieces.stdlib.length then Unset else
+      if present.size != pieces.size then Unset else
 
         present.reverse match
           case Piece.Key(key) :: modifiers =>
-            modifiers.stdlib.foldLeft(key: Optional[Keypress]):
-              case (acc, Piece.Modifier(apply)) => acc.let(apply)
-              case (_, Piece.Key(_))            => Unset
+            modifiers.fold[Optional[Keypress]](key): (acc: Optional[Keypress], piece: Piece) =>
+              piece match
+                case Piece.Modifier(apply) => acc.let(apply)
+                case Piece.Key(_)          => Unset
 
           case _ =>
             Unset

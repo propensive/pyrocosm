@@ -27,6 +27,7 @@ import cataclysm.*
 import denominative.{Span as _, *}
 import prepositional.*
 import gossamer.*
+import denominative.dysasymptotics.{linearAccess, linearSize}
 import graffiti.*
 import honeycomb.*
 import nomenclature.*
@@ -138,18 +139,12 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
     val tokens: Html of Flow =
       if decoration0.tokens.nil then Fragment[Flow]()
       else
-        val lines = scala.collection.mutable.ListBuffer[scala.List[Token]](scala.Nil)
-        decoration0.tokens.each: (token: Token) =>
-          token.text.cut(t"\n").indexed.each: (part: Text, index: Ordinal) =>
-            if index.n0 > 0 then lines += scala.Nil
-            if part != t"" then lines(lines.length - 1) = lines(lines.length - 1) :+ token.copy(text = part)
-
-        val count: Int = lines.length
-        val rendered: scala.List[Html of Phrasing] =
-          lines.toList.zipWithIndex.map { (pair: (scala.List[Token], Int)) =>
-            val line: Block.Line = Block.Line(List.from(pair(0)))
-            val notes: List[Block.Note] = decoration0.marks.filter(_.line == pair(1))
-            renderer.codeLine(line, notes, pair(1) == count - 1) }
+        val lines: List[Block.Line] = Block.Line.split(decoration0.tokens)
+        val count: Int = lines.size
+        val rendered: List[Html of Phrasing] =
+          lines.indexed.map { (line: Block.Line, index: Ordinal) =>
+            val notes: List[Block.Note] = decoration0.marks.filter(_.line == index.n0)
+            renderer.codeLine(line, notes, index.n0 == count - 1) }
 
         Span(`class` = cls(t"pyro-tokens"), hidden = t"")(rendered*)
 

@@ -37,7 +37,7 @@ import rudiments.*
 import spectacular.*
 import vacuous.*
 import wisteria.*
-import denominative.dysasymptotics.linearSize
+import denominative.dysasymptotics.{linearAccess, linearSize}
 
 // A value's rich rendering: what `show` is to text and `inspect` is to a debugger, `exhibit` is
 // to an interface. An instance yields phrasing (`in Inline`) or flow (`in Block`) content, and
@@ -97,7 +97,7 @@ object Presentable extends Presentable2:
         List.from(fields(element) { [field] => field => cell(contextual.exhibit(field)) }.readable)
 
       val columns: List[Block.Column] = titles.indexed.map: (title, index) =>
-        val column = rows.map { (row: List[List[Inline]]) => row.stdlib(index.n0) }
+        val column = rows.map { (row: List[List[Inline]]) => row.at(index).or(Nil) }
         val isNumeric = numeric(column)
         val alignment = if isNumeric then Block.Alignment.End else Block.Alignment.Start
         val sizing = if isNumeric then Block.Sizing.Rigid else Block.Sizing.Paragraph
@@ -164,23 +164,23 @@ object Presentable extends Presentable2:
 
   private def prose(node: Prose): Inline = node match
     case Prose.Textual(text)       => Inline.Textual(text)
-    case Prose.Emphasis(children*) => Inline.Emphasis(phrasing(children.toList.to(List)))
-    case Prose.Strong(children*)   => Inline.Emphasis(phrasing(children.toList.to(List)))
+    case Prose.Emphasis(children*) => Inline.Emphasis(phrasing(List.from(children)))
+    case Prose.Strong(children*)   => Inline.Emphasis(phrasing(List.from(children)))
     case Prose.Code(code)          => Inline.Code(Language.Plain, List(Token.plain(code)))
     case Prose.Softbreak           => Inline.Textual(" ")
     case Prose.Linebreak           => Inline.Break()
     case Prose.HtmlInline(_)       => Inline.Textual("")
 
     case Prose.Link(destination, _, content*) =>
-      Inline.Link(Inline.Destination.External(destination), phrasing(content.toList.to(List)))
+      Inline.Link(Inline.Destination.External(destination), phrasing(List.from(content)))
 
     case Prose.Image(destination, _, content*) =>
-      Inline.Link(Inline.Destination.External(destination), phrasing(content.toList.to(List)))
+      Inline.Link(Inline.Destination.External(destination), phrasing(List.from(content)))
 
   private def layout(node: Layout): Block = node match
-    case Layout.Paragraph(_, prose*)      => Block.Paragraph(phrasing(prose.toList.to(List)))
-    case Layout.Heading(_, level, prose*) => Block.Heading(level, phrasing(prose.toList.to(List)))
-    case Layout.BlockQuote(_, layouts*)   => Block.Quotation(layouts.toList.to(List).map(layout))
+    case Layout.Paragraph(_, prose*)      => Block.Paragraph(phrasing(List.from(prose)))
+    case Layout.Heading(_, level, prose*) => Block.Heading(level, phrasing(List.from(prose)))
+    case Layout.BlockQuote(_, layouts*)   => Block.Quotation(List.from(layouts).map(layout))
     case Layout.ThematicBreak(_)          => Block.Rule()
     case Layout.HtmlBlock(_, html)        => Block.Code(Language("html"), lines(html))
 
@@ -188,10 +188,10 @@ object Presentable extends Presentable2:
       Block.Code(info.prim.lay(Language.Plain)(Language(_)), lines(content))
 
     case Layout.BulletList(_, _, items*) =>
-      Block.Listing(false, items.toList.to(List).map { (item: List[Layout]) => Block.Item(item.map(layout)) })
+      Block.Listing(false, List.from(items).map { (item: List[Layout]) => Block.Item(item.map(layout)) })
 
     case Layout.OrderedList(_, _, _, _, items*) =>
-      Block.Listing(true, items.toList.to(List).map { (item: List[Layout]) => Block.Item(item.map(layout)) })
+      Block.Listing(true, List.from(items).map { (item: List[Layout]) => Block.Item(item.map(layout)) })
 
   private def lines(content: Text): List[Block.Line] =
     content.cut(t"\n").map { (line: Text) => Block.Line(List(Token.plain(line))) }
