@@ -37,10 +37,10 @@ stage:
 # the jars of a local `make stage` instead, for trying a release candidate in fume or flame before
 # it is tagged. Both overwrite what `publishLocal` installed; run that again to undo.
 sync-releases:
-	./etc/ci/sync-releases.sh $(VERSION)
+	./etc/shared sync-releases.sh propensive/pyrocosm pyrocosmVersion $(VERSION)
 
 sync-staged:
-	./etc/ci/sync-releases.sh --staged
+	./etc/shared sync-releases.sh propensive/pyrocosm pyrocosmVersion --staged
 
 # Release to GitHub Releases: `make release VERSION=X.Y.Z`, after bumping `pyrocosmVersion` in
 # build.mill and committing. See etc/ci/release.sh.
