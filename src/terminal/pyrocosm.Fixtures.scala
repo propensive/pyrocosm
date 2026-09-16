@@ -113,45 +113,129 @@ extends Focus, Refreshable:
   private def follow: Boolean = panel.hints.has[hints.Follow.type]
 
   private def tick: Tick = Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
-  private def actions: List[Action] = Actions.of(panel.content())
-  private def selected: Optional[Action] = actions.at(selection.z)
 
-  override def pulse: Optional[Int] = if Actions.animated(panel.content()) then 80 else Unset
-
-  // One rendering serves the measure and the paint of a refresh, and every refresh after it
-  // until something it depends on changes: the content (by identity, since it is immutable),
-  // the width, focus and selection, and the animation frame when the content animates.
-  private class Rendering
-    ( val content: List[Block], val width: Int, val focused: Boolean, val selection: Int, val frame: Long,
-      val lines: List[Teletype] ):
-
-    def matches(content0: List[Block], width0: Int, focused0: Boolean, selection0: Int, frame0: Long): Boolean =
-      content == content0 && width == width0 && focused == focused0
-        && selection == selection0 && frame == frame0
+  // The content's actions and whether it animates, found once per content (by identity, since
+  // it is immutable): a table of thousands of rows offers as many actions, and the questions
+  // are asked on every keypress and every period query.
+  @caps.unsafe.untrackedCaptures
+  private var known: AnyRef | Null = null
 
   @caps.unsafe.untrackedCaptures
-  private var rendering: Optional[Rendering] = Unset
+  private var actions0: List[Action] = Nil
 
-  private def lines(width: Int, focused: Boolean): List[Teletype] =
+  @caps.unsafe.untrackedCaptures
+  private var actionCount: Int = 0
+
+  @caps.unsafe.untrackedCaptures
+  private var animated0: Boolean = false
+
+  private def examine(content: List[Block]): Unit =
+    if !content.asInstanceOf[AnyRef].eq(known.asInstanceOf[AnyRef]) then
+      known = content.asInstanceOf[AnyRef]
+      actions0 = Actions.of(content)
+      actionCount = actions0.size
+      animated0 = Actions.animated(content)
+
+  private def actions: List[Action] = { examine(panel.content()); actions0 }
+  private def selected: Optional[Action] = actions.at(selection.z)
+
+  override def pulse: Optional[Int] = { examine(panel.content()); if animated0 then 80 else Unset }
+
+  // The content as a run of segments, each a top-level block (a group's members spliced in,
+  // sharing its separator) rendered whole, or a table kept incrementally in a `TableCache`.
+  // Segments persist between refreshes and are matched to the new content by position and
+  // identity: a table whose rows changed keeps its cache and updates it.
+  private enum Segment:
+    case Whole(block: Block, separator: Boolean, lines: List[Teletype], frame: Long, selected: Optional[Action], actionable: Boolean)
+    case Tabular(block: Block.Table, separator: Boolean, cache: TableCache)
+
+    def separator: Boolean
+    def height: Int = this match
+      case Whole(_, _, lines, _, _, _) => lines.size
+      case Tabular(_, _, cache)         => cache.height
+
+  @caps.unsafe.untrackedCaptures
+  private var segments: List[Segment] = Nil
+
+  @caps.unsafe.untrackedCaptures
+  private var segmented: AnyRef | Null = null
+
+  @caps.unsafe.untrackedCaptures
+  private var segmentWidth: Int = -1
+
+  @caps.unsafe.untrackedCaptures
+  private var segmentFrame: Long = 0L
+
+  @caps.unsafe.untrackedCaptures
+  private var segmentSelected: Optional[Action] = Unset
+
+  // The blocks a content list paints, with whether each follows a separator: exactly the
+  // arrangement `TerminalRenderer.blocks` makes, a group's members joined without one.
+  private def flatten(content: List[Block]): List[(Block, Boolean)] =
+    content.indexed.bind: (block, index) =>
+      val separator = index.n0 > 0
+      block match
+        case Block.Group(members) => members.indexed.map { (member, position) => (member, separator && position.n0 == 0) }
+        case other                => List((other, separator))
+
+  private def refresh(width0: Int, focused: Boolean): Unit =
     val content = panel.content()
-    val frame: Long = if Actions.animated(content) then (java.lang.System.nanoTime - started)/80000000L else 0L
-    val selection0: Int = if focused then selection else -1
+    val width = width0.max(1)
+    examine(content)
+    val frame: Long = if animated0 then (java.lang.System.nanoTime - started)/80000000L else 0L
+    val selected0: Optional[Action] = if focused then selected else Unset
+    val fresh = !content.asInstanceOf[AnyRef].eq(segmented.asInstanceOf[AnyRef]) || width != segmentWidth
+    val moved = frame != segmentFrame || selected0 != segmentSelected
 
-    rendering.let { current => if current.matches(content, width, focused, selection0, frame) then current.lines else Unset }.or:
-      val heading: List[Teletype] = panel.title.lay(Nil: List[Teletype]): title =>
-        val text = renderer.phrase(title)
-        List(if focused then e"$Bold(${Fg(renderer.theme.tone(Tone.Accent))}($text))" else e"$Bold($text)")
+    if fresh || moved then
+      val previous: List[Segment] = segments
 
-      val result = heading + renderer.blocks(content, width.max(1), tick, if focused then selected else Unset)
-      rendering = Rendering(content, width, focused, selection0, frame, result)
-      result
+      segments =
+        flatten(content).indexed.map: (pair, index) =>
+          val (block, separator) = pair
+          val old: Optional[Segment] = previous.at(index)
+
+          block match
+            case table: Block.Table =>
+              val cache: TableCache = old match
+                case Segment.Tabular(previousTable, _, cache) if previousTable.columns == table.columns && previousTable.caption == table.caption => cache
+                case _ => TableCache(renderer, table.columns, table.caption)
+
+              cache.update(table.rows, width)
+              Segment.Tabular(table, separator, cache)
+
+            case other =>
+              old match
+                case Segment.Whole(previousBlock, _, lines, oldFrame, oldSelected, actionable)
+                    if previousBlock.eq(other) && width == segmentWidth
+                    && (oldFrame == frame || !Actions.animated(List(other)))
+                    && (oldSelected == selected0 || !actionable) =>
+                  Segment.Whole(other, separator, lines, frame, selected0, actionable)
+
+                case _ =>
+                  val actionable = !Actions.of(List(other)).nil
+                  Segment.Whole(other, separator, renderer.block(other, width, tick, selected0), frame, selected0, actionable)
+
+      segmented = content.asInstanceOf[AnyRef]
+      segmentWidth = width
+      segmentFrame = frame
+      segmentSelected = selected0
+
+  private def heading(focused: Boolean): List[Teletype] =
+    panel.title.lay(Nil: List[Teletype]): title =>
+      val text = renderer.phrase(title)
+      List(if focused then e"$Bold(${Fg(renderer.theme.tone(Tone.Accent))}($text))" else e"$Bold($text)")
+
+  private def total: Int =
+    segments.fold(0) { (sum, segment) => sum + (if segment.separator then 1 else 0) + segment.height }
 
   // The minimum height: the content, for the panels which are short by nature; a few rows for
   // the rest, which scroll, so that a long primary panel does not starve the others.
   def measure(width: Int): (Int, Int) = if session.hiding then (0, 0) else measure0(width)
 
   private def measure0(width: Int): (Int, Int) =
-    val rows = lines(width, false).size.max(1)
+    refresh(width, false)
+    val rows = (panel.title.lay(0) { _ => 1 } + total).max(1)
     val bounded = panel.hints[hints.terminal.MaxRows].lay(rows) { hint => rows.min(hint.rows) }
 
     panel.role match
@@ -162,21 +246,53 @@ extends Focus, Refreshable:
     session.focus(this, focused)
     if session.hiding then hidden(canvas) else paint(canvas, focused)
 
+  // The visible window: the heading, then each segment's slice of the rows it spans; a table
+  // renders only the rows within the window.
   private def paint(canvas: Board^, focused: Boolean): Unit =
-    val all = lines(canvas.width, focused)
-    val total = all.size
+    refresh(canvas.width, focused)
+    val head: List[Teletype] = heading(focused)
+    val all = head.size + total
     val height = canvas.height.max(1)
-    val start = offset.or(if follow then (total - height).max(0) else 0).min((total - height).max(0))
+    val start = offset.or(if follow then (all - height).max(0) else 0).min((all - height).max(0))
+    val until = start + height
+    val selected0: Optional[Action] = if focused then selected else Unset
 
     canvas.clear()
 
-    all.skip(start).keep(height).indexed.each: (line: Teletype, row: Ordinal) =>
-      canvas.move(Prim, row)
-      canvas.put(line)
+    var row = 0
+
+    def emit(lines: List[Teletype]): Unit =
+      lines.each: line =>
+        canvas.move(Prim, row.z)
+        canvas.put(line)
+        row += 1
+
+    def slice(lines: List[Teletype], position: Int): Unit =
+      val keepFrom = (start - position).max(0)
+      val keepUntil = until - position
+      if keepUntil > 0 && keepFrom < lines.size then emit(lines.skip(keepFrom).keep(keepUntil - keepFrom))
+
+    slice(head, 0)
+    var position = head.size
+
+    segments.each: segment =>
+      if segment.separator then
+        if position >= start && position < until then emit(List(blank))
+        position += 1
+
+      val size = segment.height
+
+      if position < until && position + size > start then segment match
+        case Segment.Whole(_, _, lines, _, _, _) => slice(lines, position)
+        case Segment.Tabular(_, _, cache)         => emit(cache.window((start - position).max(0), (until - position).min(size), selected0))
+
+      position += size
 
     canvas.cursor(false)
     canvas.flush()
     painted()
+
+  private def blank: Teletype = Teletype(t"")
 
   def handle(event: Terminal.Event): Unit = event match
     case Keypress.Up =>
@@ -184,7 +300,7 @@ extends Focus, Refreshable:
       else offset = (offset.or(0) - 1).max(0)
 
     case Keypress.Down =>
-      if !actions.nil then selection = (selection + 1).min(actions.size - 1)
+      if !actions.nil then selection = (selection + 1).min(actionCount - 1)
       else offset = offset.or(0) + 1
 
     case Keypress.Enter =>

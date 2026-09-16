@@ -214,6 +214,14 @@ extends Frontend:
       val generation: juca.AtomicInteger = juca.AtomicInteger(0)
       val armed: juca.AtomicBoolean = juca.AtomicBoolean(false)
 
+      // One redraw pending at a time: a cell assigned a thousand times before the form gets
+      // to paint queues one `Redraw`, not a thousand, so a keypress behind it waits for one
+      // repaint. The flag clears as the form takes the redraw, so a later assignment queues
+      // the next.
+      val pending: juca.AtomicBoolean = juca.AtomicBoolean(false)
+
+      def redraw(): Unit = if pending.compareAndSet(false, true) then terminal.events.put(Terminal.Info.Redraw)
+
       val scheduleWake: Long => Unit = (delay: Long) =>
         if armed.compareAndSet(false, true) then
           val current = generation.get
@@ -250,7 +258,7 @@ extends Frontend:
           session.hiding = true
           terminal.events.put(Terminal.Info.Redraw)
           terminal.events.put(sentinel)
-        else terminal.events.put(Terminal.Info.Redraw)
+        else redraw()
 
       bindings.each { (binding: (Live[?], Refreshable, Optional[Panel])) => binding(0).bindWake(wake(binding(1), binding(2))) }
 
@@ -295,9 +303,11 @@ extends Frontend:
           private var ended: Boolean = false
 
           def hasNext: Boolean =
-            if ended then false else
+            if ended || stopped then false else
               if peeked.absent then
                 if underlying.hasNext then peeked = underlying.next() else ended = true
+                // The redraw is being taken: the next assignment may queue another.
+                peeked.let { event => if event == Terminal.Info.Redraw then pending.set(false) }
 
               // An inline session's resize is handled here, not by the form.
               peeked match
