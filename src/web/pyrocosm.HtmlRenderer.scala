@@ -32,6 +32,7 @@ import murmuration.zip
 import sortingAlgorithms.timsort
 import dysasymptotics.{linearAccess, linearSize}
 import attributives.textAttributive
+import htmlDoms.whatwg
 import htmlDoms.whatwg.*
 import nomenclature.CssClass.nominative
 
@@ -139,6 +140,19 @@ class HtmlRenderer():
       else Details(`class` = cls(t"pyro-disclosure"))(Summary(phrase(summary)), blocks(content))
 
     case Block.Image(source, alt) => Figure(`class` = cls(t"pyro-image"))(Img(src = source, alt = alt), Figcaption(alt))
+
+    // A figure's drawing, its ids qualified by the figure's so several drawings share a page,
+    // is read as foreign (SVG) content into a holder, `<figure id>-svg`, which a redraw replaces
+    // whole and a part revision patches inside. Markup that does not parse shows its description.
+    case Block.Figure(figure) =>
+      val markup: Text = pyrocosm.Figure.namespace(figure.id, figure.svg)
+      val drawing: Optional[Html of "svg"] = safely(markup.read[Html of "svg"])
+
+      val holder: Html of Flow =
+        drawing.lay(Div(id = t"${figure.id}-svg", `class` = cls(t"pyro-drawing-svg"))(P(phrase(figure.alt)))):
+          svg => Div(id = t"${figure.id}-svg", `class` = cls(t"pyro-drawing-svg"))(svg)
+
+      Figure(id = figure.id, `class` = cls(t"pyro-drawing"))(holder, Figcaption(phrase(figure.alt)))
 
     case Block.Tree(roots) => Ul(`class` = cls(t"pyro-tree"))(roots.map(treeNode)*)
 

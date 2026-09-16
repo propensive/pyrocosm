@@ -26,14 +26,93 @@
     return meta ? "?session=" + encodeURIComponent(meta.getAttribute("content")) : "";
   }
 
+  // A panel's drawings outlive its repaints: a figure keeps its holder current by its own
+  // patches, so the holder the page already has is carried into the panel's new content in
+  // place of the (identical or older) copy rendered there, and a transition under way is not
+  // cut short.
+  function keepDrawings(root) {
+    var kept = {};
+    root.querySelectorAll(".pyro-drawing-svg").forEach(function (holder) { kept[holder.id] = holder; });
+    return kept;
+  }
+
+  function restoreDrawings(root, kept) {
+    root.querySelectorAll(".pyro-drawing-svg").forEach(function (holder) {
+      var old = kept[holder.id];
+      if (old) holder.replaceWith(old);
+    });
+  }
+
+  function parseSvg(html) {
+    var scratch = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    scratch.innerHTML = html;
+    return scratch.firstElementChild;
+  }
+
+  function sameShape(a, b) {
+    if (a.nodeType !== b.nodeType) return false;
+    if (a.nodeType !== 1) return true;
+    if (a.tagName !== b.tagName || a.childNodes.length !== b.childNodes.length) return false;
+    for (var i = 0; i < a.childNodes.length; i++) if (!sameShape(a.childNodes[i], b.childNodes[i])) return false;
+    return true;
+  }
+
+  function copyAttributes(target, source) {
+    var names = {};
+    for (var i = 0; i < source.attributes.length; i++) {
+      var attribute = source.attributes[i];
+      names[attribute.name] = true;
+      if (target.getAttribute(attribute.name) !== attribute.value) target.setAttribute(attribute.name, attribute.value);
+    }
+    for (var j = target.attributes.length - 1; j >= 0; j--) {
+      var name = target.attributes[j].name;
+      if (!names[name]) target.removeAttribute(name);
+    }
+  }
+
+  function copyInto(target, source) {
+    if (target.nodeType !== 1) { if (target.nodeValue !== source.nodeValue) target.nodeValue = source.nodeValue; return; }
+    copyAttributes(target, source);
+    for (var k = 0; k < target.childNodes.length; k++) copyInto(target.childNodes[k], source.childNodes[k]);
+  }
+
+  function revisePart(element, html) {
+    var fresh = parseSvg(html);
+    if (fresh && sameShape(element, fresh)) copyInto(element, fresh);
+    else element.outerHTML = html;
+  }
+
+  // A whole drawing redrawn, part by part: each identified part of the new drawing whose
+  // shape the old one shares is kept and updated in place, so its geometry transitions even
+  // when the axes around it are replaced — a chart whose bars are all in place from the start
+  // grows each bar as its value arrives, whatever the scale does.
+  function reviseDrawing(holder, html) {
+    var fresh = parseSvg(html);
+    var old = holder.firstElementChild;
+    if (!fresh || !old || old.tagName !== fresh.tagName) { holder.innerHTML = html; return; }
+    copyAttributes(old, fresh);
+    var byId = {};
+    Array.prototype.forEach.call(old.children, function (child) { if (child.id) byId[child.id] = child; });
+    var next = [];
+    Array.prototype.slice.call(fresh.childNodes).forEach(function (child) {
+      var previous = child.nodeType === 1 && child.id ? byId[child.id] : null;
+      if (previous && sameShape(previous, child)) { copyInto(previous, child); next.push(previous); }
+      else next.push(child);
+    });
+    old.replaceChildren.apply(old, next);
+  }
+
   function apply(patch) {
     if (patch.kind === "pong") return;
     var element = document.getElementById(patch.id);
     if (!element) return;
     switch (patch.kind) {
       case "replace":
+        if (element.classList.contains("pyro-drawing-svg")) { reviseDrawing(element, patch.html); break; }
         var follow = element.scrollHeight - element.scrollTop - element.clientHeight < 8;
+        var drawings = keepDrawings(element);
         element.innerHTML = patch.html;
+        restoreDrawings(element, drawings);
         if (follow) element.scrollTop = element.scrollHeight;
         wire(element);
         if (/-decoration$/.test(patch.id)) {
@@ -46,6 +125,12 @@
           if (editorText(element) !== patch.html) { clearGhost(element); element.textContent = patch.html; placeCaret(element, patch.html.length); emptiness(element); }
         } else if (element.value !== patch.html) element.value = patch.html;
         break;
+      // One part of a figure's drawing. When the new markup has the same shape as the old (the
+      // same elements in the same order), the attributes are updated in place, so the elements
+      // survive and their geometry transitions — a bar grows to its new height. Otherwise it is
+      // replaced; an SVG element takes its namespace from its parent, so the markup is parsed
+      // as SVG wherever the part sits in the drawing.
+      case "part": revisePart(element, patch.html); break;
       case "enable": element.disabled = false; break;
       case "disable": element.disabled = true; break;
       case "check": element.checked = true; break;

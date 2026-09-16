@@ -89,6 +89,10 @@ object WebStyles:
         + css".pyro-tree, .pyro-tree ul { list-style: none; padding-left: 1.2rem; border-left: 1px dotted var(--pyro-border) }"
         + css".pyro-graph { list-style: none; padding: 0 } .pyro-arrow { color: var(--pyro-muted) }"
         + css".pyro-image img { max-width: 100%; border-radius: 0.4rem } .pyro-image figcaption { color: var(--pyro-muted); font-size: 0.85rem }"
+        + css".pyro-drawing { margin: 0.5rem 0 } .pyro-drawing svg { width: 100%; height: auto; display: block } .pyro-drawing figcaption { color: var(--pyro-muted); font-size: 0.85rem }"
+        // A drawing's rectangles and circles move smoothly when a revision changes their
+        // geometry in place: a bar grows from the baseline to a new value.
+        + css".pyro-drawing rect, .pyro-drawing circle { transition-property: x, y, width, height, cx, cy, r; transition-duration: 0.4s; transition-timing-function: ease-out }"
 
     val charts: Css =
       css".pyro-chart { display: grid; gap: 0.3rem; margin: 0.5rem 0 }"
