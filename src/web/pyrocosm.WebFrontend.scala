@@ -101,10 +101,35 @@ extends pyrocosm.Frontend:
         try channel.nn.send(Message.Text(text))
         catch case _: Exception => detach(connection.nn.intValue)
 
-    // What each cell repaints: a panel's content, or a control's holder.
+    // The figures the content has shown, each bound once: a figure appears whenever content
+    // changes, and from then on repaints in place — one part, or the whole drawing — rather
+    // than with its panel.
+    private val figures: juc.ConcurrentHashMap[Text, Figure] = juc.ConcurrentHashMap()
+
+    // A named method rather than a block lambda, which crashes the 3.9.0-p16 compiler inside
+    // implicit search (`wildApprox` assertion) when it interpolates within a pattern match.
+    private def figurePatch(figure: Figure, revision: Figure.Revision): Patch = revision match
+      case Figure.Revision.Redraw(svg) =>
+        Patch(t"replace", t"${figure.id}-svg", Figure.namespace(figure.id, svg))
+
+      case Figure.Revision.Replace(part, markup) =>
+        Patch(t"part", t"${figure.id}-$part", Figure.namespace(figure.id, markup))
+
+    def bindFigures(blocks: List[Block]): Unit =
+      Figure.of(blocks).each: figure =>
+        if figures.putIfAbsent(figure.id, figure) == null then
+          figure.revision.bindWake { () => figure.revision().let { revision => broadcast(figurePatch(figure, revision)) } }
+
+    // What each cell repaints: a panel's content, or a control's holder. A panel's figures are
+    // bound after its content is sent, so a figure is on the page before its revisions reach it.
     def bind(): Unit =
       interface.panels.each: panel =>
-        panel.content.bindWake { () => broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", renderer.blocks(panel.content()).show)) }
+        bindFigures(panel.content())
+
+        panel.content.bindWake: () =>
+          val content = panel.content()
+          broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", renderer.blocks(content).show))
+          bindFigures(content)
 
       (interface.controls + interface.panels.bind(_.controls)).each:
         case Control.Field(input, _, value, decoration, _, _, history) =>
@@ -180,6 +205,7 @@ extends pyrocosm.Frontend:
         closed = true
         sessions.remove(id)
         interface.cells.each(_.unbindWakes())
+        figures.values.nn.forEach { figure => figure.nn.revision.unbindWakes() }
         handle(Event.Closed)
 
   // A session holds the monitor (for its grace timer) and its handler, both of which outlive

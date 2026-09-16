@@ -229,6 +229,11 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     val run = Action(t"run")
 
+    val drawing: Text =
+      t"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><linearGradient id="grad"/></defs><g id="series-0"><rect fill="url(#grad)"/></g><use href="#series-0"/></svg>"""
+
+    val figure = Figure(Inline.text(t"a chart"), drawing)
+
     val rich: Block =
       Block.Group:
         List
@@ -264,7 +269,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
             Block.Gauge(Status.Steps(List(Step(Inline.text(t"compile"), Standing.Running)))),
             Block.Listing(true, List(Block.Item(List(Block.paragraph(t"one")), run))),
             Block.Record(List(Block.Entry(Inline.text(t"key"), List(Block.paragraph(t"value")))), Inline.text(t"R")),
-            Block.Disclosure(Inline.text(t"more"), List(Block.Image(t"x.png", t"an image")), true),
+            Block.Disclosure(Inline.text(t"more"), List(Block.Image(t"x.png", t"an image"), Block.Figure(figure)), true),
             Block.Chart(Block.Chart.Kind.Sparkline, List(Block.Series(Inline.text(t"s"), List(1.0, 2.0)))) )
 
     test(m"a block with every node round-trips as TEL"):
@@ -394,6 +399,34 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"every node renders as HTML"):
       html.block(rich).show.length
     . assert(_ > 0)
+
+    test(m"a figure embeds its drawing verbatim, with its ids qualified"):
+      val text = html.block(Block.Figure(figure)).show
+      ( text.contains(t"<svg xmlns="),
+        text.contains(t"""id="${figure.id}-series-0""""),
+        text.contains(t"""url(#${figure.id}-grad)"""),
+        text.contains(t"""href="#${figure.id}-series-0""""),
+        text.contains(t"""<div id="${figure.id}-svg""""),
+        text.contains(t"&lt;") )
+    . assert(_ == (true, true, true, true, true, false))
+
+    test(m"namespacing leaves text without ids alone"):
+      Figure.namespace(t"f1", t"<g><rect width=\"2\"/></g>")
+    . assert(_ == t"<g><rect width=\"2\"/></g>")
+
+    test(m"the figures of a run of blocks are found wherever they nest"):
+      Figure.of(List(rich)).map(_.id)
+    . assert(_ == List(figure.id))
+
+    test(m"replacing a part revises the figure and keeps the whole drawing"):
+      val figure2 = Figure(Inline.text(t"a chart"), drawing)
+      figure2.replace(t"series-0", t"<g id=\"series-0\"/>", t"<svg><g id=\"series-0\"/></svg>")
+      (figure2.svg, figure2.revision())
+    . assert(_ == (t"<svg><g id=\"series-0\"/></svg>", Figure.Revision.Replace(t"series-0", t"<g id=\"series-0\"/>")))
+
+    test(m"a figure round-trips as TEL with its id"):
+      (Block.Figure(figure): Block).in[Tel].show.read[Tel].as[Block]
+    . assert(_ == Block.Figure(figure))
 
     test(m"an actionable row carries its action's id"):
       html.block(rich).show.contains(t"""<tr id="${run.id}" class="pyro-action pyro-tone-success">""")

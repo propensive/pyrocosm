@@ -19,7 +19,7 @@ object settings:
   // `make sync-releases` in the Soundness repository). Pinned to the current release.
   val soundnessVersion = "0.66.0"
 
-  val pyrocosmVersion = sys.env.getOrElse("PYROCOSM_VERSION", "0.1.0")
+  val pyrocosmVersion = sys.env.getOrElse("PYROCOSM_VERSION", "0.2.0")
 
   val scalaOptions = Seq(
     "-Zalias-captures",

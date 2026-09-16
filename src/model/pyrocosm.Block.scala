@@ -153,6 +153,7 @@ enum Block:
   case Notice(tone: Tone, title: Optional[List[Inline]], content: List[Block])
   case Disclosure(summary: List[Inline], content: List[Block], open: Boolean = false)
   case Image(source: Text, alt: Text)
+  case Figure(figure: pyrocosm.Figure)                  // a live drawing, revised in place
   case Tree(roots: List[Block.TreeNode])
   case Graph(vertices: List[Block.Vertex], edges: List[Block.Edge])
   case Chart(kind: Block.Chart.Kind, series: List[Block.Series])

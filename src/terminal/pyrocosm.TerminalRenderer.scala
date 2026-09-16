@@ -278,6 +278,10 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
       case Block.Image(source, alt) =>
         List(faint(e"$Italic([$alt])").append(faint(Teletype(t" $source"))))
 
+      // A drawing has no terminal form; its description stands in for it.
+      case Block.Figure(figure) =>
+        List(faint(e"$Italic([${Inline.plain(figure.alt)}])"))
+
       case Block.Tree(roots) =>
         val diagram = TreeDiagram.by[Block.TreeNode](_.children)(roots*)
         val style = roundedTreeStyle[Teletype]

@@ -86,6 +86,26 @@ object Codecs:
   val blockEncodable: Block is Tel.Encodable = Tel.EncodableDerivation.derived[Block]
   val blockDecodable: Block is Tel.Decodable = Tel.DecodableDerivation.derived[Block]
 
+  // A figure's serial form (see `figureTelEncodable`), derived here where the list codecs
+  // resolve, as the model types' are.
+  val snapshotEncodable: Figure.Snapshot is Tel.Encodable =
+    Tel.EncodableDerivation.derived[Figure.Snapshot]
+
+  val snapshotDecodable: Figure.Snapshot is Tel.Decodable =
+    Tel.DecodableDerivation.derived[Figure.Snapshot]
+
+// A figure serialises as its snapshot — id, alt and the whole current drawing — and reads back
+// as a figure with the same id, so a round trip compares equal.
+given figureTelEncodable: Figure is Tel.Encodable =
+  Tel.Encodable(() => Codecs.snapshotEncodable.shape(), Codecs.snapshotEncodable.nature): figure =>
+    Codecs.snapshotEncodable.encoded(figure.snapshot)
+
+given figureTelDecodable: Figure is Tel.Decodable =
+  unsafely:
+    caps.unsafe.unsafeAssumePure:
+      Tel.Decodable(() => Codecs.snapshotDecodable.shape(), Codecs.snapshotDecodable.nature): tel =>
+        Figure.restore(Codecs.snapshotDecodable.decoded(tel))
+
 // Every enum of singleton cases reachable from a derived codec has a scalar codec here, keyed by
 // its kebab-cased case name (`arrow-right`), for two reasons: it is better TEL than a nested
 // select, and deriving a decoder for a sum with a singleton case fails under capture checking
