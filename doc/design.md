@@ -248,8 +248,23 @@ Found while building the model (M1):
   serves the page and script, binds every `Live` cell to a patch broadcast over one WebSocket
   per tab, and validates every incoming id against the interface's handles; `pyrocosm.js` is
   the generic script. Patches so far: `replace`, `value`, `enable`/`disable`, `check`/`uncheck`,
-  `select`. `gallery serve [port]` runs the gallery on it, from the same `Session` as the
-  terminal. Found while building it:
+  `select`, `class`/`unclass`. `gallery serve [port]` runs the gallery on it, from the same
+  `Session` as the terminal. The markup is meant to be restyled by serving another sheet, so
+  it keeps to these rules: every class names what an element *is* (`pyro-gauge`,
+  `pyro-series-value`) or a state it is in (`pyro-empty`, `pyro-selected`, `pyro-online`,
+  `pyro-incomplete`), never how it looks; nothing carries a `style` attribute; and the
+  stylesheet is linked, not embedded. Graffiti's `html` inlines a `<style>`, so `PyrocosmPage`
+  composes its own `markup` from the same `frame` and `head` seams with a `<link>` to
+  `/pyrocosm.css`, which `WebFrontend` serves from `css`. A bar chart is a `figure` holding a
+  `dl` (a series is a `dt`, each value a `dd` with a `meter`), a gauge a `figure` with its
+  `figcaption`, a duration a `time` with a `PT…S` datetime, a field's history a `data-history`
+  attribute, and an incomplete field a `pyro-incomplete` class on the field itself (its
+  decoration is replaced by innerHTML, so the state travels by its own `class`/`unclass`
+  patch). A field's tokens still ride in a hidden `span`: honeycomb registers `template` as a
+  void tag, and the serializer decides voidness from the registry by name, so a container
+  defined here serializes empty; once honeycomb's `Template` is a container the span can
+  become one. `Block.Heading(1)` inside a panel still emits `<h1>`, as the content asks.
+  Found while building it:
   - Cataclysm's `css"…"` checks a substitution against the property's MDN grammar and only
     accepts a hole as a *whole* value, so `border: 1px solid $colour` is rejected, and a lone
     colour is never valid for `background` (its grammar has a mandatory comma; use

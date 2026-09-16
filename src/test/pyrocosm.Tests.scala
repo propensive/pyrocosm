@@ -537,7 +537,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     test(m"a tone renders as its class"):
       html.phrase(List(Inline.Toned(Tone.Failure, Inline.text(t"no")))).show
-    . assert(_ == t"""<span class="pyro-toned pyro-tone-failure">no</span>""")
+    . assert(_ == t"""<span class="pyro-tone-failure">no</span>""")
 
     test(m"a keystroke renders as a kbd element"):
       html.phrase(List(Inline.Keystroke(Keypress.Ctrl('C')))).show
@@ -548,7 +548,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       (plan.navigation.map(_.id.label), plan.primary.map(_.id.label), plan.detail.map(_.id.label), plan.status.map(_.id.label))
     . assert(_ == (List(t"nav"), List(t"main"), List(t"detail"), List(t"status")))
 
-    val page = PyrocosmPage(arranged, html, WebTheme.default).html.show
+    val page = PyrocosmPage(arranged, html, WebTheme.default).markup.show
 
     test(m"the page has a content element for each panel"):
       arranged.panels.map { (panel: Panel) => page.contains(t"""id="${HtmlRenderer.panelId(panel)}-content"""") }
@@ -572,12 +572,16 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert(_ == (List(t"transcript"), List(t"transcript")))
 
     test(m"a code field is an editable code element with its placeholder"):
-      val page = PyrocosmPage(repl, html, WebTheme.default).html.show
-      page.contains(t"""<code id="${prompt.input.id}" class="pyro-field pyro-editor" contenteditable="true"""") && page.contains(t"""<span class="pyro-placeholder">scala&gt;</span>""")
-    . assert(_ == true)
+      val page = PyrocosmPage(repl, html, WebTheme.default).markup.show
+      val code: Text = page.cut(t"<code ").at(Sec).or(t"").cut(t">").at(Prim).or(t"")
+      ( code.contains(t"""id="${prompt.input.id}""""),
+        code.contains(t"""class="pyro-field pyro-editor""""),
+        code.contains(t"""contenteditable="true""""),
+        page.contains(t"""<span class="pyro-placeholder">scala&gt;</span>""") )
+    . assert(_ == (true, true, true, true))
 
     test(m"a page with a session of its own names it"):
-      PyrocosmPage(repl, html, WebTheme.default, t"s1").html.show.contains(t"""<meta name="pyro-session" content="s1">""")
+      PyrocosmPage(repl, html, WebTheme.default, t"s1").markup.show.contains(t"""<meta name="pyro-session" content="s1">""")
     . assert(_ == true)
 
     test(m"a decoration carries its tokens, note, marker, marks and completions"):
@@ -589,18 +593,50 @@ object Tests extends Suite(m"Pyrocosm tests"):
           marks = List(Block.Note(0, 0, 3, Block.Note.Style.Erroneous)) )
 
       val decoration = PyrocosmPage(repl, html, WebTheme.default).decoration(prompt).show
-      List(t"pyro-tokens", t"pyro-incomplete", t"pyro-note", t"pyro-completions", t"println", t"reads as code", t"""<li class="pyro-whole">""", t"pyro-note-erroneous").all(decoration.contains(_))
+      List(t"""<span class="pyro-tokens" hidden="">""", t"pyro-note", t"pyro-completions", t"println", t"reads as code", t"""<li class="pyro-replacement">""", t"pyro-note-erroneous").all(decoration.contains(_))
     . assert(_ == true)
 
     test(m"a page seeds the field's history"):
       prompt.history() = List(t"val x = 1")
-      PyrocosmPage(repl, html, WebTheme.default).html.show.contains(t"""<span class="pyro-history" hidden="">["val x = 1"]</span>""")
+      PyrocosmPage(repl, html, WebTheme.default).markup.show.contains(t"""data-history="[&quot;val x = 1&quot;]"""")
     . assert(_ == true)
+
+    test(m"a field whose text is an incomplete prefix carries the state on itself"):
+      PyrocosmPage(repl, html, WebTheme.default).markup.show.contains(t"""class="pyro-field pyro-editor pyro-incomplete"""")
+    . assert(_ == true)
+
+    test(m"the page links the stylesheet rather than embedding it"):
+      val page = PyrocosmPage(repl, html, WebTheme.default).markup.show
+      (page.contains(t"""rel="stylesheet""""), page.contains(t"""href="/pyrocosm.css""""), page.contains(t"<style"))
+    . assert(_ == (true, true, false))
+
+    test(m"nothing carries an inline style"):
+      (page.contains(t"style="), html.block(rich).show.contains(t"style="))
+    . assert(_ == (false, false))
+
+    test(m"a bar chart is a figure of meters"):
+      val chart = html.block(Block.Chart(Block.Chart.Kind.Bars, List(Block.Series(Inline.text(t"s"), List(1.0, 2.0))))).show
+      ( chart.starts(t"""<figure class="pyro-chart pyro-chart-bars"><dl class="pyro-series">"""),
+        chart.contains(t"""<dt class="pyro-series-label">s</dt>"""),
+        chart.contains(t"""<meter class="pyro-meter" value="1.0" max="2.0">1</meter>""") )
+    . assert(_ == (true, true, true))
+
+    test(m"a gauge is a figure with its caption"):
+      html.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work"))).show
+    . assert(_.starts(t"""<figure class="pyro-gauge"><figcaption>work</figcaption><progress"""))
+
+    test(m"a duration is a time element with its machine-readable form"):
+      html.block(Block.Gauge(Status.Elapsed(90.0))).show
+    . assert(_.contains(t"""<time class="pyro-elapsed" datetime="PT90.000S">"""))
+
+    test(m"a column's default alignment is unmarked"):
+      html.block(emptyCells).show.contains(t"pyro-align")
+    . assert(_ == false)
 
     test(m"captured output renders behind a gutter in both media"):
       val output = Block.Output(t"one\ntwo\n", error = true)
       (renderer.plain(List(output), 80), html.block(output).show)
-    . assert { (plain, page) => plain == t"░ one\n░ two" && page.contains(t"pyro-gutter-err") && page.contains(t"one\n") }
+    . assert { (plain, page) => plain == t"░ one\n░ two" && page.contains(t"pyro-output-stderr") && page.contains(t"one\n") }
 
     val captured: Block = Block.Output(t"one\ntwo\n", error = true)
 
@@ -617,6 +653,10 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     test(m"the stylesheet declares the palette as custom properties"):
       stylesheet.contains(t"--pyro-bg: #002b36") && stylesheet.contains(t"--pyro-tone-success: #859900")
+    . assert(_ == true)
+
+    test(m"the stylesheet draws a meter in every engine"):
+      stylesheet.contains(t".pyro-meter::-webkit-meter-optimum-value") && stylesheet.contains(t".pyro-meter::-moz-meter-bar")
     . assert(_ == true)
 
     test(m"the stylesheet refers to colours only through variables"):
