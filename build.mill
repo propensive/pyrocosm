@@ -98,6 +98,11 @@ object settings:
   // The instances that need the compiler: harlequin highlighting, delicious diagnostic markup.
   def compilerDeps(soundness: String) = Seq("harlequin-core", "delicious-core").map(component(soundness))
 
+  // Git notes as metadata storage: guillotine drives `git`; stratiform is the note body codec.
+  def notesDeps(soundness: String) = Seq(
+    "guillotine-core", "stratiform-core", "ambience-core", "eucalyptus-core", "hieroglyph-core")
+  . map(component(soundness))
+
   def demoDeps(soundness: String) = Seq("exoskeleton-completions", "ethereal-core").map(component(soundness))
   def testDeps(soundness: String) = Seq("probably-cli", "probably-events", "yossarian-core").map(component(soundness))
 
@@ -341,16 +346,21 @@ object pyrocosm extends Project:
     def mvnDeps = Task(settings.webDeps(deps.soundness()))
     def resources = Task.Sources(mill.api.BuildCtx.workspaceRoot / "res" / "web")
 
+  // Metadata in git notes, keyed by filtered tree hashes (Pyrocosm hashes), for every tool.
+  // JVM-only, because it runs `git`. `dev.propensive:pyrocosm-notes`.
+  object notes extends Component(model), Publishing:
+    def mvnDeps = Task(settings.notesDeps(deps.soundness()))
+
   // The gallery: every node in both frontends, the fixture for judging appearance.
   object demo extends Component(terminal, web):
     def mvnDeps = Task(settings.demoDeps(deps.soundness()))
     def finalMainClass = "pyrocosm.gallery"
 
-  object test extends Component(model, compiler, terminal, web):
+  object test extends Component(model, compiler, terminal, web, notes):
     def mvnDeps = Task(settings.testDeps(deps.soundness()))
     def finalMainClass = "pyrocosm.Tests"
 
-// The release: the four library modules' jars, each with its POM and ivy.xml embedded under
+// The release: the five library modules' jars, each with its POM and ivy.xml embedded under
 // `META-INF/maven/<group>/<artifactId>/`, named `<artifactId>-<version>.jar`, exactly as the
 // Soundness build stages its jars. A jar so staged is all a consumer needs: Soundness's
 // `sync_releases.py` (pointed at this repository with `SOUNDNESS_RELEASE_REPO`) reconstructs
@@ -358,7 +368,8 @@ object pyrocosm extends Project:
 // matches the jar on a launcher's classpath to the released asset by digest and externalizes
 // it. `etc/ci/release.sh` uploads what `stage` produces.
 object release extends Module:
-  def modules: Seq[PublishModule] = Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.terminal, pyrocosm.web)
+  def modules: Seq[PublishModule] =
+    Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.terminal, pyrocosm.web, pyrocosm.notes)
 
   private def withDescriptors(source: os.Path, target: os.Path, entries: Seq[(String, os.Path)])
   :   Unit =

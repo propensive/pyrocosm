@@ -202,10 +202,57 @@ Found while building the model (M1):
   instead.
 - A field named `notify` collides with `Object#notify`.
 
+## Metadata in git notes (`src/notes`)
+
+Every tool attaches metadata to source states through git notes, with one library,
+`pyrocosm-notes`, so that no tool names a git command. A **Pyrocosm hash** (`Fingerprint`) is
+the hash of a git tree: a commit's tree with a `Filter`'s exclusions removed (`read-tree` into a
+throwaway index, `update-index --force-remove`, `write-tree`). Several commits share one
+fingerprint (rebases, doc-only changes, squash merges) and a commit has as many fingerprints as
+filters have been applied to it, so the relationship is many-to-many, and a fingerprint never
+records which filter produced it: either a note exists for it or it does not.
+
+| Ref | On | Body |
+|---|---|---|
+| `refs/notes/pyrocosm/commits` | a commit | the index: one fingerprint per line, oldest first, no duplicates |
+| `refs/notes/pyrocosm/<kind>` (`bench`, `coverage`, …) | a filtered tree | the TEL document of a `Recordable` kind |
+
+"The bench data for this commit" is `commit.record[Bench]`: the commit's fingerprints, newest
+first, tried against the `bench` ref, the first with a note winning. "Record this run's bench
+data" is `commit.record[Bench](filter, data)`: the fingerprint is computed, the note written on
+the tree, and the fingerprint appended to the commit's index note if absent. `Notes` is the
+capability for one repository (`fingerprint`, `fingerprints`, `bind`, `read`, `write`,
+`commits`, `history`, `fetch`, `publish`); a `Recordable` names a kind and carries its TEL
+codecs (`Recordable[Bench](t"bench")`).
+
+Rules:
+
+- The filter comes only from Pyrocosm-managed configuration, a tool's own
+  `.pyrocosm/<tool>/config.tel` (a `notes` block of `exclude` and `include` globs), never from
+  `.gitignore` or `.dockerignore`. Globs: `*` within a segment, `**` across segments, a bare
+  name at any depth, a trailing `/` for a directory and its contents; an `include` overrides an
+  `exclude`.
+- A note on a tree does not need the tree to exist locally: git resolves a full hash without
+  looking it up, so a clone that fetched the notes reads them without computing anything.
+- The index is the only commit-keyed note and is append-only. Notes refs travel only by
+  `fetch` and `publish` (`refs/notes/pyrocosm/*`); a push git rejects is reported as diverged,
+  for `git notes merge` by hand until a merge strategy is chosen.
+- `refs/notes/ci-attestation` (Soundness's signed in-toto envelope, keyed by its own
+  `.dockerignore`-filtered tree) is a separate scheme and stays that way for as long as CI needs
+  it; a fume-produced attestation will be a kind of its own under this layout, with no bridge.
+- The opaque types (`Commit`, `Fingerprint`) live in objects (`Commits`, `Fingerprints`) and
+  are exported from a file that imports nothing: an opaque type at package level can leak, and
+  an alias resolved through a wildcard import in a file with an export of it is a cyclic
+  reference (hence the root-qualified `_root_.anticipation.Text`).
+- Proscenium's `List` is not Scala's: varargs reach it through `List(...)` literals or a
+  fully-qualified `scala.collection.immutable.List`, a chained `::` resolves to the underlying
+  list, and `has`, `reverse` and `filter` replace `contains`, `:+` and friends.
+
+
 ## Roadmap
 
 - **M0 Scaffold** (done): `build.mill` on the flame pattern, modules `model`, `terminal`,
-  `web`, `demo`, `test`; Makefile; shared CI workflow.
+  `web`, `demo`, `test` (and later `notes`); Makefile; shared CI workflow.
 - **M1 Model** (done): the types above; `Presentable` with its fallback chain, product and sum
   derivation, and table derivation for lists of case classes; instances for Soundness types;
   TEL codecs for `Inline` and `Block` with a full-model round-trip test; the `compiler` module
@@ -355,6 +402,9 @@ Found while building the model (M1):
   - Knowingly left: the code-versus-prose border colour (the verdict shows as a detail note);
     a Flame theme (the default palettes are used); `/tasty` and `/bytecode` as tables (they
     arrive as output text).
+- **M6b Git notes** (done): the `notes` module above, with a suite driving a scratch
+  repository through fingerprints, index binding, the reverse index, history, and a publish and
+  fetch through a bare remote. Fume's roadmap items 3.1 and 3.2 build on it.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,
@@ -364,7 +414,7 @@ Found while building the model (M1):
 
 Pyrocosm releases to GitHub Releases, as the rest of the ecosystem does since Soundness #1929:
 `make release VERSION=X.Y.Z` (after bumping `pyrocosmVersion` in `build.mill`) builds from
-clean, stages the four library jars with their POM and ivy.xml embedded under
+clean, stages the five library jars with their POM and ivy.xml embedded under
 `META-INF/maven/`, runs the tests, tags, uploads, checks every asset's digest against the local
 file, and publishes. A consumer installs a release into its local ivy repository with Soundness's
 sync script pointed here (`SOUNDNESS_RELEASE_REPO=propensive/pyrocosm python3 sync_releases.py
