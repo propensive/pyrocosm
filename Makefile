@@ -39,6 +39,10 @@ stage:
 sync-deps:
 	./etc/shared sync-deps.sh
 
+# Install the commands pinned in etc/tools (fume) through their releases' installers.
+tools:
+	./etc/shared tools.sh
+
 # Publish HEAD's libraries as a snapshot — a `snapshot-<hex>` pre-release named by the filtered
 # tree of the commit, at version `<pyrocosmVersion>-<hex>` — for a dependent repository to pin in
 # its etc/refs before the next release. `LOCAL=1` stages and installs without publishing.
@@ -59,4 +63,4 @@ release:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: build test gallery demo static serve publishLocal stage sync-deps snapshot snapshot-prune release dev
+.PHONY: build test gallery demo static serve publishLocal stage sync-deps tools snapshot snapshot-prune release dev
