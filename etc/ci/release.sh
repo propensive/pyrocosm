@@ -139,17 +139,15 @@ fi
 # GitHub computes each asset's SHA-256 shortly after upload. Burdock and the sync script match
 # by that digest, so wait for every one and confirm it is the digest of the local file.
 #
-# The release is read with `gh release view`, not the REST API: `releases/tags/<tag>` serves
-# PUBLISHED releases only, and this one is a draft whose tag is not pushed until these digests
-# have been checked, while `repos/<repo>/releases` lists no drafts at all for this token. `gh
-# release view` resolves a draft by its tag name, and reports each asset's digest as the REST
-# API does.
+# Through the REST API: `gh release view --json assets` does not expose the digest field
+# (found on the first snapshot), and `releases/tags/<tag>` resolves this draft for the token
+# that created it.
 for jar in "${jars[@]}"; do
   name=$(basename "$jar")
   local_digest=$(shasum -a 256 "$jar" | cut -d' ' -f1)
   digest=""
   for i in $(seq 1 60); do
-    digest=$(gh release view "$VERSION" --repo "$REPO" --json assets \
+    digest=$(gh api "repos/$REPO/releases/tags/$VERSION" \
       --jq ".assets[] | select(.name == \"$name\") | .digest // \"\"" 2>/dev/null || true)
     [[ -n "$digest" ]] && break
     sleep 5
