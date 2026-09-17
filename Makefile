@@ -32,15 +32,23 @@ publishLocal:
 stage:
 	./mill release.stage
 
-# Install a release into the local ivy repository, as CI does, so a build resolves the RELEASED
-# jars rather than a local compile: the pinned version, or `VERSION=X.Y.Z`. `sync-staged` installs
-# the jars of a local `make stage` instead, for trying a release candidate in fume or flame before
-# it is tagged. Both overwrite what `publishLocal` installed; run that again to undo.
-sync-releases:
-	./etc/shared sync-releases.sh propensive/pyrocosm pyrocosmVersion $(VERSION)
+# Install every library pinned in etc/refs — releases and snapshots alike, transitively —
+# into the local ivy repository, as CI does, so the build resolves exactly the pinned jars rather
+# than whatever a sibling checkout's `publishLocal` last installed under the same version. A
+# snapshot not yet on GitHub is built from the sibling checkout named by the pin's commit.
+sync-deps:
+	./etc/shared sync-deps.sh
 
-sync-staged:
-	./etc/shared sync-releases.sh propensive/pyrocosm pyrocosmVersion --staged
+# Publish HEAD's libraries as a snapshot — a `snapshot-<hex>` pre-release named by the filtered
+# tree of the commit, at version `<pyrocosmVersion>-<hex>` — for a dependent repository to pin in
+# its etc/refs before the next release. `LOCAL=1` stages and installs without publishing.
+# The last line printed is the pin. See snapshot.sh in propensive/.github.
+snapshot:
+	./etc/shared snapshot.sh pyrocosm "$$(sed -n 's/.*val pyrocosmVersion = "\(.*\)".*/\1/p' build.mill)"
+
+# Delete snapshot pre-releases older than DAYS (default 60) days.
+snapshot-prune:
+	./etc/shared snapshot-prune.sh pyrocosm $(DAYS)
 
 # Release to GitHub Releases: `make release VERSION=X.Y.Z`, after bumping `pyrocosmVersion` in
 # build.mill and committing. See etc/ci/release.sh.
@@ -51,4 +59,4 @@ release:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: build test gallery demo static serve publishLocal stage sync-releases sync-staged release dev
+.PHONY: build test gallery demo static serve publishLocal stage sync-deps snapshot snapshot-prune release dev

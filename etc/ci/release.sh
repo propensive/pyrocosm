@@ -42,13 +42,16 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 # The version is pinned in build.mill and compiled into the POMs the consumers resolve, so it
-# must agree with the tag. (The PYROCOSM_VERSION override cannot help: the Mill daemon freezes
-# the build script's environment.)
-PINNED=$(sed -n 's/.*val pyrocosmVersion = sys.env.getOrElse("PYROCOSM_VERSION", "\(.*\)").*/\1/p' build.mill)
+# must agree with the tag.
+PINNED=$(sed -n 's/.*val pyrocosmVersion = "\(.*\)".*/\1/p' build.mill)
 if [[ "$PINNED" != "$VERSION" ]]; then
   echo "release: build.mill pins pyrocosmVersion=$PINNED, not $VERSION; bump and commit first" >&2
   exit 1
 fi
+
+# A release may depend only on releases: every pin in etc/refs, transitively, must be a
+# published X.Y.Z (a snapshot is an unreleased build that may be deleted; see propensive/.github).
+./etc/shared deps.py check
 
 HEAD_SHA=$(git rev-parse HEAD)
 
