@@ -37,8 +37,9 @@ import htmlDoms.whatwg.*
 import nomenclature.CssClass.nominative
 
 // The static half of the web frontend: phrasing to phrasing content, a block to flow content.
-// Everything is semantic HTML carrying `pyro-*` classes for the stylesheet, and nothing carries
-// an inline colour: appearance is the stylesheet's, so a theme is a `:root` block. Elements a
+// Everything is semantic HTML carrying `pyro-*` classes for the stylesheet, each naming what an
+// element is or a state it is in, and nothing carries a `style` attribute: appearance is the
+// stylesheet's, so a theme is a `:root` block and a restyling is another sheet. Elements a
 // user can act upon carry the handle's id, which is what the browser sends back.
 object HtmlRenderer:
   // The class of a tone, `pyro-tone-success` and so on.
@@ -49,8 +50,12 @@ object HtmlRenderer:
   // The DOM id of a panel or a handle: what a patch replaces and what an event names.
   def panelId(panel: Panel): Text = t"pyro-panel-${panel.id.label}"
 
+  // A class list, omitted when it is empty: honeycomb's own writes `class=""`.
+  given classes: List[Name[CssClass]] is Attributive to Whatwg.CssClassList =
+    (key, value) => if value.nil then Unset else (key, value.join(t" "))
+
 class HtmlRenderer():
-  import HtmlRenderer.{toneClass, accentClass, cls}
+  import HtmlRenderer.{toneClass, accentClass, cls, classes}
 
   def phrase(content: List[Inline]): Html of Phrasing = Fragment(content.map(inline1)*)
 
@@ -66,7 +71,7 @@ class HtmlRenderer():
     case Inline.Textual(text)         => text
     case Inline.Phrase(content)       => phrase(content)
     case Inline.Emphasis(content)     => Em(phrase(content))
-    case Inline.Toned(tone, content)  => Span(`class` = List(cls(t"pyro-toned"), toneClass(tone)))(phrase(content))
+    case Inline.Toned(tone, content)  => Span(`class` = toneClass(tone))(phrase(content))
     case Inline.Code(_, tokens0)      => Code(`class` = cls(t"pyro-code"))(tokens(tokens0))
     case Inline.Keystroke(keypress)   => Kbd(`class` = cls(t"pyro-key"))(keypress.show)
     case Inline.Reference(id)         => Code(`class` = cls(t"pyro-reference"))(id)
@@ -149,8 +154,8 @@ class HtmlRenderer():
       val drawing: Optional[Html of "svg"] = safely(markup.read[Html of "svg"])
 
       val holder: Html of Flow =
-        drawing.lay(Div(id = t"${figure.id}-svg", `class` = cls(t"pyro-drawing-svg"))(P(phrase(figure.alt)))):
-          svg => Div(id = t"${figure.id}-svg", `class` = cls(t"pyro-drawing-svg"))(svg)
+        drawing.lay(Div(id = t"${figure.id}-svg", `class` = cls(t"pyro-drawing-holder"))(P(phrase(figure.alt)))):
+          svg => Div(id = t"${figure.id}-svg", `class` = cls(t"pyro-drawing-holder"))(svg)
 
       Figure(id = figure.id, `class` = cls(t"pyro-drawing"))(holder, Figcaption(phrase(figure.alt)))
 
@@ -174,7 +179,7 @@ class HtmlRenderer():
 
     // Captured output, verbatim, each line behind a gutter naming its stream.
     case Block.Output(text, error) =>
-      val gutter = cls(if error then t"pyro-gutter-err" else t"pyro-gutter-out")
+      val gutter = cls(t"pyro-gutter")
       val lines: List[Text] = text.cut(t"\n")
       val trimmed: List[Text] = if lines.last == t"" then lines.keep(lines.size - 1) else lines
       val count = trimmed.size
@@ -182,7 +187,7 @@ class HtmlRenderer():
         val text: Text = if index.n0 == count - 1 then line else t"$line\n"
         Fragment[Phrasing](Span(`class` = gutter)(t"░ "), text)
 
-      Pre(`class` = List(cls(t"pyro-output"), if error then cls(t"pyro-output-err") else cls(t"pyro-output-out")))(rows*)
+      Pre(`class` = List(cls(t"pyro-output"), if error then cls(t"pyro-output-stderr") else cls(t"pyro-output-stdout")))(rows*)
 
   private def item(item: Block.Item): Html of "li" =
     item.action.lay(Li(blocks(item.content))) { action => Li(id = action.id, `class` = cls(t"pyro-action"))(blocks(item.content)) }
@@ -225,7 +230,7 @@ class HtmlRenderer():
 
   private def table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]]): Html of Flow =
     def columnClasses(column: Block.Column): List[Name[CssClass]] =
-      val alignment: List[Name[CssClass]] = List(cls(t"pyro-align-${column.alignment.toString.tt.lower}"))
+      val alignment: List[Name[CssClass]] = if column.alignment == Block.Alignment.Start then Nil else List(cls(t"pyro-align-${column.alignment.toString.tt.lower}"))
       val numeric: List[Name[CssClass]] = if column.numeric then List(cls(t"pyro-numeric")) else Nil
 
       val sizing: List[Name[CssClass]] = column.sizing match
@@ -249,46 +254,58 @@ class HtmlRenderer():
     val captioned: List[Html of "caption"] = caption.lay(Nil: List[Html of "caption"]) { caption => List(Caption(phrase(caption))) }
     Table(`class` = cls(t"pyro-table"))(Fragment(captioned*), head, body)
 
-  // Bars and histograms as proportionally sized divs; a sparkline as a run of block glyphs.
+  // A chart is a figure holding a description list: each series is a term, and each of its
+  // values a description. A bar or a histogram column is a `meter` of the value against the
+  // largest, so its length is the browser's to draw; a sparkline is a run of block glyphs.
   private def chart(kind: Block.Chart.Kind, series: List[Block.Series]): Html of Flow =
     val most = series.bind(_.values).maximum.or(1.0).max(1e-9)
+    val classes = List(cls(t"pyro-chart"), cls(t"pyro-chart-${kind.toString.tt.lower}"))
 
-    kind match
+    type Entry = Html of "dt" | "dd"
+
+    def values(series0: Block.Series): List[Entry] = kind match
       case Block.Chart.Kind.Sparkline =>
         val glyphs = t"▁▂▃▄▅▆▇█"
-        Div(`class` = cls(t"pyro-chart"))(series.map { (series0: Block.Series) =>
-          val cells = series0.values.map { (value: Double) => glyphs.s.charAt(((value/most)*7).toInt.max(0).min(7)).toString.tt }.join
-          Div(`class` = cls(t"pyro-series"))(Span(`class` = cls(t"pyro-series-label"))(phrase(series0.label)), Span(`class` = cls(t"pyro-sparkline"))(cells))
-        }*)
+        val cells = series0.values.map { (value: Double) => glyphs.s.charAt(((value/most)*7).toInt.max(0).min(7)).toString.tt }.join
+        List[Entry](Dd(`class` = cls(t"pyro-series-value"))(Span(`class` = cls(t"pyro-sparkline"))(cells)))
 
       case Block.Chart.Kind.Bars | Block.Chart.Kind.Histogram =>
-        Div(`class` = cls(t"pyro-chart"))(series.map { (series0: Block.Series) =>
-          Div(`class` = cls(t"pyro-series"))
-            ( Span(`class` = cls(t"pyro-series-label"))(phrase(series0.label)),
-              Fragment(series0.values.map { (value: Double) =>
-                val percent = ((value/most)*100).toInt
-                Div(`class` = cls(t"pyro-bar-row"))(Div(`class` = cls(t"pyro-bar"), style = t"width: $percent%")(t""), Span(`class` = cls(t"pyro-figure"))(Amounts.figure(value)))
-              }*) )
-        }*)
+        series0.values.map { (value: Double) =>
+          val figure = Amounts.figure(value)
+          val entry: Entry =
+            Dd(`class` = cls(t"pyro-series-value"))
+              ( Meter(`class` = cls(t"pyro-meter"), value = value, max = most)(figure), t" ",
+                Span(`class` = cls(t"pyro-figure"))(figure) )
+          entry
+        }
 
+    val entries: List[Entry] = series.bind { (series0: Block.Series) =>
+      val label: Entry = Dt(`class` = cls(t"pyro-series-label"))(phrase(series0.label))
+      label :: values(series0) }
+
+    Figure(`class` = classes)(Dl(`class` = cls(t"pyro-series"))(entries*))
+
+  // A gauge is a figure, its caption the figure's; a duration is a `time` with its
+  // machine-readable form; a count without a total is a `data` element carrying it.
   private def gauge(status: Status, caption: Optional[List[Inline]]): Html of Flow =
-    val label: Html of Flow = caption.lay(Fragment[Flow]()) { caption => Div(`class` = cls(t"pyro-caption"))(phrase(caption)) }
+    def duration(seconds: Double): Text = t"PT${Amounts.figure(seconds, 3)}S"
 
     val body: Html of Flow = status match
       case Status.Fraction(value)        => Progress(`class` = cls(t"pyro-progress"), value = t"${(value*1000).toInt}", max = t"1000")(t"")
       case Status.Indeterminate()        => Progress(`class` = cls(t"pyro-progress"))(t"")
       case Status.Reckoning(done, total) =>
-        total.lay[Html of Flow](Span(`class` = cls(t"pyro-reckoning"))(t"${done.toString}")): total =>
+        total.lay[Html of Flow](whatwg.Data(`class` = cls(t"pyro-reckoning"), value = done.toString.tt)(done.toString.tt)): total =>
           Div(`class` = cls(t"pyro-reckoning"))(Progress(value = t"${done.toString}", max = t"${total.toString}")(t""), Span(t" ${done.toString}/${total.toString}"))
       case Status.Standing(standing)     => Span(`class` = List(cls(t"pyro-standing"), cls(t"pyro-standing-${standing.toString.tt.lower}")))(standingGlyph(standing))
-      case Status.Elapsed(seconds)       => Span(`class` = cls(t"pyro-elapsed"))(Amounts.scaled(seconds, t"s") match { case (n, u) => t"$n $u" })
-      case Status.Remaining(seconds)     => Span(`class` = cls(t"pyro-remaining"))(Amounts.scaled(seconds, t"s") match { case (n, u) => t"$n $u left" })
+      case Status.Elapsed(seconds)       => Time(`class` = cls(t"pyro-elapsed"), datetime = duration(seconds))(Amounts.scaled(seconds, t"s") match { case (n, u) => t"$n $u" })
+      case Status.Remaining(seconds)     => Time(`class` = cls(t"pyro-remaining"), datetime = duration(seconds))(Amounts.scaled(seconds, t"s") match { case (n, u) => t"$n $u left" })
       case Status.Steps(steps) =>
         Ol(`class` = cls(t"pyro-steps"))(steps.map { (step: Step) =>
           Li(`class` = cls(t"pyro-standing-${step.standing.toString.tt.lower}"))(Span(`class` = cls(t"pyro-standing"))(standingGlyph(step.standing)), t" ", phrase(step.name))
         }*)
 
-    Div(`class` = cls(t"pyro-gauge"))(label, body)
+    caption.lay(Figure(`class` = cls(t"pyro-gauge"))(body)): caption =>
+      Figure(`class` = cls(t"pyro-gauge"))(Figcaption(phrase(caption)), body)
 
   private def standingGlyph(standing: Standing): Text = standing match
     case Standing.Pending   => t"·"

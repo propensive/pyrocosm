@@ -34,7 +34,7 @@ import perihelion.{Channel, Message}
 
 import dysasymptotics.{linearAccess, linearSize}
 import charEncoders.utf8Encoder
-import formatting.compactJsonFormatting
+import formatting.{compactJsonFormatting, compactCssFormatting}
 import strategies.throwUnsafely
 import logging.silentLogging
 
@@ -82,6 +82,11 @@ extends pyrocosm.Frontend:
   private var opener: (() -> (Interface, Event -> Unit)) | Null = null
 
   def stop(): Unit = stopped.countDown()
+
+  // The stylesheet every page links: the theme's, and the page features' own rules, which
+  // depend on no interface, so an empty one serves to build it.
+  private lazy val stylesheet: Text =
+    PyrocosmPage(Interface(Nil, Nil), HtmlRenderer(), theme).css.show
 
   // One interface and the tabs showing it. The handler is vouched pure, as the terminal
   // frontend's is: it lives exactly as long as the session.
@@ -135,7 +140,8 @@ extends pyrocosm.Frontend:
         case Control.Field(input, _, value, decoration, _, _, history) =>
           decoration.bindWake { () =>
             interface.fields.seek(_.input == input).let: field =>
-              broadcast(Patch(t"replace", t"${input.id}-decoration", page.decoration(field).show)) }
+              broadcast(Patch(t"replace", t"${input.id}-decoration", page.decoration(field).show))
+              broadcast(Patch(if field.decoration().incomplete then t"class" else t"unclass", input.id, t"pyro-incomplete")) }
           value.bindWake { () => broadcast(Patch(t"value", input.id, value())) }
           history.bindWake { () => broadcast(Patch(t"history", input.id, history().in[Json].show)) }
 
@@ -257,11 +263,14 @@ extends pyrocosm.Frontend:
       path match
         case t"/" | t"/index.html" =>
           sessionFor(request.target, fresh = true).lay(Http.Response(Http.NotFound)(t"No session")): session =>
-            val html: Text = t"<!DOCTYPE html>${session.page.html.show}"
+            val html: Text = t"<!DOCTYPE html>${session.page.markup.show}"
             Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(html.in[Data]))
 
         case t"/pyrocosm.js" =>
           Http.Ok(List(Http.Header(t"content-type", t"text/javascript; charset=utf-8")), Http.Body.Fixed(WebFrontend.script.in[Data]))
+
+        case t"/pyrocosm.css" =>
+          Http.Ok(List(Http.Header(t"content-type", t"text/css; charset=utf-8")), Http.Body.Fixed(stylesheet.in[Data]))
 
         case t"/socket" =>
           sessionFor(request.target, fresh = false).lay(Http.Response(Http.NotFound)(t"No session")): session =>

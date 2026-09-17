@@ -94,14 +94,25 @@ object WebStyles:
         // geometry in place: a bar grows from the baseline to a new value.
         + css".pyro-drawing rect, .pyro-drawing circle { transition-property: x, y, width, height, cx, cy, r; transition-duration: 0.4s; transition-timing-function: ease-out }"
 
+    // A meter drawn as a flat bar in every engine: `appearance: none` leaves it to the
+    // background rules, and each engine's own part for the filled length takes the accent.
+    val meter: Css =
+      List
+        ( t".pyro-meter { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 0.8rem; border: 0; background-color: var(--pyro-bg); border-radius: 0.2rem }",
+          t".pyro-meter::-webkit-meter-bar { background-color: var(--pyro-bg); border: 0; border-radius: 0.2rem }",
+          t".pyro-meter::-webkit-meter-optimum-value { background-color: var(--pyro-tone-accent); border-radius: 0.2rem }",
+          t".pyro-meter::-moz-meter-bar { background-color: var(--pyro-tone-accent); border-radius: 0.2rem }" )
+      . join(t" ")
+      . read[Css]
+
     val charts: Css =
-      css".pyro-chart { display: grid; gap: 0.3rem; margin: 0.5rem 0 }"
-        + css".pyro-series { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 0.8rem; align-items: center }"
-        + css".pyro-series-label { color: var(--pyro-muted) }"
-        + css".pyro-bar-row { display: flex; align-items: center; gap: 0.5rem }"
-        + css".pyro-bar { height: 0.8rem; background-color: var(--pyro-tone-accent); border-radius: 0.2rem; min-width: 2px }"
+      css".pyro-chart { margin: 0.5rem 0 }"
+        + css".pyro-series { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 0.8rem; align-items: center; margin: 0 }"
+        + css".pyro-series dt { grid-column: 1; color: var(--pyro-muted) }"
+        + css".pyro-series dd { grid-column: 2; margin: 0; display: flex; align-items: center; gap: 0.5rem }"
+        + meter
         + css".pyro-sparkline { color: var(--pyro-tone-info); letter-spacing: 0.05em }"
-        + css".pyro-gauge { margin: 0.4rem 0 } .pyro-caption { color: var(--pyro-muted); font-size: 0.85rem }"
+        + css".pyro-gauge { margin: 0.4rem 0 } .pyro-gauge figcaption { color: var(--pyro-muted); font-size: 0.85rem }"
         + css".pyro-progress, .pyro-reckoning progress { width: 100%; accent-color: var(--pyro-tone-accent); height: 0.6rem }"
         + css".pyro-steps { list-style: none; padding: 0 } .pyro-steps li { padding: 0.1rem 0 }"
         + css".pyro-standing-succeeded .pyro-standing { color: var(--pyro-tone-success) }"
@@ -120,20 +131,20 @@ object WebStyles:
         + css".pyro-button { background-color: var(--pyro-surface); color: var(--pyro-fg); border: 1px solid var(--pyro-border); border-radius: 0.4rem; padding: 0.3rem 0.8rem; cursor: pointer; font: inherit }"
         + css".pyro-button:hover { border-color: var(--pyro-tone-accent) } .pyro-button:disabled { color: var(--pyro-muted); cursor: default }"
         + css".pyro-field { width: 100%; box-sizing: border-box; background-color: var(--pyro-bg); color: var(--pyro-fg); border: 1px solid var(--pyro-border); border-radius: 0.4rem; padding: 0.5rem; font: inherit; resize: vertical }"
-        + css".pyro-field-holder { position: relative }"
+        + css".pyro-field-group { position: relative }"
         + css".pyro-editor { display: block; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, monospace; min-height: 1.4em; outline: none; caret-color: var(--pyro-fg) }"
-        + css".pyro-ghost { color: var(--pyro-muted) }"
+        + css".pyro-suggestion { color: var(--pyro-muted) }"
         + css".pyro-placeholder { display: none; position: absolute; top: 0.5rem; left: 0.5rem; color: var(--pyro-muted); pointer-events: none; font-family: ui-monospace, monospace }"
         + css".pyro-empty .pyro-placeholder { display: block }"
         + css".pyro-note { font-size: 0.85rem; margin-top: 0.2rem } .pyro-note p { margin: 0.1rem 0 }"
         + css".pyro-output { white-space: pre-wrap; word-break: break-word; margin: 0.3rem 0; font-family: ui-monospace, monospace }"
-        + css".pyro-gutter-out { color: var(--pyro-tone-info) } .pyro-gutter-err { color: var(--pyro-tone-failure) }"
+        + css".pyro-output-stdout .pyro-gutter { color: var(--pyro-tone-info) } .pyro-output-stderr .pyro-gutter { color: var(--pyro-tone-failure) }"
         + css".pyro-completions { list-style: none; margin: 0.2rem 0 0 0; padding: 0; font-family: ui-monospace, monospace; font-size: 0.9rem }"
         + css".pyro-completions li { padding: 0.1rem 0.5rem; cursor: pointer } .pyro-completions li.pyro-selected { background-color: var(--pyro-selection) }"
         + css".pyro-completions .pyro-signature { color: var(--pyro-muted); margin-left: 1rem }"
-        + css".pyro-status-bar { display: flex; gap: 2rem; align-items: center; color: var(--pyro-muted); font-size: 0.9rem }"
-        + css".pyro-title { font-weight: 700; font-size: 1.1rem; color: var(--pyro-fg) }"
-        + css".pyro-connection { margin-left: auto; font-size: 0.8rem; padding: 0.1rem 0.6rem; border-radius: 1rem; border: 1px solid var(--pyro-border) }"
+        + css".pyro-masthead { display: flex; gap: 2rem; align-items: center; color: var(--pyro-muted); font-size: 0.9rem }"
+        + css".pyro-title { font-weight: 700; font-size: 1.1rem; margin: 0; color: var(--pyro-fg) }"
+        + css".pyro-connection { display: inline-block; margin-left: auto; font-size: 0.8rem; padding: 0.1rem 0.6rem; border-radius: 1rem; border: 1px solid var(--pyro-border) }"
         + css".pyro-connection.pyro-online { color: var(--pyro-tone-success) } .pyro-connection.pyro-offline { color: var(--pyro-tone-warning) }"
         + css"@media (max-width: 60rem) { .pyro-priority-peripheral { display: none } }"
 

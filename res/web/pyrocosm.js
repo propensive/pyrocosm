@@ -14,7 +14,8 @@
     indicator = indicator || document.getElementById("pyro-connection");
     if (!indicator) return;
     indicator.textContent = online ? "connected" : "reconnecting";
-    indicator.className = "pyro-connection " + (online ? "pyro-online" : "pyro-offline");
+    indicator.classList.toggle("pyro-online", online);
+    indicator.classList.toggle("pyro-offline", !online);
   }
 
   function send(message) {
@@ -32,12 +33,12 @@
   // cut short.
   function keepDrawings(root) {
     var kept = {};
-    root.querySelectorAll(".pyro-drawing-svg").forEach(function (holder) { kept[holder.id] = holder; });
+    root.querySelectorAll(".pyro-drawing-holder").forEach(function (holder) { kept[holder.id] = holder; });
     return kept;
   }
 
   function restoreDrawings(root, kept) {
-    root.querySelectorAll(".pyro-drawing-svg").forEach(function (holder) {
+    root.querySelectorAll(".pyro-drawing-holder").forEach(function (holder) {
       var old = kept[holder.id];
       if (old) holder.replaceWith(old);
     });
@@ -108,7 +109,7 @@
     if (!element) return;
     switch (patch.kind) {
       case "replace":
-        if (element.classList.contains("pyro-drawing-svg")) { reviseDrawing(element, patch.html); break; }
+        if (element.classList.contains("pyro-drawing-holder")) { reviseDrawing(element, patch.html); break; }
         var follow = element.scrollHeight - element.scrollTop - element.clientHeight < 8;
         var drawings = keepDrawings(element);
         element.innerHTML = patch.html;
@@ -122,7 +123,7 @@
         break;
       case "value":
         if (element.classList.contains("pyro-editor")) {
-          if (editorText(element) !== patch.html) { clearGhost(element); element.textContent = patch.html; placeCaret(element, patch.html.length); emptiness(element); }
+          if (editorText(element) !== patch.html) { clearSuggestion(element); element.textContent = patch.html; placeCaret(element, patch.html.length); emptiness(element); }
         } else if (element.value !== patch.html) element.value = patch.html;
         break;
       // One part of a figure's drawing. When the new markup has the same shape as the old (the
@@ -131,6 +132,8 @@
       // replaced; an SVG element takes its namespace from its parent, so the markup is parsed
       // as SVG wherever the part sits in the drawing.
       case "part": revisePart(element, patch.html); break;
+      case "class": element.classList.add(patch.html); break;
+      case "unclass": element.classList.remove(patch.html); break;
       case "enable": element.disabled = false; break;
       case "disable": element.disabled = true; break;
       case "check": element.checked = true; break;
@@ -163,30 +166,30 @@
 
   // ── The code editor ──────────────────────────────────────────────────────────────────────
   // A contenteditable element painted with the server's tokens. The caret is kept as a text
-  // offset across repaints; ghost text, the remainder of the selected completion, is a
+  // offset across repaints; the suggestion, the remainder of the selected completion, is a
   // non-editable span at the end, never part of the text; the completions list beneath is
   // navigated with the arrows.
 
-  function ghostOf(editor) { return editor.querySelector(".pyro-ghost"); }
+  function suggestionOf(editor) { return editor.querySelector(".pyro-suggestion"); }
 
   function editorText(editor) {
-    var ghost = ghostOf(editor);
-    return ghost ? editor.textContent.slice(0, editor.textContent.length - ghost.textContent.length) : editor.textContent;
+    var suggestion = suggestionOf(editor);
+    return suggestion ? editor.textContent.slice(0, editor.textContent.length - suggestion.textContent.length) : editor.textContent;
   }
 
-  function clearGhost(editor) { var ghost = ghostOf(editor); if (ghost) ghost.remove(); }
+  function clearSuggestion(editor) { var suggestion = suggestionOf(editor); if (suggestion) suggestion.remove(); }
 
-  function showGhost(editor, text) {
-    clearGhost(editor);
+  function showSuggestion(editor, text) {
+    clearSuggestion(editor);
     if (!text) return;
     var span = document.createElement("span");
-    span.className = "pyro-ghost";
+    span.className = "pyro-suggestion";
     span.contentEditable = "false";
     span.textContent = text;
     editor.appendChild(span);
   }
 
-  function hasGhost(editor) { return !!ghostOf(editor); }
+  function hasSuggestion(editor) { return !!suggestionOf(editor); }
 
   function caretOf(editor) {
     var selection = window.getSelection();
@@ -203,7 +206,7 @@
     var walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null);
     var node, remaining = offset, target = null, targetOffset = 0;
     while ((node = walker.nextNode())) {
-      if (node.parentNode && node.parentNode.classList && node.parentNode.classList.contains("pyro-ghost")) continue;
+      if (node.parentNode && node.parentNode.classList && node.parentNode.classList.contains("pyro-suggestion")) continue;
       var length = node.textContent.length;
       if (remaining <= length) { target = node; targetOffset = remaining; break; }
       remaining -= length;
@@ -219,7 +222,7 @@
 
   function emptiness(editor) {
     var holder = editor.parentNode;
-    if (holder && holder.classList.contains("pyro-field-holder"))
+    if (holder && holder.classList.contains("pyro-field-group"))
       holder.classList.toggle("pyro-empty", editorText(editor) === "");
   }
 
@@ -238,7 +241,7 @@
   }
 
   // The candidates are shown as they arrive, but none is taken until the user picks one with
-  // Tab or Down: only then does Enter accept it, and the ghost preview it. Escape dismisses
+  // Tab or Down: only then does Enter accept it, and the suggestion preview it. Escape dismisses
   // them until the next edit.
   var dismissed = {};
 
@@ -257,7 +260,7 @@
     if (index < 0) index = delta > 0 ? 0 : -1;
     else index = Math.min(items.length - 1, index + delta);
     if (index >= 0) items[index].classList.add("pyro-selected");
-    ghost(editor);
+    suggest(editor);
     return true;
   }
 
@@ -266,23 +269,23 @@
     var decoration = document.getElementById(editor.id + "-decoration");
     var list = decoration && decoration.querySelector(".pyro-completions");
     if (list) list.hidden = true;
-    clearGhost(editor);
+    clearSuggestion(editor);
   }
 
   function nameOf(item) { var code = item.querySelector("code"); return code ? code.textContent : item.textContent; }
 
   // What a candidate covers: the whole text when it says so, else the identifier before the caret.
-  function coveredBy(editor, item) { return item.classList.contains("pyro-whole") ? editorText(editor) : stemOf(editor); }
+  function coveredBy(editor, item) { return item.classList.contains("pyro-replacement") ? editorText(editor) : stemOf(editor); }
 
-  // The ghost: what the selected completion adds to the identifier before the caret, when
+  // The suggestion: what the selected completion adds to the identifier before the caret, when
   // the caret ends the text.
-  function ghost(editor) {
+  function suggest(editor) {
     var item = selectedCompletion(editor);
     var text = editorText(editor);
-    if (!item || caretOf(editor) !== text.length) { clearGhost(editor); return; }
+    if (!item || caretOf(editor) !== text.length) { clearSuggestion(editor); return; }
     var stem = coveredBy(editor, item), name = nameOf(item);
-    if (name.length > stem.length && name.indexOf(stem) === 0) showGhost(editor, name.slice(stem.length));
-    else clearGhost(editor);
+    if (name.length > stem.length && name.indexOf(stem) === 0) showSuggestion(editor, name.slice(stem.length));
+    else clearSuggestion(editor);
   }
 
   // Paint the editor with the decoration's tokens, if they describe the text as it stands
@@ -291,7 +294,7 @@
     var tokens = decoration.querySelector(".pyro-tokens");
     if (tokens && tokens.textContent === editorText(editor)) {
       var caret = caretOf(editor);
-      clearGhost(editor);
+      clearSuggestion(editor);
       editor.innerHTML = "";
       Array.prototype.forEach.call(tokens.childNodes, function (node) { editor.appendChild(node.cloneNode(true)); });
       placeCaret(editor, caret);
@@ -300,19 +303,19 @@
     items.forEach(function (item) {
       item.addEventListener("mousedown", function (event) { event.preventDefault(); accept(editor, item); });
     });
-    ghost(editor);
+    suggest(editor);
     emptiness(editor);
   }
 
   function edited(editor) {
     dismissed[editor.id] = false;
-    clearGhost(editor);
+    clearSuggestion(editor);
     emptiness(editor);
     send({ kind: "edit", id: editor.id, text: editorText(editor), caret: caretOf(editor), index: 0 });
   }
 
   function setText(editor, text, caret) {
-    clearGhost(editor);
+    clearSuggestion(editor);
     editor.textContent = text;
     placeCaret(editor, caret);
     edited(editor);
@@ -322,7 +325,7 @@
   function accept(editor, item, name) {
     name = name || nameOf(item);
     var text = editorText(editor), caret = caretOf(editor);
-    if (item && item.classList.contains("pyro-whole")) { setText(editor, name, name.length); return; }
+    if (item && item.classList.contains("pyro-replacement")) { setText(editor, name, name.length); return; }
     var start = caret;
     while (start > 0 && isIdentifier(text.charAt(start - 1))) start--;
     setText(editor, text.slice(0, start) + name + text.slice(caret), start + name.length);
@@ -354,13 +357,12 @@
       var index = items.indexOf(selectedCompletion(editor));
       items[index].classList.remove("pyro-selected");
       items[(index + 1) % items.length].classList.add("pyro-selected");
-      ghost(editor);
+      suggest(editor);
     }
   }
 
   function incomplete(editor) {
-    var decoration = document.getElementById(editor.id + "-decoration");
-    return !!(decoration && decoration.querySelector(".pyro-incomplete"));
+    return editor.classList.contains("pyro-incomplete");
   }
 
   // A newline, indented as the line being left when the caret ends it.
@@ -381,8 +383,8 @@
 
   function historyOf(editor) {
     if (!histories[editor.id]) {
-      var seed = editor.parentNode && editor.parentNode.querySelector(".pyro-history");
-      try { histories[editor.id] = seed ? JSON.parse(seed.textContent) : []; } catch (error) { histories[editor.id] = []; }
+      var seed = editor.dataset.history;
+      try { histories[editor.id] = seed ? JSON.parse(seed) : []; } catch (error) { histories[editor.id] = []; }
       recalls[editor.id] = histories[editor.id].length;
     }
     return histories[editor.id];
@@ -392,7 +394,7 @@
     var text = editorText(editor);
     recalls[editor.id] = historyOf(editor).length + (text === "" ? 0 : 1);
     send({ kind: "submit", id: editor.id, text: text, caret: 0, index: 0 });
-    clearGhost(editor);
+    clearSuggestion(editor);
     editor.textContent = "";
     emptiness(editor);
   }
@@ -409,7 +411,7 @@
       newline(editor);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (selectedCompletion(editor) && hasGhost(editor)) accept(editor, selectedCompletion(editor));
+      if (selectedCompletion(editor) && hasSuggestion(editor)) accept(editor, selectedCompletion(editor));
       else if (incomplete(editor)) newline(editor);
       else submit(editor);
     } else if (event.key === "Escape" && items.length) {
@@ -425,14 +427,14 @@
       event.preventDefault(); var history = historyOf(editor); recalls[editor.id]++;
       var recalled = recalls[editor.id] === history.length ? "" : history[recalls[editor.id]];
       setText(editor, recalled, recalled.length);
-    } else if (event.key === "ArrowRight" && hasGhost(editor) && caretOf(editor) === editorText(editor).length) {
+    } else if (event.key === "ArrowRight" && hasSuggestion(editor) && caretOf(editor) === editorText(editor).length) {
       event.preventDefault(); accept(editor, selectedCompletion(editor));
     }
   }
 
   // Actionable elements (rows, items, links, buttons) press their id; fields edit and submit.
   function wire(root) {
-    root.querySelectorAll(".pyro-action, .pyro-press").forEach(function (element) {
+    root.querySelectorAll(".pyro-action, button.pyro-button").forEach(function (element) {
       if (element.dataset.pyroWired) return;
       element.dataset.pyroWired = "1";
       element.addEventListener("click", function (event) {
@@ -448,7 +450,7 @@
       editor.addEventListener("input", function () { edited(editor); });
       editor.addEventListener("keydown", function (event) { editorKey(editor, event); });
       editor.addEventListener("keyup", function (event) {
-        if (event.key === "ArrowLeft" || event.key === "Home" || event.key === "End") ghost(editor);
+        if (event.key === "ArrowLeft" || event.key === "Home" || event.key === "End") suggest(editor);
       });
       var decoration = document.getElementById(editor.id + "-decoration");
       if (decoration) decorate(editor, decoration);
@@ -462,9 +464,7 @@
       });
       field.addEventListener("keydown", function (event) {
         if (event.key === "Enter" && !event.shiftKey) {
-          var decoration = document.getElementById(field.id + "-decoration");
-          var incomplete = decoration && decoration.querySelector(".pyro-incomplete");
-          if (!incomplete) {
+          if (!field.classList.contains("pyro-incomplete")) {
             event.preventDefault();
             send({ kind: "submit", id: field.id, text: field.value, caret: 0, index: 0 });
             field.value = "";

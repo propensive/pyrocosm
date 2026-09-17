@@ -64,9 +64,13 @@ object PyrocosmPage:
   // `<meta name="pyro-session" content="…">`, naming the page's session for the script.
   val SessionMeta = Tag.void["meta", Whatwg](presets = proscenium.Map(t"name" -> t"pyro-session"))
 
+  // `data-history="…"` on a field: the application's history, seeded for the script.
+  given history: ("data-history" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
 class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset)
 extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
-  import HtmlRenderer.{cls, panelId}
+  import HtmlRenderer.{cls, panelId, classes}
+  import PyrocosmPage.history
 
   private val plan: WebArrangement.Plan = WebArrangement.plan(interface)
 
@@ -81,8 +85,8 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
 
   def control(control: Control): Html of Phrasing = control match
     case Control.Button(label, action, enabled) =>
-      if enabled() then Button(id = action.id, `class` = List(cls(t"pyro-button"), cls(t"pyro-press")))(renderer.phrase(label))
-      else Button(id = action.id, `class` = List(cls(t"pyro-button"), cls(t"pyro-press")), disabled = true)(renderer.phrase(label))
+      if enabled() then Button(id = action.id, `class` = cls(t"pyro-button"))(renderer.phrase(label))
+      else Button(id = action.id, `class` = cls(t"pyro-button"), disabled = true)(renderer.phrase(label))
 
     case Control.Toggle(toggle, label, state) =>
       val box =
@@ -99,29 +103,36 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
     case _: Control.Field => Fragment[Phrasing]()
 
   // A line or multiline field is a textarea. A code field is an editable `code` element, which
-  // the script paints with the decoration's tokens: a textarea cannot carry styled spans.
+  // the script paints with the decoration's tokens: a textarea cannot carry styled spans. A
+  // field whose text is an incomplete prefix says so in a state class, which a patch keeps
+  // current; its history is seeded in a data attribute.
   def fieldHtml(field: Control.Field): Html of Flow =
-    val holder = cls(t"pyro-field-holder")
+    val group = cls(t"pyro-field-group")
     val decorated = Div(id = t"${field.input.id}-decoration", `class` = cls(t"pyro-decoration"))(decoration(field))
+    val state: List[Name[CssClass]] = if field.decoration().incomplete then List(cls(t"pyro-incomplete")) else Nil
 
     field.kind match
       case Control.Field.Kind.Code(_) =>
-        Div(`class` = List(holder, cls(t"pyro-empty")))
-          ( Code(id = field.input.id, `class` = List(cls(t"pyro-field"), cls(t"pyro-editor")), contenteditable = t"true", spellcheck = t"false")(field.value()),
+        Div(`class` = List(group, cls(t"pyro-empty")))
+          ( Code
+              ( id = field.input.id,
+                `class` = cls(t"pyro-field") :: cls(t"pyro-editor") :: state,
+                contenteditable = t"true",
+                spellcheck = t"false",
+                `data-history` = field.history().in[Json].show )
+              (field.value()),
             Span(`class` = cls(t"pyro-placeholder"))(field.placeholder.or(t"")),
-            Span(`class` = cls(t"pyro-history"), hidden = t"")(field.history().in[Json].show),
             decorated )
 
       case kind =>
         val rows = if kind == Control.Field.Kind.Line then 1 else 3
-        Div(`class` = holder)
-          ( Textarea(id = field.input.id, `class` = cls(t"pyro-field"), rows = rows, placeholder = field.placeholder.or(t""))(field.value()),
+        Div(`class` = group)
+          ( Textarea(id = field.input.id, `class` = cls(t"pyro-field") :: state, rows = rows, placeholder = field.placeholder.or(t""))(field.value()),
             decorated )
 
   // What the script reads to decorate a field: the highlighting tokens (hidden; the script
-  // paints an editor with them when they cover its text), the note, a hidden marker when the
-  // text is an incomplete prefix (so Enter inserts a newline rather than submitting), and the
-  // completions, which the script also turns into ghost text.
+  // paints an editor with them when they cover its text), the note, and the
+  // completions, which the script also turns into suggestion text.
   def decoration(field: Control.Field): Html of Flow =
     val decoration0 = field.decoration()
 
@@ -138,10 +149,6 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
 
         Span(`class` = cls(t"pyro-tokens"), hidden = t"")(rendered*)
 
-    val marker: Html of Flow =
-      if decoration0.incomplete then Span(`class` = cls(t"pyro-incomplete"), hidden = t"")(t"")
-      else Fragment[Flow]()
-
     val detail: Html of Flow =
       if decoration0.detail.nil then Fragment[Flow]()
       else Div(`class` = cls(t"pyro-note"))(renderer.blocks(decoration0.detail))
@@ -150,10 +157,10 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
     val list: Html of Flow =
       if decoration0.completions.nil then Fragment[Flow]()
       else Ul(`class` = cls(t"pyro-completions"))(decoration0.completions.map { (completion: Control.Field.Completion) =>
-        val classes: List[Name[CssClass]] = if completion.whole then List(cls(t"pyro-whole")) else Nil
+        val classes: List[Name[CssClass]] = if completion.whole then List(cls(t"pyro-replacement")) else Nil
         Li(`class` = classes)(Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature)) }*)
 
-    Fragment(tokens, marker, detail, list)
+    Fragment(tokens, detail, list)
 
   def panelContent(panel: Panel): Html of Flow =
     Div(id = t"${panelId(panel)}-content", `class` = cls(t"pyro-panel-content"))(renderer.blocks(panel.content()))
@@ -167,20 +174,20 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
     val heading: Html of Flow = panel.title.lay(Fragment[Flow]()) { title => H2(renderer.phrase(title)) }
     val controls: Html of Flow =
       if panel.controls.nil then Fragment[Flow]()
-      else Div(`class` = cls(t"pyro-controls"))(panel.controls.map(controlFlow)*)
+      else Footer(`class` = cls(t"pyro-controls"))(panel.controls.map(controlFlow)*)
 
     Section(id = panelId(panel), `class` = classes)(heading, panelContent(panel), controls)
 
   private def cards(panels: List[Panel]): Html of Flow = Fragment(panels.map(card)*)
 
   override def masthead: Html of Flow =
-    Div(`class` = cls(t"pyro-status-bar"))
-      ( Span(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
+    Div(`class` = cls(t"pyro-masthead"))
+      ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
         Fragment(plan.status.map { (panel: Panel) => Div(id = panelId(panel))(panelContent(panel)) }*),
-        Span(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
+        Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
 
   override def menuItems: List[Html of Phrasing] =
-    interface.controls.filter { (control0: Control) => !control0.isInstanceOf[Control.Field] }.map { (control0: Control) => Span(`class` = cls(t"pyro-menu-item"))(control(control0)) }
+    interface.controls.filter { (control0: Control) => !control0.isInstanceOf[Control.Field] }.map { (control0: Control) => Span(`class` = cls(t"pyro-control"))(control(control0)) }
 
   override def verso: Html of Flow = cards(plan.navigation)
   override def recto: Html of Flow = cards(plan.detail)
@@ -195,3 +202,9 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
     Fragment[Metadata](Script(src = t"/pyrocosm.js", defer = true), named, super.head)
 
   protected override def styles: Css = super.styles + WebStyles.css(theme)
+
+  // The page as served: graffiti's `html` inlines the stylesheet in a `<style>` element, but
+  // this page links it, so a Pyrocosm application is restyled by serving another sheet. The
+  // sheet itself is `css`, which the frontend serves at `/pyrocosm.css`.
+  def markup: Html of "html" =
+    Html(Head(Title(pageTitle), Link.Stylesheet(href = t"/pyrocosm.css"), head), Body(dir = direction.show)(frame))
