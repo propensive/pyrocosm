@@ -331,6 +331,109 @@ object Tests extends Suite(m"Pyrocosm tests"):
       renderer.block(rich, 60).filter(_.plain.starts(t"┃")).map(_.length)
     . assert(_.all(_ <= 60))
 
+    // ── The table cache ───────────────────────────────────────────────────────────────────
+
+    val bigActions: List[Action] = (0 until 40).map { index => Action(t"row-$index") }.to(List)
+
+    def bigRow(index: Int, name: Text, note: Text, time: Double): Block.Row =
+      Block.Row
+        ( List(Block.Cell(Inline.text(name)), Block.Cell(Inline.text(note)), Block.Cell(List(Inline.Amount(time, t"s"))), Block.Cell(Inline.text(t"t$index"))),
+          if index%7 == 0 then Tone.Success else Unset,
+          bigActions.at(index.z) )
+
+    def bigRows(count: Int): List[Block.Row] =
+      (0 until count).map: index =>
+        val note = if index == 11 then t"a note long enough that it must wrap onto several lines at this width" else t"note $index"
+        bigRow(index, t"test number $index", note, index*0.25)
+      . to(List)
+
+    val bigColumns: List[Block.Column] =
+      List
+        ( Block.Column(Inline.text(t"Name"), sizing = Block.Sizing.Stretch),
+          Block.Column(Inline.text(t"Note"), sizing = Block.Sizing.Paragraph),
+          Block.Column(Inline.text(t"Time"), Block.Alignment.End, Block.Sizing.Rigid, true),
+          Block.Column(Inline.text(t"Tag"), sizing = Block.Sizing.Collapsible(0.5)) )
+
+    val big: Block.Table = Block.Table(bigColumns, bigRows(40), Inline.text(t"forty rows"))
+    val bigLines: List[Teletype] = renderer.block(big, 60)
+
+    // Teletypes compare by identity; their renderings compare by content.
+    def shown(lines: List[Teletype]): List[Text] = lines.map(_.render(xtermTrueColorTermcap))
+
+    def cacheOf(table: Block.Table, width: Int): TableCache =
+      val cache = TableCache(renderer, table.columns, table.caption)
+      cache.update(table.rows, width)
+      cache
+
+    test(m"a table cache's window is the full rendering's slice, wherever it falls"):
+      val cache = cacheOf(big, 60)
+      val total = bigLines.size
+      List((0, 3), (2, 10), (14, 22), (total - 3, total), (0, total)).all: (from, until) =>
+        shown(cache.window(from, until, Unset)) == shown(bigLines.skip(from).keep(until - from))
+    . assert(_ == true)
+
+    test(m"a table cache knows its height before rendering a row"):
+      cacheOf(big, 60).height
+    . assert(_ == bigLines.size)
+
+    test(m"a repeated update renders nothing again"):
+      val cache = cacheOf(big, 60)
+      cache.window(0, bigLines.size, Unset)
+      val before = cache.rendered
+      cache.update(big.rows, 60)
+      cache.window(0, bigLines.size, Unset)
+      cache.rendered - before
+    . assert(_ == 0)
+
+    test(m"replacing one row renders one row, and the window still matches"):
+      val cache = cacheOf(big, 60)
+      cache.window(0, bigLines.size, Unset)
+      val before = cache.rendered
+      val rows = big.rows.indexed.map { (row, index) => if index.n0 == 5 then bigRow(5, t"test number x", t"note x", 1.25) else row }
+      val table = big.copy(rows = rows)
+      cache.update(rows, 60)
+      val window = cache.window(0, bigLines.size, Unset)
+      (cache.rendered - before, shown(window) == shown(renderer.block(table, 60)))
+    . assert(_ == (1, true))
+
+    test(m"a change of selection renders exactly the two rows concerned"):
+      val cache = cacheOf(big, 60)
+      cache.window(0, bigLines.size, bigActions.at(5.z))
+      val before = cache.rendered
+      val window = cache.window(0, bigLines.size, bigActions.at(7.z))
+      (cache.rendered - before, shown(window) == shown(renderer.block(big, 60, selected = bigActions.at(7.z))))
+    . assert(_ == (2, true))
+
+    test(m"appending rows renders only the appended rows"):
+      val cache = cacheOf(big, 60)
+      cache.window(0, bigLines.size, Unset)
+      val before = cache.rendered
+      val rows = big.rows + List(bigRow(40, t"test number 40", t"note 40", 3.0), bigRow(41, t"test number 41", t"note 41", 3.25))
+      val table = big.copy(rows = rows)
+      cache.update(rows, 60)
+      val all = renderer.block(table, 60)
+      val window = cache.window(0, all.size, Unset)
+      (cache.rendered - before, shown(window) == shown(all))
+    . assert(_ == (2, true))
+
+    test(m"a resized cache matches the rendering at the new width"):
+      val cache = cacheOf(big, 60)
+      cache.window(0, bigLines.size, Unset)
+      cache.update(big.rows, 50)
+      val all = renderer.block(big, 50)
+      shown(cache.window(0, all.size, Unset)) == shown(all)
+    . assert(_ == true)
+
+    test(m"a row the layout cannot accommodate reflows the table, which still matches"):
+      val cache = cacheOf(big, 60)
+      cache.window(0, bigLines.size, Unset)
+      val rows = big.rows + List(bigRow(40, t"test number 40", t"note 40", 123456.5))
+      val table = big.copy(rows = rows)
+      cache.update(rows, 60)
+      val all = renderer.block(table, 60)
+      (cache.reflows, shown(cache.window(0, all.size, Unset)) == shown(all))
+    . assert(_ == (1, true))
+
     test(m"a gauge line is exactly the width"):
       renderer.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work")), 50).at(Prim).let(_.length)
     . assert(_ == 50)

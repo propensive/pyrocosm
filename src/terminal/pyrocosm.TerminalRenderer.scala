@@ -52,13 +52,7 @@ object TerminalRenderer:
   // The columnars fume's tables use: `Stretch` absorbs the spare width so a table spans the
   // line; `Rigid` never shrinks, so figures never wrap.
   object Stretch extends Columnar:
-    def flex[text: Textual { type Result = Char }](lines: Array[text]^{}, maxWidth: Int)
-      ( using Text is Measurable )
-    :   Flex =
-
-      var metrics = Metrics(0, 0)
-      lines.each { line => metrics = metrics.max(Flow.metrics(line)) }
-      Flex(metrics, 1.0, Unset)
+    def flex(metrics: Metrics, maxWidth: Int): Flex = Flex(metrics, 1.0, Unset)
 
     def fit[text: Textual { type Result = Char }]
       ( lines: Array[text]^{}, width: Int, textAlign: TextAlignment )
@@ -69,12 +63,7 @@ object TerminalRenderer:
       all.bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
 
   object Rigid extends Columnar:
-    def flex[text: Textual { type Result = Char }](lines: Array[text]^{}, maxWidth: Int)
-      ( using Text is Measurable )
-    :   Flex =
-
-      var metrics = Metrics(0, 0)
-      lines.each { line => metrics = metrics.max(Flow.metrics(line)) }
+    def flex(metrics: Metrics, maxWidth: Int): Flex =
       Flex(Metrics(metrics.natural, metrics.natural), 0.0, metrics.natural)
 
     def fit[text: Textual { type Result = Char }]
@@ -122,6 +111,11 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
 
   import TerminalRenderer.{glyph, glyphTone, Stretch, Rigid}
   import Amounts.{figure, scaled}
+
+  // The table machinery's evidence, for a `TableCache` rendering through this renderer.
+  val measurable: Text is Measurable = metric
+  val hyphenating: Hyphenation = hyphenation
+  val tabling: TableStyle = tableStyle
 
   private def tint(chroma: Chroma)(text: Teletype): Teletype = e"${Fg(chroma)}($text)"
   private def toned(tone: Tone)(text: Teletype): Teletype = tint(theme.tone(tone))(text)
@@ -359,11 +353,10 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
 
     joined(pieces.reverse)
 
-  private def table
-    ( columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]],
-      width: Int, selected: Optional[Action] )
-  :   List[Teletype] =
-
+  // The escritoire columns of a table's columns. A column's own decoration is the row's tone
+  // alone: the selection highlight is a render-time decoration (`rowDecorations`), so that a
+  // layout — and every row rendered against it — is independent of which row is selected.
+  def scaffold(columns: List[Block.Column]): Scaffold[Block.Row, Teletype] =
     def sizing(column: Block.Column): Columnar = column.sizing match
       case Block.Sizing.Stretch               => Stretch
       case Block.Sizing.Rigid                 => Rigid
@@ -382,15 +375,41 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
           ( bold(phrase(column.title)),
             alignment(column),
             sizing = sizing(column),
-            decorate = { (row: Block.Row) =>
-              if row.action.present && row.action == selected
-              then ((line: Teletype) => e"${Bg(theme.selection)}($line)"): Optional[Teletype -> Teletype]
-              else row.tone.let { tone => (line: Teletype) => toned(tone)(line) } } ):
+            decorate = { (row: Block.Row) => row.tone.let { tone => (line: Teletype) => toned(tone)(line) } } ):
           row => row.cells.at(index).lay(blank) { cell => phrase(cell.content) }
 
-    val grid = Scaffold[Block.Row](definitions*).tabulate(rows).grid(width.max(4))
-    val lines = grid.render.to[List]
-    caption.lay(lines) { caption => lines :+ faint(e"$Italic(${phrase(caption)})") }
+    Scaffold[Block.Row](definitions*)
+
+  // A row's cell decorations, one per column: the selection's background when the row is the
+  // selected one, else its tone.
+  def rowDecorations(row: Block.Row, columns: Int, selected: Boolean): List[Optional[Teletype -> Teletype]] =
+    val decoration: Optional[Teletype -> Teletype] =
+      if selected then ((line: Teletype) => e"${Bg(theme.selection)}($line)"): Optional[Teletype -> Teletype]
+      else row.tone.let { tone => (line: Teletype) => toned(tone)(line) }
+
+    List.fill(columns)(decoration)
+
+  def caption(caption: Optional[List[Inline]]): List[Teletype] =
+    caption.lay(Nil: List[Teletype]) { caption => List(faint(e"$Italic(${phrase(caption)})")) }
+
+  // The whole table: a layout admitting every row, then each row rendered against it — the
+  // reference a `TableCache` window must match line for line.
+  private def table
+    ( columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]],
+      width: Int, selected: Optional[Action] )
+  :   List[Teletype] =
+
+    val scaffold0 = scaffold(columns)
+    val phrased: List[(Block.Row, escritoire.Cells[Teletype])] = rows.map { row => (row, scaffold0.cells(row)) }
+    val layout = phrased.fold(scaffold0.layout(width.max(4))) { (layout, pair) => layout.extend(pair(1)) }
+    val count: Int = columns.size
+
+    val body: List[Teletype] =
+      phrased.bind: (row, cells) =>
+        layout.lines(cells, rowDecorations(row, count, row.action.present && row.action == selected))
+
+    layout.topRule.let(List(_)).or(Nil) + layout.titleLines + List(layout.titleRule) + body
+      + layout.bottomRule.let(List(_)).or(Nil) + this.caption(caption)
 
   private def chart(kind: Block.Chart.Kind, series: List[Block.Series], width: Int): List[Teletype] =
     val labelWidth = series.map(_.label).map(phrase).map(_.length).maximum.or(0)
