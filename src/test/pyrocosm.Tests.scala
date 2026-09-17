@@ -691,12 +691,13 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     suite(m"Notes"):
       // A fresh repository under a temporary directory, driven by the same `git` on the path
-      // that `Notes` uses, with the identity set per command so no global config is needed.
+      // that `Notes` uses. The identity is set in the repository's own config, since `Notes`
+      // itself commits (to the notes refs) and CI has no global identity.
       val repo: Text = java.nio.file.Files.createTempDirectory("pyrocosm-notes").nn.toString.tt
       given WorkingDirectory = () => repo
 
       def git(arguments: Text*): Text =
-        val fixed = scala.collection.immutable.List(t"git", t"-C", repo, t"-c", t"user.name=Tests", t"-c", t"user.email=tests@example.com")
+        val fixed = scala.collection.immutable.List(t"git", t"-C", repo)
         Command((fixed ++ arguments)*).exec[Text]().trim
 
       def put(path: Text, content: Text): Unit =
@@ -705,6 +706,8 @@ object Tests extends Suite(m"Pyrocosm tests"):
         java.nio.file.Files.writeString(file, content.s)
 
       git(t"init", t"-q")
+      git(t"config", t"user.name", t"Tests")
+      git(t"config", t"user.email", t"tests@example.com")
       put(t"src/a.scala", t"object A\n")
       put(t"src/deep/b.scala", t"object B\n")
       put(t"doc/readme.md", t"# Docs\n")
