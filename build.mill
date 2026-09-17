@@ -21,7 +21,7 @@ object settings:
   // The version Pyrocosm's own libraries are released under. Bump (and commit) per release;
   // etc/ci/release.sh refuses to release anything else. Snapshots override it through
   // `publishVersion`, never here.
-  val pyrocosmVersion = "0.2.0"
+  val pyrocosmVersion = "0.2.1"
 
   val scalaOptions = Seq(
     "-Zalias-captures",
