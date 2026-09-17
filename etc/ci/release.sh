@@ -139,17 +139,28 @@ fi
 # GitHub computes each asset's SHA-256 shortly after upload. Burdock and the sync script match
 # by that digest, so wait for every one and confirm it is the digest of the local file.
 #
-# Through the REST API: `gh release view --json assets` does not expose the digest field
-# (found on the first snapshot), and `releases/tags/<tag>` resolves this draft for the token
-# that created it.
+# Through the REST API, by the release's id: `gh release view --json assets` does not expose
+# the digest field, and `releases/tags/<tag>` serves only PUBLISHED releases — this one is a
+# draft whose tag is not pushed until the digests have been checked. The list endpoint
+# includes the token's drafts, and `releases/<id>` reports each asset's digest.
+RELEASE_ID=""
+for i in $(seq 1 12); do
+  RELEASE_ID=$(gh api "repos/$REPO/releases?per_page=100" \
+    --jq ".[] | select(.tag_name == \"$VERSION\" and .draft) | .id" 2>/dev/null | head -1 || true)
+  [[ "$RELEASE_ID" =~ ^[0-9]+$ ]] && break
+  sleep 5
+done
+if ! [[ "$RELEASE_ID" =~ ^[0-9]+$ ]]; then
+  fail "could not find the draft release $VERSION through the API"
+fi
 for jar in "${jars[@]}"; do
   name=$(basename "$jar")
   local_digest=$(shasum -a 256 "$jar" | cut -d' ' -f1)
   digest=""
   for i in $(seq 1 60); do
-    digest=$(gh api "repos/$REPO/releases/tags/$VERSION" \
+    digest=$(gh api "repos/$REPO/releases/$RELEASE_ID" \
       --jq ".assets[] | select(.name == \"$name\") | .digest // \"\"" 2>/dev/null || true)
-    [[ -n "$digest" ]] && break
+    [[ "$digest" == sha256:* ]] && break
     sleep 5
   done
   if [[ -z "$digest" ]]; then
