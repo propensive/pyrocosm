@@ -26,7 +26,7 @@ package pyrocosm
 // `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which would outrank this
 // package's own definitions, since a wildcard import beats a package member declared in another
 // file.
-import soundness.{Control as _, Glyph as _, Language as _, Standing as _, Step as _, Token as _, *}
+import soundness.{Control as _, Filter as _, Glyph as _, Language as _, Standing as _, Step as _, Token as _, *}
 
 import clavichord.Keypress
 import probably.TestEvent
@@ -43,8 +43,14 @@ import textMetrics.uniformMetric
 import palettes.solarizedDarkGaugePalette
 import discriminables.jsonByKindDiscriminable
 import formatting.compactJsonFormatting
+import logging.silentLogging
 
 case class Person(name: Text, age: Int)
+
+// A kind of metadata, as fume's benchmark summary will be: a record with text that has newlines
+// and non-ASCII characters in it, since the note body must survive git's own handling.
+case class Bench(name: Text, mean: Double, remark: Text)
+given benchRecordable: Bench is Recordable = Recordable[Bench](t"bench")
 
 // The shape of the model's `Inline` and `Block`: a sum whose variants recurse through a `List` of
 // the sum itself. Both codecs must derive it in place, with no hand-anchored instance.
@@ -681,7 +687,178 @@ object Tests extends Suite(m"Pyrocosm tests"):
       (0 until first.length).forall { column => pty.buffer.char(column.z, Prim) == first.s.charAt(column) }
     . assert(_ == true)
 
-// Counts the outcomes for the summary line. A class rather than local `var`s, because the event
+    // ── Git notes ─────────────────────────────────────────────────────────────────────────
+
+    suite(m"Notes"):
+      // A fresh repository under a temporary directory, driven by the same `git` on the path
+      // that `Notes` uses. The identity is set in the repository's own config, since `Notes`
+      // itself commits (to the notes refs) and CI has no global identity.
+      val repo: Text = java.nio.file.Files.createTempDirectory("pyrocosm-notes").nn.toString.tt
+      given WorkingDirectory = () => repo
+
+      def git(arguments: Text*): Text =
+        val fixed = scala.collection.immutable.List(t"git", t"-C", repo)
+        Command((fixed ++ arguments)*).exec[Text]().trim
+
+      def put(path: Text, content: Text): Unit =
+        val file = java.nio.file.Path.of(repo.s, path.s).nn
+        java.nio.file.Files.createDirectories(file.getParent.nn)
+        java.nio.file.Files.writeString(file, content.s)
+
+      git(t"init", t"-q")
+      git(t"config", t"user.name", t"Tests")
+      git(t"config", t"user.email", t"tests@example.com")
+      put(t"src/a.scala", t"object A\n")
+      put(t"src/deep/b.scala", t"object B\n")
+      put(t"doc/readme.md", t"# Docs\n")
+      put(t"README.md", t"# Top\n")
+      put(t"out/junk", t"junk\n")
+      git(t"add", t"-A")
+      git(t"commit", t"-q", t"-m", t"first")
+      val first: Text = git(t"rev-parse", t"HEAD")
+      val firstTree: Text = git(t"rev-parse", t"HEAD^{tree}")
+
+      put(t"doc/readme.md", t"# Docs, revised\n")
+      git(t"add", t"-A")
+      git(t"commit", t"-q", t"-m", t"second")
+      val second: Text = git(t"rev-parse", t"HEAD")
+
+      put(t"src/a.scala", t"object A2\n")
+      git(t"add", t"-A")
+      git(t"commit", t"-q", t"-m", t"third")
+      val third: Text = git(t"rev-parse", t"HEAD")
+
+      // The tree `first` has once the excluded paths are gone, made by git itself.
+      git(t"checkout", t"-q", first)
+      git(t"rm", t"-q", t"-r", t"doc", t"README.md", t"out")
+      git(t"commit", t"-q", t"-m", t"stripped")
+      val strippedTree: Text = git(t"rev-parse", t"HEAD^{tree}")
+      git(t"checkout", t"-q", t"-B", t"main", third)
+
+      given notes: Notes = Notes(repo)
+      val filter = Filter(List(t"doc/", t"**/*.md", t"out"))
+      val bench = Bench(t"sort", 1.5, t"first line\nsecond line with ünïcode ✓")
+
+      test(m"a refspec resolves to its commit"):
+        notes.commit(t"HEAD").text
+      . assert(_ == third)
+
+      test(m"a refspec that names nothing is an error"):
+        capture[Notes.Error](notes.commit(t"nonesuch")).reason
+      . assert(_ == Notes.Error.Reason.BadRef(t"nonesuch"))
+
+      test(m"an empty filter fingerprints the commit's own tree"):
+        notes.fingerprint(Commit.unsafe(first), Filter.none).text
+      . assert(_ == firstTree)
+
+      test(m"a filter removes the excluded paths from the tree"):
+        notes.fingerprint(Commit.unsafe(first), filter).text
+      . assert(_ == strippedTree)
+
+      test(m"commits differing only in excluded files share a fingerprint"):
+        notes.fingerprint(Commit.unsafe(second), filter).text
+      . assert(_ == strippedTree)
+
+      test(m"commits differing in included files do not share a fingerprint"):
+        notes.fingerprint(Commit.unsafe(third), filter).text
+      . assert(_ != strippedTree)
+
+      test(m"a bare name matches at any depth, and everything beneath it"):
+        val out = Filter(List(t"out"))
+        (out.excludes(t"out"), out.excludes(t"out/x"), out.excludes(t"a/out/y"), out.excludes(t"output/z"))
+      . assert(_ == (true, true, true, false))
+
+      test(m"a trailing slash matches a directory and its contents, not a prefix"):
+        val doc = Filter(List(t"doc/"))
+        (doc.excludes(t"doc/r.md"), doc.excludes(t"doc/a/b"), doc.excludes(t"docs/x"))
+      . assert(_ == (true, true, false))
+
+      test(m"** spans segments and * stays within one"):
+        val globs = Filter(List(t"**/*.md", t"src/*.scala"))
+        (globs.excludes(t"README.md"), globs.excludes(t"a/b/c.md"), globs.excludes(t"a.mdx"), globs.excludes(t"src/a.scala"), globs.excludes(t"src/x/b.scala"))
+      . assert(_ == (true, true, false, true, false))
+
+      test(m"an include overrides an exclude"):
+        val kept = Filter(List(t"doc/"), List(t"doc/keep.md"))
+        (kept.excludes(t"doc/keep.md"), kept.excludes(t"doc/other.md"))
+      . assert(_ == (false, true))
+
+      test(m"a filter round-trips as TEL text"):
+        filter.in[Tel].show.read[Tel].as[Filter]
+      . assert(_ == filter)
+
+      val fingerprint: Fingerprint = notes.fingerprint(Commit.unsafe(first), filter)
+
+      test(m"a record is absent before it is written"):
+        notes.read[Bench](fingerprint)
+      . assert(_ == Unset)
+
+      test(m"a record round-trips through a note, newlines and non-ASCII intact"):
+        notes.write[Bench](fingerprint, bench)
+        notes.read[Bench](fingerprint)
+      . assert(_ == bench)
+
+      test(m"binding twice leaves one index line"):
+        notes.bind(Commit.unsafe(first), fingerprint)
+        notes.bind(Commit.unsafe(first), fingerprint)
+        notes.fingerprints(Commit.unsafe(first))
+      . assert(_ == List(fingerprint))
+
+      test(m"a commit's record is found through its index"):
+        Commit.unsafe(first).record[Bench]
+      . assert(_ == bench)
+
+      test(m"a commit with no index has no record"):
+        Commit.unsafe(third).record[Bench]
+      . assert(_ == Unset)
+
+      test(m"recording through a filter writes, binds and returns the fingerprint"):
+        Commit.unsafe(second).record[Bench](filter, bench)
+      . assert(_ == fingerprint)
+
+      test(m"a second commit bound to the same fingerprint reads the same record"):
+        Commit.unsafe(second).record[Bench]
+      . assert(_ == bench)
+
+      test(m"the reverse index lists every commit bound to a fingerprint"):
+        notes.commits(fingerprint).map(_.text)
+      . assert { commits => commits.has(first) && commits.has(second) && !commits.has(third) }
+
+      test(m"the newest fingerprint of a commit is tried first"):
+        val other = Fingerprint.unsafe(t"0123456789abcdef0123456789abcdef01234567")
+        val newer = Bench(t"sort", 2.5, t"newer")
+        Commit.unsafe(first).record[Bench](other, newer)
+        (notes.fingerprints(Commit.unsafe(first)), Commit.unsafe(first).record[Bench], Commit.unsafe(first).recordings[Bench])
+      . assert(_ == (List(Fingerprint.unsafe(t"0123456789abcdef0123456789abcdef01234567"), fingerprint), Bench(t"sort", 2.5, t"newer"), List(Bench(t"sort", 2.5, t"newer"), bench)))
+
+      test(m"a note on a hash with no local object can be written and read"):
+        val absent = Fingerprint.unsafe(t"fedcba9876543210fedcba9876543210fedcba98")
+        notes.write[Bench](absent, bench)
+        notes.read[Bench](absent)
+      . assert(_ == bench)
+
+      test(m"history walks back from a refspec, newest first"):
+        notes.history(t"main", 2).map(_.text)
+      . assert(_ == List(third, second))
+
+      test(m"published notes are fetched and read by a clone"):
+        val remote: Text = java.nio.file.Files.createTempDirectory("pyrocosm-remote").nn.toString.tt
+        val clone: Text = java.nio.file.Files.createTempDirectory("pyrocosm-clone").nn.toString.tt
+        java.nio.file.Files.delete(java.nio.file.Path.of(clone.s))
+        Command(t"git", t"init", t"-q", t"--bare", remote).exec[Text]()
+        git(t"remote", t"add", t"origin", remote)
+        git(t"push", t"-q", t"origin", t"main")
+        notes.publish()
+        Command(t"git", t"clone", t"-q", remote, clone).exec[Text]()
+        val cloned = Notes(clone)
+        cloned.fetch()
+
+        cloned.fingerprints(cloned.commit(second)) match
+          case fingerprint :: _ => cloned.read[Bench](fingerprint)
+          case _                => Unset
+      . assert(_ == bench)
+
+// Counts the outcomes for the summary line. A class rather than local `var's, because the event
 // sink is a pure `TestEvent -> Unit` and may capture nothing tracked.
 private final class Tally:
   private var passes: Int = 0
