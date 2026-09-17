@@ -18,4 +18,3 @@ jobs:
       publish_local: pyrocosm.__
       assembly:      pyrocosm.demo.assembly
       test_assembly: pyrocosm.test.assembly
-      test_main:     pyrocosm.Tests
