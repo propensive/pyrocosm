@@ -46,5 +46,14 @@ them as the `snapshot-<hex>` pre-release (nothing is re-uploaded if that tree wa
 before), and prints the `etc/refs` line for the consumer. Old snapshots are deleted by
 `make snapshot-prune`; a consumer whose pin was pruned rebuilds it from the pinned commit.
 
+### Tools are not dependencies
+
+What this repository *runs* — fume, to run its tests — is pinned in `etc/tools`, not in
+`etc/refs`. A tool is always a release, never a snapshot; it is not walked transitively and does
+not gate a release, because a release of it exists by definition. That distinction is what keeps
+the release graph free of cycles (Soundness runs flair, flair depends on Pyrocosm, Pyrocosm
+depends on Soundness). `make tools` installs the pinned commands. Never pin a tool in `etc/refs`
+to get an unreleased build of it: release the tool instead.
+
 The whole flow, and the scripts, are documented in the README of
 [propensive/.github](https://github.com/propensive/.github).
