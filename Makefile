@@ -40,6 +40,13 @@ stage:
 sync-deps:
 	./etc/shared sync-deps.sh
 
+# Check every source against Consequent Style and the project's own rules with flair (the
+# release pinned in etc/tools; `make tools` installs it), as configured in
+# .pyrocosm/flair/config.tel. Findings are warnings and the count is not yet zero, so CI does
+# not run this; PATHS restricts the check to files beneath them.
+check:
+	flair check $(PATHS)
+
 # Install the commands pinned in etc/tools (fume) through their releases' installers.
 tools:
 	./etc/shared tools.sh
@@ -64,4 +71,4 @@ release:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: build test gallery demo static serve publishLocal stage sync-deps tools snapshot snapshot-prune release dev
+.PHONY: check build test gallery demo static serve publishLocal stage sync-deps tools snapshot snapshot-prune release dev
