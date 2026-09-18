@@ -367,7 +367,7 @@ object Samples:
     t"""<g id="bars">${rects.join}</g>"""
 
   def drawing(heights: List[Int]): Text =
-    t"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" role="img">${bars(heights)}"""
+    t"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="480" height="180" role="img">${bars(heights)}"""
     + t"""<rect x="20" y="100" width="280" height="1" fill="currentColor" fill-opacity="0.3"/>"""
     + t"""<g fill="currentColor" font-family="Inter, sans-serif" font-size="7" text-anchor="middle">"""
     + t"""<text x="70" y="114">model</text><text x="160" y="114">terminal</text><text x="250" y="114">web</text></g></svg>"""

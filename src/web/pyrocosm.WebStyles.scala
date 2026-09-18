@@ -208,7 +208,9 @@ object WebStyles:
         + css".pyro-listing:last-child, .pyro-table:last-child, .pyro-record:last-child, .pyro-record-section:last-child, .pyro-notice:last-child, .pyro-tree:last-child, .pyro-graph:last-child, .pyro-disclosure:last-child, .pyro-quotation:last-child { margin-bottom: 0 }"
         + css".pyro-codeblock:last-child { margin-bottom: 0 }"
         + css".pyro-image { margin: 0 0 var(--pyro-space-4) 0 } .pyro-image img { max-width: 100%; border-radius: var(--pyro-radius) } .pyro-image figcaption { color: var(--pyro-muted); font-size: var(--pyro-text-small); margin-top: var(--pyro-space-2) }"
-        + css".pyro-drawing { margin: 0 0 var(--pyro-space-4) 0 } .pyro-drawing svg { width: 100%; height: auto; display: block } .pyro-drawing figcaption { color: var(--pyro-muted); font-size: var(--pyro-text-small); margin-top: var(--pyro-space-2) }"
+        // A drawing is shown at its own size, never stretched: its text then keeps the size it
+        // was set at. One wider than the matter scrolls sideways within its holder.
+        + css".pyro-drawing { margin: 0 0 var(--pyro-space-4) 0; max-width: 100% } .pyro-drawing-holder { overflow-x: auto; max-width: 100% } .pyro-drawing svg { display: block; width: auto; height: auto; max-width: none } .pyro-drawing figcaption { color: var(--pyro-muted); font-size: var(--pyro-text-small); margin-top: var(--pyro-space-2) }"
         // A drawing's rectangles and circles move smoothly when a revision changes their
         // geometry in place: a bar grows from the baseline to a new value.
         + css".pyro-drawing rect, .pyro-drawing circle { transition-property: x, y, width, height, cx, cy, r; transition-duration: 0.4s; transition-timing-function: ease-out }"
