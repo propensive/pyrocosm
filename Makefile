@@ -9,11 +9,16 @@ test:
 	./mill pyrocosm.test.assembly
 	fume run -c out/pyrocosm/test/assembly.dest/out.jar $(TESTS)
 
-# The gallery as an Ethereal executable (the daemon launcher every Soundness application uses),
-# then run interactively in the terminal, or once, statically, at a width.
-gallery:
+# The gallery as an Ethereal executable, packaged by the pinned `xeq` builder script (fetched
+# into dist/xeq and verified against etc/xeq.tsv) exactly as fume, flame and flair are; then
+# run interactively in the terminal, or once, statically, at a width.
+gallery: xeq-fetch
 	./mill pyrocosm.demo.assembly
-	java -Dbuild.executable=gallery -jar out/pyrocosm/demo/assembly.dest/out.jar
+	dist/xeq build --jar out/pyrocosm/demo/assembly.dest/out.jar --out gallery
+
+# Fetch the pinned `xeq` builder script into dist/xeq.
+xeq-fetch:
+	./etc/shared xeq-fetch.sh
 
 demo: gallery
 	./gallery
@@ -71,4 +76,4 @@ release:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: check build test gallery demo static serve publishLocal stage sync-deps tools snapshot snapshot-prune release dev
+.PHONY: check build test gallery xeq-fetch demo static serve publishLocal stage sync-deps tools snapshot snapshot-prune release dev

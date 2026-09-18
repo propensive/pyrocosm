@@ -21,7 +21,7 @@ object settings:
   // The version Pyrocosm's own libraries are released under. Bump (and commit) per release;
   // etc/ci/release.sh refuses to release anything else. Snapshots override it through
   // `publishVersion`, never here.
-  val pyrocosmVersion = "0.2.1"
+  val pyrocosmVersion = "0.3.0"
 
   val scalaOptions = Seq(
     "-Zalias-captures",
@@ -103,8 +103,36 @@ object settings:
     "guillotine-core", "stratiform-core", "ambience-core", "eucalyptus-core", "hieroglyph-core")
   . map(component(soundness))
 
+  // The standard command line of every tool: the daemon (ethereal), subcommands, completions
+  // and the manpage (exoskeleton), the configuration files (galilei, stratiform) and their XDG
+  // locations (ambience), and the version a manpage carries (revolution).
+  def cliDeps(soundness: String) = Seq(
+    "exoskeleton-completions", "exoskeleton-manpage", "ethereal-core", "ambience-core",
+    "galilei-jvm", "serpentine-core", "stratiform-core", "revolution-core", "parasite-core",
+    "eucalyptus-core")
+  . map(component(soundness))
+
   def demoDeps(soundness: String) = Seq("exoskeleton-completions", "ethereal-core").map(component(soundness))
   def testDeps(soundness: String) = Seq("probably-cli", "probably-events", "yossarian-core").map(component(soundness))
+
+  // What a build of a tool identifies itself as, written into its jar as
+  // `META-INF/pyrocosm/<name>/version` for `pyrocosm-cli` to read (`<name> about`,
+  // `<name> --version`): the version a release or snapshot is published as, when
+  // `PYROCOSM_RELEASE_VERSION` names it (`make snapshot` and etc/ci/release.sh both set it);
+  // otherwise the pinned version with the filtered tree hash of HEAD — the identity
+  // `make snapshot` would give this commit — and `-dirty` if the working tree has changes
+  // that no commit records. Called from a `Task.Input`, so that HEAD is consulted on every
+  // invocation.
+  def buildVersion(env: Map[String, String], pinned: String): String =
+    env.get("PYROCOSM_RELEASE_VERSION").filter(_.nonEmpty).getOrElse:
+      val root = mill.api.BuildCtx.workspaceRoot
+
+      val tree: String =
+        scala.util.Try(os.proc("./etc/shared", "filtered_tree.py", "HEAD").call(cwd = root).out.text().trim)
+          .getOrElse(os.proc("git", "rev-parse", "HEAD^{tree}").call(cwd = root).out.text().trim)
+
+      val dirty: Boolean = os.proc("git", "status", "--porcelain").call(cwd = root).out.text().trim.nonEmpty
+      s"$pinned-${tree.take(12)}${if dirty then "-dirty" else ""}"
 
 // Exposes the fork compiler's `release/lib` jars (from a local build via `settings.scalaHome`, or
 // downloaded from the `settings.scalaRelease` GitHub release) as a Maven-layout repository,
@@ -351,16 +379,31 @@ object pyrocosm extends Project:
   object notes extends Component(model), Publishing:
     def mvnDeps = Task(settings.notesDeps(deps.soundness()))
 
+  // The standard command line of a Pyrocosm tool — `about`, `install`, `quit`, `--version`,
+  // the configuration files and the daemon-side web front-end — for every tool's client.
+  // Depends on no other module here, so that a tool without a web front-end depends on no web
+  // server. `dev.propensive:pyrocosm-cli`.
+  object cli extends Component(), Publishing:
+    def mvnDeps = Task(settings.cliDeps(deps.soundness()))
+
   // The gallery: every node in both frontends, the fixture for judging appearance.
-  object demo extends Component(terminal, web):
+  object demo extends Component(terminal, web, cli):
     def mvnDeps = Task(settings.demoDeps(deps.soundness()))
     def finalMainClass = "pyrocosm.gallery"
 
-  object test extends Component(model, compiler, terminal, web, notes):
+    // The gallery's own version, as `gallery about` reports it: see `settings.buildVersion`.
+    def buildVersion = Task.Input(settings.buildVersion(Task.env, settings.pyrocosmVersion))
+
+    override def resources = Task:
+      val file = Task.dest / "META-INF" / "pyrocosm" / "gallery" / "version"
+      os.write.over(file, buildVersion() + "\n", createFolders = true)
+      super.resources() ++ Seq(PathRef(Task.dest))
+
+  object test extends Component(model, compiler, terminal, web, notes, cli):
     def mvnDeps = Task(settings.testDeps(deps.soundness()))
     def finalMainClass = "pyrocosm.Tests"
 
-// The release: the five library modules' jars, each with its POM and ivy.xml embedded under
+// The release: the six library modules' jars, each with its POM and ivy.xml embedded under
 // `META-INF/maven/<group>/<artifactId>/`, named `<artifactId>-<version>.jar`, exactly as the
 // Soundness build stages its jars. A jar so staged is all a consumer needs: Soundness's
 // `sync_releases.py` (pointed at this repository with `SOUNDNESS_RELEASE_REPO`) reconstructs
@@ -369,7 +412,8 @@ object pyrocosm extends Project:
 // it. `etc/ci/release.sh` uploads what `stage` produces.
 object release extends Module:
   def modules: Seq[PublishModule] =
-    Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.terminal, pyrocosm.web, pyrocosm.notes)
+    Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.terminal, pyrocosm.web, pyrocosm.notes,
+        pyrocosm.cli)
 
   private def withDescriptors(source: os.Path, target: os.Path, entries: Seq[(String, os.Path)])
   :   Unit =

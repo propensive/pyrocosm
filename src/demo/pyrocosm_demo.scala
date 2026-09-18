@@ -25,10 +25,10 @@ package pyrocosm
 import scala.caps
 
 // Excluded from the umbrella: `Control` (coaxial), `Glyph` (phoenicia), `Language` (cosmopolite),
-// `Standing` (ultimatum), `Status` (exoskeleton), `Step` (ultimatum), `Token` (harlequin), which
-// would outrank this package's own definitions, since a wildcard import beats a package member
-// declared in another file.
-import soundness.{Control as _, Glyph as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
+// `Standing` (ultimatum), `Status` (exoskeleton), `Step` (ultimatum), `Token` (harlequin) and
+// `Tool` (anthology), which would outrank this package's own definitions, since a wildcard
+// import beats a package member declared in another file.
+import soundness.{Control as _, Glyph as _, Language as _, Standing as _, Status as _, Step as _, Token as _, Tool as _, *}
 
 import murmuration.zip
 
@@ -306,54 +306,83 @@ object Repl:
     // is vouched pure so a frontend can keep it.
     (interface, caps.unsafe.unsafeAssumePure(handle))
 
+// The gallery as a Pyrocosm tool: `about`, `install`, `quit` and `--version` come from `Tool`,
+// as does its configuration (`.pyrocosm/gallery/config.tel`, `~/.config/gallery/config.tel`);
+// a `serve` there serves the gallery from the daemon on the configured `port`.
+val Gallery: Tool =
+  Tool
+    ( t"gallery",
+      prose = t"The Pyrocosm gallery shows every node of the Pyrocosm model, in the terminal or "
+            + t"in a browser, as the fixture for judging how each appears.",
+      web   = GalleryWeb )
+
+// The gallery served by the daemon, at most once: `serve` returns when `stop` is called.
+object GalleryWeb extends Tool.Web:
+  def port: Int = 8080
+
+  // The frontend holds the monitor and the error page, which outlive it; vouched pure so it
+  // can be stopped from another invocation.
+  @caps.unsafe.untrackedCaptures
+  @volatile
+  private var frontend: Optional[WebFrontend] = Unset
+
+  def serve(port: Int)(using Monitor, Probate): Unit =
+    val session = GallerySession()
+    val running: WebFrontend = caps.unsafe.unsafeAssumePure(WebFrontend(port))
+    frontend = running
+    running.run(session.interface)(session.handle)
+
+  def stop(): Unit = frontend.let(_.stop())
+
 // `gallery` or `gallery terminal` runs the interface in the terminal; `gallery serve [port]`
 // serves it as a web page; `gallery static [columns]` prints the overview once, for a look
-// without a terminal session.
+// without a terminal session. The standard subcommands are handled first, by `Tool`.
 @main
 def gallery(arguments: Text*): Unit = cli:
-  execute:
-    // The invocation's capabilities are tracked; the frontend takes them as pure parameters, so
-    // they are sealed once here, as flame does for every command.
-    given Console = caps.unsafe.unsafeAssumePure(summon[Console])
-    given Environment = caps.unsafe.unsafeAssumePure(summon[exoskeleton.Invocation].environment)
+  Gallery.standard:
+    execute:
+      // The invocation's capabilities are tracked; the frontend takes them as pure parameters,
+      // so they are sealed once here, as flame does for every command.
+      given Console = caps.unsafe.unsafeAssumePure(summon[Console])
+      given Environment = caps.unsafe.unsafeAssumePure(summon[exoskeleton.Invocation].environment)
 
-    given Stdio = caps.unsafe.unsafeAssumePure(summon[exoskeleton.Invocation].stdio)
+      given Stdio = caps.unsafe.unsafeAssumePure(summon[exoskeleton.Invocation].stdio)
 
-    val words: List[Text] = summon[exoskeleton.Cli].arguments.map { (argument: Argument) => argument() }
-    def number(default: Int): Int = words.at(Sec).let { (word: Text) => safely(word.as[Int]) }.or(default)
+      val words: List[Text] = summon[exoskeleton.Cli].arguments.map { (argument: Argument) => argument() }
+      def number(default: Int): Int = words.at(Sec).let { (word: Text) => safely(word.as[Int]) }.or(default)
 
-    words.at(Prim) match
-      case t"static" =>
-        val renderer = TerminalRenderer()
-        renderer.blocks(Samples.overview, number(100)).each { (line: Teletype) => Out.println(line) }
-        Exit.Ok
+      words.at(Prim) match
+        case t"static" =>
+          val renderer = TerminalRenderer()
+          renderer.blocks(Samples.overview, number(100)).each { (line: Teletype) => Out.println(line) }
+          Exit.Ok
 
-      // `gallery repl`: the REPL in the terminal.
-      case t"repl" =>
-        supervise:
-          import parasite.probates.cancelProbate
-          val (interface, handle) = Repl()
-          TerminalFrontend().run(interface)(handle)
-        Exit.Ok
+        // `gallery repl`: the REPL in the terminal.
+        case t"repl" =>
+          supervise:
+            import parasite.probates.cancelProbate
+            val (interface, handle) = Repl()
+            TerminalFrontend().run(interface)(handle)
+          Exit.Ok
 
-      // `gallery serve [port]` serves the gallery, one interface for every tab; `gallery serve
-      // repl [port]` serves the REPL, a session per tab.
-      case t"serve" =>
-        val repl: Boolean = words.at(Sec) == t"repl"
-        val port = words.at(if repl then Ter else Sec).let { (word: Text) => safely(word.as[Int]) }.or(8080)
-        supervise:
-          import parasite.probates.cancelProbate
-          if repl then
-            Out.println(t"Serving the Pyrocosm REPL at http://localhost:${port.toString}/")
-            WebFrontend(port).serve(() => Repl())
-          else
+        // `gallery serve [port]` serves the gallery, one interface for every tab; `gallery serve
+        // repl [port]` serves the REPL, a session per tab.
+        case t"serve" =>
+          val repl: Boolean = words.at(Sec) == t"repl"
+          val port = words.at(if repl then Ter else Sec).let { (word: Text) => safely(word.as[Int]) }.or(8080)
+          supervise:
+            import parasite.probates.cancelProbate
+            if repl then
+              Out.println(t"Serving the Pyrocosm REPL at http://localhost:${port.toString}/")
+              WebFrontend(port).serve(() => Repl())
+            else
+              val session = GallerySession()
+              Out.println(t"Serving the Pyrocosm gallery at http://localhost:${port.toString}/")
+              WebFrontend(port).run(session.interface)(session.handle)
+          Exit.Ok
+
+        case _ =>
+          supervise:
             val session = GallerySession()
-            Out.println(t"Serving the Pyrocosm gallery at http://localhost:${port.toString}/")
-            WebFrontend(port).run(session.interface)(session.handle)
-        Exit.Ok
-
-      case _ =>
-        supervise:
-          val session = GallerySession()
-          TerminalFrontend().run(session.interface)(session.handle)
-        Exit.Ok
+            TerminalFrontend().run(session.interface)(session.handle)
+          Exit.Ok

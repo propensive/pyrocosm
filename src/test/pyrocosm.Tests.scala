@@ -26,7 +26,7 @@ package pyrocosm
 // `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which would outrank this
 // package's own definitions, since a wildcard import beats a package member declared in another
 // file.
-import soundness.{Control as _, Filter as _, Glyph as _, Language as _, Standing as _, Step as _, Token as _, *}
+import soundness.{Control as _, Filter as _, Glyph as _, Language as _, Standing as _, Status as _, Step as _, Token as _, Tool as _, *}
 
 import clavichord.Keypress
 import probably.TestEvent
@@ -857,6 +857,87 @@ object Tests extends Suite(m"Pyrocosm tests"):
           case fingerprint :: _ => cloned.read[Bench](fingerprint)
           case _                => Unset
       . assert(_ == bench)
+
+    // ── The standard command line ─────────────────────────────────────────────────────────
+
+    suite(m"Tool"):
+      // A project directory with a `.pyrocosm/demo/config.tel` at its root, a nested directory
+      // to invoke from, and a home for the user's `~/.config/demo/config.tel`, reached through
+      // `XDG_CONFIG_HOME` in an environment built for the test.
+      val project: Text = java.nio.file.Files.createTempDirectory("pyrocosm-tool").nn.toString.tt
+      val home: Text = java.nio.file.Files.createTempDirectory("pyrocosm-config").nn.toString.tt
+
+      def put(root: Text, path: Text, content: Text): Unit =
+        val file = java.nio.file.Path.of(root.s, path.s).nn
+        java.nio.file.Files.createDirectories(file.getParent.nn)
+        java.nio.file.Files.writeString(file, content.s)
+
+      given Environment = name => if name == t"XDG_CONFIG_HOME" then home else Unset
+
+      val demo: Tool = Tool(t"demo", prose = t"A tool.")
+      val nested: Text = t"$project/sub/dir"
+      java.nio.file.Files.createDirectories(java.nio.file.Path.of(nested.s))
+
+      test(m"no configuration file is found in an unconfigured project"):
+        demo.repoFile(nested)
+      . assert(_ == Unset)
+
+      test(m"another tool's configuration does not end the search"):
+        put(project, t".pyrocosm/other/config.tel", t"tel 1.0\n")
+        demo.repoFile(nested)
+      . assert(_ == Unset)
+
+      test(m"the repository's configuration is found from a nested directory"):
+        put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 1\nquiet\npath a\npath b\n")
+        demo.repoFile(nested).let(_.encode)
+      . assert(_ == t"$project/.pyrocosm/demo/config.tel")
+
+      test(m"the user's configuration file is under XDG_CONFIG_HOME"):
+        demo.userFile.let(_.encode)
+      . assert(_ == t"$home/demo/config.tel")
+
+      test(m"a setting reads from the repository's configuration"):
+        demo.configurator(nested).read(t"port")
+      . assert(_ == t"1")
+
+      test(m"a bare keyword reads as true"):
+        demo.configurator(nested).read(t"quiet")
+      . assert(_ == t"true")
+
+      test(m"a repeated keyword joins its atoms"):
+        demo.configurator(nested).read(t"path")
+      . assert(_ == t"a:b")
+
+      test(m"an absent keyword is unset"):
+        demo.configurator(nested).read(t"missing")
+      . assert(_ == Unset)
+
+      test(m"a camelCase setting name reads its kebab-case keyword"):
+        put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 1\nfail-fast\n")
+        demo.configurator(nested).read(t"failFast")
+      . assert(_ == t"true")
+
+      test(m"the user's configuration supplies what the repository's does not"):
+        put(home, t"demo/config.tel", t"tel 1.0\nport 2\nserve\n")
+        demo.configurator(nested).read(t"serve")
+      . assert(_ == t"true")
+
+      test(m"the repository's configuration takes priority over the user's"):
+        demo.configurator(nested).read(t"port")
+      . assert(_ == t"1")
+
+      test(m"the user's configuration alone is read outside any project"):
+        demo.configurator(home).read(t"port")
+      . assert(_ == t"2")
+
+      test(m"an edit to a configuration file is honoured by the next read"):
+        put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 3000\n")
+        demo.configurator(nested).read(t"port")
+      . assert(_ == t"3000")
+
+      test(m"a build that wrote no version resource has an unknown version"):
+        demo.version
+      . assert(_ == t"unknown")
 
 // Counts the outcomes for the summary line. A class rather than local `var's, because the event
 // sink is a pure `TestEvent -> Unit` and may capture nothing tracked.
