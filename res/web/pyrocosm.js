@@ -506,7 +506,7 @@
 
   wire(document);
   var first = document.querySelector(".pyro-editor");
-  if (first) first.focus();
+  if (first) first.focus({ preventScroll: true });
   connect();
   setInterval(function () { send({ kind: "ping", id: "", text: "", caret: 0, index: 0 }); }, 20000);
 })();

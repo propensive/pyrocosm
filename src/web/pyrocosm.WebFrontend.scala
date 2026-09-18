@@ -53,6 +53,11 @@ object WebFrontend:
   // How long a session outlives its last tab, so a reload or a dropped connection resumes it.
   private val grace: Quantity[Seconds[1]] = 30.0*Second
 
+  // How many patches a tab may fall behind before it is given up on, and how long a tab may be
+  // silent (the script pings every twenty seconds) before it is presumed gone.
+  private val backlog: Int = 256
+  private val silence: Long = 60000L
+
 // The web as a `Frontend`, in two modes. `run` shows one interface to every tab, which is how
 // a Fume run is watched. `serve` opens an interface per page: each tab gets a session of its
 // own, named in the page and by its socket, which is how a REPL is used; a session ends, with
@@ -88,23 +93,77 @@ extends pyrocosm.Frontend:
   private lazy val stylesheet: Text =
     PyrocosmPage(Interface(Nil, Nil), HtmlRenderer(), theme).css.show
 
+  // The configuration page the menu bar links to: the same chrome, and for now a note on where
+  // a tool's settings live. It has no session of its own.
+  private lazy val configuration: Text =
+    val content: List[Block] =
+      List
+        ( Block.Heading(1, Inline.text(t"Configuration")),
+          Block.paragraph(t"There is nothing to configure here yet. A tool is configured by its config.tel file: .pyrocosm/<tool>/config.tel in a project, or ~/.config/<tool>/config.tel for the user."),
+          Block.Record
+            ( List
+                ( Block.Entry(Inline.text(t"port"), List(Block.paragraph(port.toString.tt))),
+                  Block.Entry(Inline.text(t"theme"), List(Block.paragraph(theme.getClass.getSimpleName.nn.replace("$", "").nn.tt))) ),
+              Inline.text(t"This frontend") ) )
+
+    val interface =
+      Interface
+        ( Inline.text(t"Configuration"),
+          List(Panel(Panel.Id(t"configuration"), Panel.Role.Primary, Unset, Live(content), Panel.Priority.Essential)) )
+
+    t"<!DOCTYPE html>${PyrocosmPage(interface, HtmlRenderer(), theme).markup.show}"
+
   // One interface and the tabs showing it. The handler is vouched pure, as the terminal
   // frontend's is: it lives exactly as long as the session.
   private class Session(val id: Text, val interface: Interface, handle: Event -> Unit):
     val renderer: HtmlRenderer = HtmlRenderer()
     val page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id)
-    private val channels: juc.ConcurrentHashMap[Int, Channel] = juc.ConcurrentHashMap()
+    private val tabs: juc.ConcurrentHashMap[Int, Tab] = juc.ConcurrentHashMap()
 
     @caps.unsafe.untrackedCaptures
     @volatile
     private var closed: Boolean = false
 
-    // A tab whose channel can no longer be sent to has gone.
+    // A tab: its channel, pumped by a thread of its own. A socket's conduit is bounded, and a
+    // tab that dies without closing (a killed browser, a dropped network) stops draining it,
+    // after which `send` blocks for good; pumped from the session's own thread, one such tab
+    // would stall every patch to every tab. So the session only ever offers a patch to the
+    // tab's queue, and a queue that fills — the pump is stuck — or a tab that has stopped
+    // pinging is dropped. A stuck pump is abandoned rather than stopped: `Channel.stop`
+    // takes the lock its blocked `send` holds.
+    private class Tab(channel: Channel):
+      private val queue: juc.LinkedBlockingQueue[Text] = juc.LinkedBlockingQueue(WebFrontend.backlog)
+
+      @caps.unsafe.untrackedCaptures
+      @volatile
+      var seen: Long = System.currentTimeMillis()
+
+      @caps.unsafe.untrackedCaptures
+      @volatile
+      private var gone: Boolean = false
+
+      private val pump: Thread = Thread(new Runnable:
+        def run(): Unit =
+          try while !gone do channel.send(Message.Text(queue.take().nn))
+          catch case _: Exception => ()
+          finally gone = true)
+
+      pump.setDaemon(true)
+      pump.start()
+
+      // Whether the patch was queued; a refusal means the tab has gone or its pump is stuck.
+      def offer(text: Text): Boolean = !gone && queue.offer(text)
+
+      def stop(): Unit =
+        gone = true
+        pump.interrupt()
+
+    // A patch to every tab; a tab which refuses it, or which has been silent too long, has gone.
     def broadcast(patch: Patch): Unit =
       val text = patch.in[Json].show
-      channels.forEach: (connection, channel) =>
-        try channel.nn.send(Message.Text(text))
-        catch case _: Exception => detach(connection.nn.intValue)
+      val now = System.currentTimeMillis()
+      tabs.forEach: (connection, tab) =>
+        if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text) then detach(connection.nn.intValue)
 
     // The figures the content has shown, each bound once: a figure appears whenever content
     // changes, and from then on repaints in place — one part, or the whole drawing — rather
@@ -154,8 +213,12 @@ extends pyrocosm.Frontend:
         case Control.Choice(choice, _, current) =>
           current.bindWake { () => broadcast(Patch(t"select", choice.id, current().toString.tt)) }
 
-    // An incoming message, checked against the interface, becomes an event.
-    def receive(payload: Text): Unit =
+    // An incoming message, checked against the interface, becomes an event; any message at all
+    // shows the tab it came from is alive.
+    def receive(connection: Int, payload: Text): Unit =
+      val tab = tabs.get(connection)
+      if tab != null then tab.nn.seen = System.currentTimeMillis()
+
       safely(payload.read[Json].as[Incoming]).let: incoming =>
         incoming.kind match
           case t"press" =>
@@ -192,17 +255,18 @@ extends pyrocosm.Frontend:
           case _ =>
             ()
 
-    def attach(connection: Int, channel: Channel): Unit = channels.put(connection, channel)
+    def attach(connection: Int, channel: Channel): Unit = tabs.put(connection, Tab(channel))
 
-    // A tab has gone (its channel refused a patch); a per-page session ends once none is left
-    // for the grace period. A tab that leaves silently is noticed at the next patch.
+    // A tab has gone (it refused a patch, or fell silent); a per-page session ends once none is
+    // left for the grace period. A tab that leaves silently is noticed at the next patch.
     def detach(connection: Int): Unit =
-      channels.remove(connection)
+      val tab = tabs.remove(connection)
+      if tab != null then tab.nn.stop()
 
-      if channels.isEmpty && shared.absent then
+      if tabs.isEmpty && shared.absent then
         async:
           snooze(WebFrontend.grace)
-          if channels.isEmpty then close()
+          if tabs.isEmpty then close()
 
         ()
 
@@ -272,6 +336,9 @@ extends pyrocosm.Frontend:
         case t"/pyrocosm.css" =>
           Http.Ok(List(Http.Header(t"content-type", t"text/css; charset=utf-8")), Http.Body.Fixed(stylesheet.in[Data]))
 
+        case t"/config" =>
+          Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(configuration.in[Data]))
+
         case t"/socket" =>
           sessionFor(request.target, fresh = false).lay(Http.Response(Http.NotFound)(t"No session")): session =>
             Http.Response:
@@ -282,7 +349,7 @@ extends pyrocosm.Frontend:
               val handler: Message -> coaxial.Control[Unit] =
                 caps.unsafe.unsafeAssumePure: (message: Message) =>
                   message match
-                    case Message.Text(payload) => session.receive(payload)
+                    case Message.Text(payload) => session.receive(id, payload)
                     case _                     => ()
                   coaxial.Control.Continue(())
 
