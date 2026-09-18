@@ -31,16 +31,24 @@
   // patches, so the holder the page already has is carried into the panel's new content in
   // place of the (identical or older) copy rendered there, and a transition under way is not
   // cut short.
+  // A holder's scroll position is kept too: a detached element forgets where it was scrolled
+  // to, so a wide chart being read at its right end would jump back to its left on every
+  // repaint of its panel.
   function keepDrawings(root) {
     var kept = {};
-    root.querySelectorAll(".pyro-drawing-holder").forEach(function (holder) { kept[holder.id] = holder; });
+    root.querySelectorAll(".pyro-drawing-holder").forEach(function (holder) {
+      kept[holder.id] = { node: holder, left: holder.scrollLeft, top: holder.scrollTop };
+    });
     return kept;
   }
 
   function restoreDrawings(root, kept) {
     root.querySelectorAll(".pyro-drawing-holder").forEach(function (holder) {
       var old = kept[holder.id];
-      if (old) holder.replaceWith(old);
+      if (!old) return;
+      holder.replaceWith(old.node);
+      old.node.scrollLeft = old.left;
+      old.node.scrollTop = old.top;
     });
   }
 
