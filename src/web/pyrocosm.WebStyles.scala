@@ -188,6 +188,9 @@ object WebStyles:
         // A heading cell's top padding carries a pixel more than its bottom, to balance the
         // table's 2px top rule against the 1px rule beneath the headings.
         + css".pyro-table th { color: var(--pyro-fg); border-bottom: 1px solid var(--pyro-fg); padding-top: calc(var(--pyro-space-1) + 1px) }"
+        // After the cells' own rule, which sets every cell's alignment, so that a numeric or
+        // end-aligned column's cells are aligned to the right as its class asks.
+        + css".pyro-table th.pyro-align-end, .pyro-table td.pyro-align-end, .pyro-table th.pyro-numeric, .pyro-table td.pyro-numeric { text-align: right }"
         + css".pyro-table tbody tr:last-child td { border-bottom: 0 }"
         + css".pyro-table caption { caption-side: bottom; color: var(--pyro-muted); font-size: var(--pyro-text-small); padding: var(--pyro-space-2) 0; text-align: left }"
         + css".pyro-align-end, .pyro-numeric { text-align: right }"
