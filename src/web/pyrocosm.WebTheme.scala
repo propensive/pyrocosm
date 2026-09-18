@@ -126,15 +126,18 @@ object WebTheme:
     private val violet = Chroma(0x6d4c9f)
     private val leaf = Chroma(0x3f7d3a)
 
+    // Code on its dark ground takes the Zed colours Flame's terminal highlights with, so code
+    // reads the same in a browser as in a Flame session.
     private val night = Chroma(0x16131f)
-    private val moon = Chroma(0xe8e4f0)
-    private val nightFlame = Chroma(0xff8a4c)
-    private val nightGold = Chroma(0xf2c76e)
-    private val nightMagenta = Chroma(0xe991e6)
-    private val nightViolet = Chroma(0xb8a4e3)
-    private val nightAsh = Chroma(0xa89cb4)
-    private val nightCinder = Chroma(0x6d6480)
-    private val nightCrimson = Chroma(0xff6b6b)
+    private val codeText = Chroma(0xd4be98)
+    private val codeKeyword = Chroma(0xff6633)
+    private val codeString = Chroma(0x99ffff)
+    private val codeNumber = Chroma(0xcc3366)
+    private val codeTerm = Chroma(0xffcc99)
+    private val codeType = Chroma(0x00cc99)
+    private val codeSymbol = Chroma(0xcc6699)
+    private val codeParens = Chroma(0xf28534)
+    private val codeError = Chroma(0xea6962)
 
     def background: Chroma = mist
     def surface: Chroma = white
@@ -176,20 +179,20 @@ object WebTheme:
       case Token.Accent.Command  => rust
 
     override def codeBackground: Chroma = night
-    override def codeForeground: Chroma = moon
+    override def codeForeground: Chroma = codeText
 
     override def codeAccent(accent: Token.Accent): Chroma = accent match
-      case Token.Accent.Keyword  => nightFlame
-      case Token.Accent.Modifier => nightFlame
-      case Token.Accent.String   => nightGold
-      case Token.Accent.Number   => nightMagenta
-      case Token.Accent.Term     => moon
-      case Token.Accent.Typal    => nightViolet
-      case Token.Accent.Symbol   => nightAsh
-      case Token.Accent.Parens   => nightCinder
-      case Token.Accent.Error    => nightCrimson
-      case Token.Accent.Unparsed => moon
-      case Token.Accent.Command  => nightFlame
+      case Token.Accent.Keyword  => codeKeyword
+      case Token.Accent.Modifier => codeKeyword
+      case Token.Accent.Command  => codeKeyword
+      case Token.Accent.String   => codeString
+      case Token.Accent.Number   => codeNumber
+      case Token.Accent.Term     => codeTerm
+      case Token.Accent.Typal    => codeType
+      case Token.Accent.Symbol   => codeSymbol
+      case Token.Accent.Parens   => codeParens
+      case Token.Accent.Error    => codeError
+      case Token.Accent.Unparsed => codeText
 
   object SolarizedDark extends WebTheme:
     private val base03 = Chroma(0x002b36)

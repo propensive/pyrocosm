@@ -698,7 +698,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
     val stylesheet: Text = WebStyles.css(WebTheme.default).show
 
     test(m"the stylesheet declares the palette as custom properties"):
-      stylesheet.contains(t"--pyro-bg: #f5f5f7") && stylesheet.contains(t"--pyro-tone-accent: #d9480f") && stylesheet.contains(t"--pyro-on-accent: #ffffff") && stylesheet.contains(t"--pyro-code-bg: #16131f") && stylesheet.contains(t"--pyro-code-accent-keyword: #ff8a4c") && stylesheet.contains(t"--pyro-button: #f5c518") && stylesheet.contains(t"--pyro-title: #120b08") && stylesheet.contains(t"--pyro-menubar: #16131f") && stylesheet.contains(t"--pyro-on-menubar: #ffffff")
+      stylesheet.contains(t"--pyro-bg: #f5f5f7") && stylesheet.contains(t"--pyro-tone-accent: #d9480f") && stylesheet.contains(t"--pyro-on-accent: #ffffff") && stylesheet.contains(t"--pyro-code-bg: #16131f") && stylesheet.contains(t"--pyro-code-accent-keyword: #ff6633") && stylesheet.contains(t"--pyro-button: #f5c518") && stylesheet.contains(t"--pyro-title: #120b08") && stylesheet.contains(t"--pyro-menubar: #16131f") && stylesheet.contains(t"--pyro-on-menubar: #ffffff")
     . assert(_ == true)
 
     test(m"another theme is another root block"):
