@@ -182,7 +182,8 @@ object WebStyles:
         + css".pyro-codeblock .pyro-note-highlight { background-color: color-mix(in srgb, var(--pyro-code-fg) 22%, transparent) }"
         + css".pyro-codeblock .pyro-note-erroneous { text-decoration-color: var(--pyro-code-accent-error) }"
         + css".pyro-note-param { font-style: italic }"
-        + css".pyro-table { border-collapse: collapse; margin: 0 0 var(--pyro-space-4) 0; width: 100%; border-top: 2px solid var(--pyro-fg); border-bottom: 2px solid var(--pyro-fg) }"
+        // A table is followed by clear space, even when it ends its panel.
+        + css".pyro-table { border-collapse: collapse; margin: 0 0 var(--pyro-space-6) 0; width: 100%; border-top: 2px solid var(--pyro-fg); border-bottom: 2px solid var(--pyro-fg) }"
         + css".pyro-table th, .pyro-table td { padding: var(--pyro-space-1) var(--pyro-space-3); border: 0; border-bottom: 1px solid var(--pyro-rule); text-align: left; vertical-align: top; line-height: 1.25 }"
         // A heading cell's top padding carries a pixel more than its bottom, to balance the
         // table's 2px top rule against the 1px rule beneath the headings.
@@ -205,7 +206,7 @@ object WebStyles:
         + css".pyro-tree, .pyro-tree ul { list-style: none; padding-left: var(--pyro-space-5); margin: 0; border-left: 1px solid var(--pyro-border) }"
         + css".pyro-tree { padding-left: 0; border-left: 0; margin: 0 0 var(--pyro-space-4) 0 }"
         + css".pyro-graph { list-style: none; padding: 0; margin: 0 0 var(--pyro-space-4) 0 } .pyro-arrow { color: var(--pyro-muted) }"
-        + css".pyro-listing:last-child, .pyro-table:last-child, .pyro-record:last-child, .pyro-record-section:last-child, .pyro-notice:last-child, .pyro-tree:last-child, .pyro-graph:last-child, .pyro-disclosure:last-child, .pyro-quotation:last-child { margin-bottom: 0 }"
+        + css".pyro-listing:last-child, .pyro-record:last-child, .pyro-record-section:last-child, .pyro-notice:last-child, .pyro-tree:last-child, .pyro-graph:last-child, .pyro-disclosure:last-child, .pyro-quotation:last-child { margin-bottom: 0 }"
         + css".pyro-codeblock:last-child { margin-bottom: 0 }"
         + css".pyro-image { margin: 0 0 var(--pyro-space-4) 0 } .pyro-image img { max-width: 100%; border-radius: var(--pyro-radius) } .pyro-image figcaption { color: var(--pyro-muted); font-size: var(--pyro-text-small); margin-top: var(--pyro-space-2) }"
         // A drawing is shown at its own size, never stretched: its text then keeps the size it
