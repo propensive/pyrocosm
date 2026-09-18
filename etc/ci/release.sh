@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Publish a Pyrocosm release to GitHub Releases: the four library jars (`pyrocosm-model`,
-# `pyrocosm-compiler`, `pyrocosm-terminal`, `pyrocosm-web`), each embedding its POM and ivy.xml
+# Publish a Pyrocosm release to GitHub Releases: the six library jars (`pyrocosm-model`,
+# `pyrocosm-compiler`, `pyrocosm-terminal`, `pyrocosm-web`, `pyrocosm-notes`, `pyrocosm-cli`),
+# each embedding its POM and ivy.xml
 # so that the jar alone is enough for a consumer. This is the Soundness release procedure,
 # without Soundness's attestation and migration notes.
 #
@@ -86,7 +87,10 @@ fail() {
 }
 
 # Build from clean, so the staged jars are exactly what a consumer resolving this version will
-# compile against, then stage them with their descriptors.
+# compile against, then stage them with their descriptors. The version is exported so that the
+# build writes it into the gallery's `META-INF/pyrocosm/gallery/version` resource, as
+# `make snapshot` does for a snapshot; a development build records its tree hash instead.
+export PYROCOSM_RELEASE_VERSION="$VERSION"
 ./mill clean >/dev/null
 if ! ./mill __.compile; then
   fail "compiling failed"
@@ -120,8 +124,8 @@ git tag -s "$VERSION" -m "Version $VERSION"
 tagged="yes"
 
 notes="Pyrocosm $VERSION.
-The four library modules, \`pyrocosm-model\`, \`pyrocosm-compiler\`, \`pyrocosm-terminal\` and \
-\`pyrocosm-web\`, each attached as \`<artifactId>-$VERSION.jar\` with its POM and ivy.xml embedded \
+The six library modules, \`pyrocosm-model\`, \`pyrocosm-compiler\`, \`pyrocosm-terminal\`, \
+\`pyrocosm-web\`, \`pyrocosm-notes\` and \`pyrocosm-cli\`, each attached as \`<artifactId>-$VERSION.jar\` with its POM and ivy.xml embedded \
 under \`META-INF/maven/\`. Install the set into a local ivy repository with Soundness's sync \
 script pointed here: \`SOUNDNESS_RELEASE_REPO=propensive/pyrocosm python3 sync_releases.py $VERSION\`. \
 A launcher repackaged with Burdock externalizes them given \`--github propensive/pyrocosm\`."

@@ -249,6 +249,44 @@ Rules:
   list, and `has`, `reverse` and `filter` replace `contains`, `:+` and friends.
 
 
+## The command line (`src/cli`)
+
+Every Pyrocosm tool is an Ethereal daemon with an Exoskeleton command line, and each used to
+hand-roll the same housekeeping differently. `pyrocosm-cli` gives them one `Tool`: a value
+holding the command's name, the prose that opens its manpage, and the web front-end it can
+serve, if any. The tool's own subcommands, flags and tab-completions are defined exactly as
+before; `Tool.standard` wraps the dispatch and handles the standard subcommands first, falling
+through to the tool's `arguments match` otherwise:
+
+- `<name> about` prints the name and version, the executable, the daemon's pid and uptime, and
+  the configuration files consulted; `<name> --version` (or `-v`) prints the version alone.
+- `<name> install` installs the shell tab-completions and the manpage (`--force` overwrites an
+  installed manpage). The manpage is generated from the same help tree the completions
+  register, so it lists the standard subcommands too.
+- `<name> quit` stops any web front-end the daemon serves, then the daemon itself.
+
+Matching a `Subcommand` also suggests it, so the standard subcommands are tab-completed
+alongside the tool's own. `--version` is read only when the first argument is a flag, so it is
+offered for `<name> -<TAB>` without being attached to every subcommand.
+
+Configuration comes from two TEL files, and `Tool` locates, parses and stat-caches both across
+daemon invocations, so an edit is honoured by the next command: the repository's
+`.pyrocosm/<name>/config.tel`, found by walking up from the invocation's working directory as
+`.git` is found; and the user's `$XDG_CONFIG_HOME/<name>/config.tel`
+(`~/.config/<name>/config.tel`). Both feed the `Configurator` cascade a `Setting` reads — flag,
+then `<name>.*` property, `<NAME>_*` variable, repository file, user file — under the rules fume
+established: a setting's camelCase name is a kebab-case keyword, a bare keyword reads as
+`true`, and a repeated keyword's atoms join with `:`. Two keywords `Tool` reads itself, for a
+tool with a web front-end: `port`, and a bare `serve`, which launches the front-end when the
+daemon starts (that is, on the first real invocation, under the daemon's own monitor, so it
+outlives the client that happened to start it) and keeps it until `quit`.
+
+The version is not a constant in the code, where it drifts, but a `META-INF/pyrocosm/<name>/
+version` resource the tool's build writes: the version a release or snapshot is published as,
+when `<NAME>_RELEASE_VERSION` names it (the release and snapshot scripts both set it), else the
+pinned version with the filtered tree hash of HEAD — the identity `make snapshot` would give
+that commit — and `-dirty` if the working tree has uncommitted changes.
+
 ## Roadmap
 
 - **M0 Scaffold** (done): `build.mill` on the flame pattern, modules `model`, `terminal`,
