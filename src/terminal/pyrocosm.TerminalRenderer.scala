@@ -147,6 +147,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
     case Inline.Reference(id)         => tint(theme.reference)(Teletype(id))
     case Inline.Break()               => Teletype(t"\n")
     case Inline.Math(math)            => Teletype(safely(Ergo.serialize(math)).or(t"…"))
+    case Inline.Icon(_, _)            => blank   // a terminal has no images; `plain` says the alt
 
     case Inline.Link(destination, content) =>
       val text = e"$Underline(${phrase(content)})"

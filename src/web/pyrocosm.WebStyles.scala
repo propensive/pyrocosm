@@ -165,6 +165,7 @@ object WebStyles:
         + css".pyro-glyph-check { color: var(--pyro-tone-success) } .pyro-glyph-cross { color: var(--pyro-tone-failure) }"
         + css".pyro-glyph-warning, .pyro-glyph-winner { color: var(--pyro-tone-warning) } .pyro-glyph-pending { color: var(--pyro-muted) }"
         + css".pyro-math { font-family: math, serif; font-size: var(--pyro-text-math) }"
+        + css".pyro-icon { height: 1em; width: auto; vertical-align: -0.125em }"
 
     // The small, tracked capitals that label things: table headers, record keys, the labels
     // of toggles, the connection pill and the buttons.
