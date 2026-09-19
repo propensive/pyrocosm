@@ -109,7 +109,7 @@ object WebStyles:
         + css"a { color: var(--pyro-link); text-decoration-thickness: 1px; text-underline-offset: 0.15em }"
         + css"a:hover { color: var(--pyro-tone-accent) }"
         + css"h1, h2, h3, h4 { font-family: var(--pyro-font-title); font-weight: 400; line-height: 1.25; letter-spacing: 0.01em; margin: 0 0 var(--pyro-space-3) 0; color: var(--pyro-title) }"
-        + css"h1 { font-size: 1.75rem } h2 { font-size: 1.25rem } h3 { font-size: 1.125rem } h4 { font-size: 1rem }"
+        + css"h1 { font-size: 2.45rem } h2 { font-size: 1.75rem } h3 { font-size: 1.575rem } h4 { font-size: 1.4rem }"
         + css"h2:not(:first-child) { margin-top: var(--pyro-space-6) } h3:not(:first-child), h4:not(:first-child) { margin-top: var(--pyro-space-5) }"
         + css"p { margin: 0 0 var(--pyro-space-3) 0 } p:last-child { margin-bottom: 0 }"
         + css"ul, ol { margin: 0 0 var(--pyro-space-3) 0; padding-left: var(--pyro-space-5); line-height: 1.25 } ul:last-child, ol:last-child { margin-bottom: 0 }"
@@ -144,7 +144,7 @@ object WebStyles:
         + css".pyro-masthead, .pyro-toolbar { max-width: var(--pyro-measure-wide); margin: 0 auto; padding: var(--pyro-space-4) var(--pyro-gutter); display: flex; flex-wrap: wrap; align-items: center }"
         + css".pyro-masthead { gap: var(--pyro-space-3) var(--pyro-space-6); min-height: 4.5rem }"
         + css".pyro-brand { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--pyro-space-2) var(--pyro-space-5); min-width: 0 }"
-        + css".pyro-title { font-family: var(--pyro-font-title); font-weight: 400; font-size: 2.1rem; line-height: 1.2; letter-spacing: 0.02em; margin: 0; color: var(--pyro-title) }"
+        + css".pyro-title { font-family: var(--pyro-font-title); font-weight: 400; font-size: 2.94rem; line-height: 1.2; letter-spacing: 0.02em; margin: 0; color: var(--pyro-title) }"
         + css".pyro-status { color: var(--pyro-muted); font-size: var(--pyro-text-small) }"
         + css".pyro-status .pyro-panel-content { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pyro-space-2) var(--pyro-space-5) }"
         + css".pyro-status .pyro-panel-content > * { margin: 0 } .pyro-status .pyro-progress { width: 10rem }"
@@ -201,7 +201,7 @@ object WebStyles:
         + css".pyro-record dd { margin: 0 } .pyro-record-section { margin: 0 0 var(--pyro-space-4) 0 } .pyro-record-section > h4 { margin-bottom: var(--pyro-space-2) }"
         + css".pyro-record-section > .pyro-record { margin-bottom: 0 }"
         + css".pyro-notice { border: 1px solid var(--pyro-border); border-left: 4px solid var(--pyro-border); padding: var(--pyro-space-3) var(--pyro-space-4); margin: 0 0 var(--pyro-space-4) 0; background-color: var(--pyro-surface); border-radius: var(--pyro-radius) }"
-        + css".pyro-notice header { margin-bottom: var(--pyro-space-1); font-family: var(--pyro-font-title); font-size: 1.05rem; letter-spacing: 0.01em }"
+        + css".pyro-notice header { margin-bottom: var(--pyro-space-1); font-family: var(--pyro-font-title); font-size: 1.47rem; letter-spacing: 0.01em }"
         + css".pyro-notice header strong { font-weight: 400 }"
         + css".pyro-quotation { border-left: 3px solid var(--pyro-border); margin: 0 0 var(--pyro-space-4) 0; padding: var(--pyro-space-1) 0 var(--pyro-space-1) var(--pyro-space-4); color: var(--pyro-muted) }"
         + css".pyro-disclosure { margin: 0 0 var(--pyro-space-4) 0 } .pyro-disclosure summary { cursor: pointer; padding: var(--pyro-space-1) 0 }"
@@ -260,9 +260,9 @@ object WebStyles:
       css".pyro-panel { background-color: var(--pyro-surface); border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius-card); box-shadow: var(--pyro-shadow-card); padding: var(--pyro-space-5); margin: 0 0 var(--pyro-space-5) 0; overflow: auto }"
         + css".pyro-panel:last-child { margin-bottom: 0 }"
         + css".pyro-role-primary.pyro-panel { padding-left: 2.4rem; padding-right: 2.4rem }"
-        + css".pyro-panel > h2 { font-size: 1.25rem; padding-bottom: var(--pyro-space-2); border-bottom: 1px solid var(--pyro-border); margin: 0 0 var(--pyro-space-4) 0 }"
+        + css".pyro-panel > h2 { font-size: 1.75rem; padding-bottom: var(--pyro-space-2); border-bottom: 1px solid var(--pyro-border); margin: 0 0 var(--pyro-space-4) 0 }"
         + css".graffiti-verso .pyro-panel, .graffiti-recto .pyro-panel { padding: var(--pyro-space-4) }"
-        + css".graffiti-verso .pyro-panel > h2, .graffiti-recto .pyro-panel > h2 { font-size: 1.125rem }"
+        + css".graffiti-verso .pyro-panel > h2, .graffiti-recto .pyro-panel > h2 { font-size: 1.575rem }"
         + css".pyro-role-log .pyro-panel-content { max-height: 20rem; overflow-y: auto }"
         + css".pyro-role-transcript.pyro-panel { background-color: transparent; border: 0; box-shadow: none; padding: 0 }"
         + css".pyro-role-prompt.pyro-panel { padding: var(--pyro-space-4) }"
@@ -314,7 +314,7 @@ object WebStyles:
     // table scrolls sideways, and a peripheral panel gives way.
     val responsive: Css =
       css"@media (max-width: 64rem) { .graffiti-verso-layout, .graffiti-recto-layout { grid-template-columns: 1fr } .graffiti-verso, .graffiti-recto { inline-size: auto; position: static } }"
-        + css"@media (max-width: 40rem) { main.graffiti-mainstay { padding-top: var(--pyro-space-4); padding-bottom: var(--pyro-space-6) } .pyro-panel, .graffiti-verso .pyro-panel, .graffiti-recto .pyro-panel, .pyro-role-primary.pyro-panel { padding: var(--pyro-space-4); border-radius: var(--pyro-radius); margin-bottom: var(--pyro-space-4) } .pyro-title { font-size: 1.7rem } .pyro-masthead { gap: var(--pyro-space-2) var(--pyro-space-4); min-height: 0 } .pyro-toolbar > li { flex: 1 1 auto } .pyro-toolbar .pyro-button { width: 100% } .pyro-table { display: block; overflow-x: auto } .pyro-record { grid-template-columns: 1fr; gap: var(--pyro-space-1) } .pyro-record dd { margin-bottom: var(--pyro-space-2) } .pyro-priority-peripheral { display: none } }"
+        + css"@media (max-width: 40rem) { main.graffiti-mainstay { padding-top: var(--pyro-space-4); padding-bottom: var(--pyro-space-6) } .pyro-panel, .graffiti-verso .pyro-panel, .graffiti-recto .pyro-panel, .pyro-role-primary.pyro-panel { padding: var(--pyro-space-4); border-radius: var(--pyro-radius); margin-bottom: var(--pyro-space-4) } .pyro-title { font-size: 2.38rem } .pyro-masthead { gap: var(--pyro-space-2) var(--pyro-space-4); min-height: 0 } .pyro-toolbar > li { flex: 1 1 auto } .pyro-toolbar .pyro-button { width: 100% } .pyro-table { display: block; overflow-x: auto } .pyro-record { grid-template-columns: 1fr; gap: var(--pyro-space-1) } .pyro-record dd { margin-bottom: var(--pyro-space-2) } .pyro-priority-peripheral { display: none } }"
 
     val tones: Css = Tone.values.foldLeft(Css(Nil)) { (acc, tone0) => acc + tone(tone0) }
     val accents: Css = Token.Accent.values.foldLeft(Css(Nil)) { (acc, accent0) => acc + accent(accent0) }
