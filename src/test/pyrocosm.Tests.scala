@@ -643,6 +643,25 @@ object Tests extends Suite(m"Pyrocosm tests"):
       List(t"""<span class="pyro-tokens" hidden="">""", t"pyro-note", t"pyro-completions", t"println", t"reads as code", t"""<li class="pyro-replacement">""", t"pyro-note-erroneous").all(decoration.contains(_))
     . assert(_ == true)
 
+    test(m"a value a tab published is not sent back to it"):
+      val published = Published()
+      published.publish(t"repl", t"val x")
+      published.fresh(t"repl", t"val x")
+
+    . assert(_ == false)
+
+    test(m"a value the application writes is sent once, and is then what the tabs show"):
+      val published = Published()
+      published.publish(t"repl", t"val x")
+      (published.fresh(t"repl", t""), published.fresh(t"repl", t""))
+
+    . assert(_ == (true, false))
+
+    test(m"a field no tab has published sends its first value"):
+      Published().fresh(t"repl", t"1 + 1")
+
+    . assert(_ == true)
+
     test(m"a page seeds the field's history"):
       prompt.history() = List(t"val x = 1")
       PyrocosmPage(repl, html, WebTheme.default).markup.show.contains(t"""data-history="[&quot;val x = 1&quot;]"""")

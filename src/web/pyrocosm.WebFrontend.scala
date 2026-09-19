@@ -44,6 +44,28 @@ import logging.silentLogging
 case class Patch(kind: Text, id: Text, html: Text = t"")
 case class Incoming(kind: Text, id: Text = t"", text: Text = t"", caret: Int = 0, index: Int = 0)
 
+// The value each field's tabs are showing, by input id: the web's form of the terminal
+// fixture's `published` watermark (see `CodeField`). A tab that types sends its text with
+// every keystroke, and the cell it lands in wakes a patch to every tab — which, sent back to
+// the tab it came from a few hundred milliseconds later, would replace whatever had been typed
+// since with the older text. So what a tab sends is recorded as published before the cell is
+// assigned, and the wake sends a value only when it is not the published one: the
+// application's own writes (a field cleared after a submission, a completion accepted), which
+// the tabs have yet to see.
+private[pyrocosm] class Published:
+  private val values: juc.ConcurrentHashMap[Text, Text] = juc.ConcurrentHashMap()
+
+  // Records what a tab has sent, which its page already shows.
+  def publish(id: Text, text: Text): Unit = values.put(id, text)
+
+  // Whether `text` is new to the tabs; if so, it is recorded as what they will show.
+  def fresh(id: Text, text: Text): Boolean =
+    val last = values.get(id)
+
+    if last != null && last.nn == text then false else
+      values.put(id, text)
+      true
+
 object WebFrontend:
   // The script, from the module's resources.
   lazy val script: Text =
@@ -119,6 +141,7 @@ extends pyrocosm.Frontend:
     val renderer: HtmlRenderer = HtmlRenderer()
     val page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id)
     private val tabs: juc.ConcurrentHashMap[Int, Tab] = juc.ConcurrentHashMap()
+    private val published: Published = Published()
 
     @caps.unsafe.untrackedCaptures
     @volatile
@@ -158,12 +181,23 @@ extends pyrocosm.Frontend:
         gone = true
         pump.interrupt()
 
-    // A patch to every tab; a tab which refuses it, or which has been silent too long, has gone.
-    def broadcast(patch: Patch): Unit =
+    // A patch to every tab, or to every tab but the one a message came from; a tab which
+    // refuses it, or which has been silent too long, has gone.
+    def broadcast(patch: Patch, except: Optional[Int] = Unset): Unit =
       val text = patch.in[Json].show
       val now = System.currentTimeMillis()
+
       tabs.forEach: (connection, tab) =>
-        if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text) then detach(connection.nn.intValue)
+        if !except.lay(false)(_ == connection.nn.intValue) then
+          if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text) then detach(connection.nn.intValue)
+
+    // A value a tab has typed, or cleared on submitting: it is on that tab's page already, so
+    // it is recorded as published before the cell is assigned — the wake then sends nothing —
+    // and goes to the other tabs alone, which show the same session.
+    private def publish(connection: Int, field: Control.Field, text: Text): Unit =
+      published.publish(field.input.id, text)
+      field.value() = text
+      broadcast(Patch(t"value", field.input.id, text), except = connection)
 
     // The figures the content has shown, each bound once: a figure appears whenever content
     // changes, and from then on repaints in place — one part, or the whole drawing — rather
@@ -201,7 +235,7 @@ extends pyrocosm.Frontend:
             interface.fields.seek(_.input == input).let: field =>
               broadcast(Patch(t"replace", t"${input.id}-decoration", page.decoration(field).show))
               broadcast(Patch(if field.decoration().incomplete then t"class" else t"unclass", input.id, t"pyro-incomplete")) }
-          value.bindWake { () => broadcast(Patch(t"value", input.id, value())) }
+          value.bindWake { () => if published.fresh(input.id, value()) then broadcast(Patch(t"value", input.id, value())) }
           history.bindWake { () => broadcast(Patch(t"history", input.id, history().in[Json].show)) }
 
         case Control.Button(_, action, enabled) =>
@@ -226,13 +260,13 @@ extends pyrocosm.Frontend:
 
           case t"edit" =>
             interface.fields.seek(_.input.id == incoming.id).let: field =>
-              field.value() = incoming.text
+              publish(connection, field, incoming.text)
               if field.notification == Control.Field.Notify.Keystrokes
               then handle(Event.Edited(field.input, incoming.text, incoming.caret))
 
           case t"submit" =>
             interface.fields.seek(_.input.id == incoming.id).let: field =>
-              field.value() = t""
+              publish(connection, field, t"")
               handle(Event.Submitted(field.input, incoming.text))
 
           case t"toggle" =>
