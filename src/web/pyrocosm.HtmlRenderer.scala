@@ -79,6 +79,8 @@ class HtmlRenderer():
     case Inline.Break()               => Br
     case Inline.Symbol(glyph)         => Span(`class` = List(cls(t"pyro-glyph"), cls(t"pyro-glyph-${glyph.toString.tt.lower}")))(glyphText(glyph))
     case Inline.Math(math)            => Span(`class` = cls(t"pyro-math"))(safely(Ergo.serialize(math)).or(t"…"))
+    case Inline.Icon(source, alt) =>
+      Img(src = source, alt = alt, title = alt, `class` = cls(t"pyro-icon"))
 
     case Inline.Link(destination, content) => destination match
       case Inline.Destination.External(url)   => A(href = url, `class` = cls(t"pyro-link"))(phrase(content))

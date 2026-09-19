@@ -258,6 +258,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
                   Inline.Reference(t"a1b2c3"),
                   Inline.Amount(0.0123, t"s"),
                   Inline.Figure(3.5, 2),
+                  Inline.Icon(t"/icon.svg", t"an icon"),
                   Inline.Break() ),
             Block.Table
               ( List

@@ -71,6 +71,9 @@ enum Inline:
   case Reference(id: Text)                          // an identifier or hash, e.g. a test id
   case Amount(value: Double, units: Text)           // a quantity in base units; the renderer scales it
   case Figure(value: Double, precision: Optional[Int] = Unset)
+  // A small image set in the line with the text, by URL; `alt` is what a medium without images
+  // shows, and what a plain rendering says.
+  case Icon(source: Text, alt: Text)
 
   // A fieldless product, not a singleton: deriving the TEL decoder for this enum with a singleton
   // case fails under capture checking (see the `Min` reproduction in the Soundness issue). Revert
@@ -91,4 +94,5 @@ enum Inline:
     case Reference(id)        => id
     case Amount(value, units) => t"${value.toString} $units"
     case Figure(value, _)     => value.toString.tt
+    case Icon(_, alt)         => alt
     case Break()              => "\n"
