@@ -512,6 +512,20 @@ extends Focus, Refreshable:
   private def decoration: Control.Field.Decoration = field.decoration()
   private def completions: List[Control.Field.Completion] = if dismissed then Nil else decoration.completions
 
+  // The application's prompt, drawn before the first row of the text. Every row of the text
+  // starts past it, so a wrapped row or a later line hangs beneath the first, as a REPL's
+  // continuation lines do. A prompt that leaves no column for the text beside it is not drawn
+  // at all: the extent wraps rather than clips, so an overlong row would spill onto the row
+  // beneath.
+  private def prompt: Teletype = renderer.phrase(decoration.prompt)
+
+  private def indent(width: Int): Int =
+    val prefix = prompt.length
+    if prefix < width then prefix else 0
+
+  // The columns left for the text beside the prompt.
+  private def inner(width: Int): Int = (width - indent(width)).max(1)
+
   // The application may replace the value (clearing it after a submission, say); adopt it.
   private def sync(): Unit =
     if field.value() != published then
@@ -618,18 +632,19 @@ extends Focus, Refreshable:
       lastWidth = width
       (0, visualLines(width).size.max(1) + noteLines(width).size + completionLines(width).size)
 
-  // The value's lines as rows of the width: a line longer than the field wraps hard, and the
-  // caret's column beyond the width falls onto the row below. A caret at the very end of a
-  // line exactly the width long sits at the start of the next row, which is where a wrapped
-  // line's next character would go.
+  // The value's lines as rows of the width left beside the prompt: a line longer than that
+  // wraps hard, and the caret's column beyond it falls onto the row below. A caret at the very
+  // end of a line exactly that long sits at the start of the next row, which is where a
+  // wrapped line's next character would go. The rows carry no indent; `paint` positions them.
   private def visualLines(width: Int): List[Teletype] =
-    valueLines.bind { (line: Teletype) => renderer.hardWrap(line, width) }
+    val columns = inner(width)
+    valueLines.bind { (line: Teletype) => renderer.hardWrap(line, columns) }
 
   private def visualCaret(width: Int): (Int, Int) =
-    val columns = width.max(1)
+    val columns = inner(width)
     val (row, column) = caret
     val above: Int = valueLines.keep(row).map { (line: Teletype) => (line.length/columns).max(0) + (if line.length % columns == 0 && line.length > 0 then 0 else 1) }.total
-    (above + column/columns, column % columns)
+    (above + column/columns, indent(width) + column % columns)
 
   def render(canvas: Board^, focused: Boolean): Unit =
     session.focus(this, focused)
@@ -639,30 +654,38 @@ extends Focus, Refreshable:
     sync()
     canvas.clear()
 
-    val lines = visualLines(canvas.width)
+    val width = canvas.width
+    val offset = indent(width)
+    val lines = visualLines(width)
     val placeholder = field.placeholder.let(Teletype(_))
 
+    // The prompt before the first row, and every row of the text past it; the clear has
+    // already blanked the columns beneath the prompt on the rows below.
+    if offset > 0 then
+      canvas.move(Prim, Prim)
+      canvas.put(prompt)
+
     lines.indexed.each: (line, index) =>
-      canvas.move(Prim, index.n0.z)
+      canvas.move(offset.z, index.n0.z)
       canvas.put(line)
 
     // The ghost after the caret, and the placeholder when there is nothing at all.
     if editor.value == t"" then
-      canvas.move(Prim, Prim)
+      canvas.move(offset.z, Prim)
       placeholder.let { text => canvas.put(e"${Fg(renderer.theme.muted)}($text)") }
 
-    val (row, column) = visualCaret(canvas.width)
+    val (row, column) = visualCaret(width)
     ghost.let: text =>
       canvas.move(column.z, row.z)
       canvas.put(e"${Fg(renderer.theme.muted)}($text)")
 
-    val notes = noteLines(canvas.width)
+    val notes = noteLines(width)
 
     notes.indexed.each: (line, index) =>
       canvas.move(Prim, (lines.size + index.n0).z)
       canvas.put(line)
 
-    completionLines.indexed.each: (line, index) =>
+    completionLines(width).indexed.each: (line, index) =>
       canvas.move(Prim, (lines.size + notes.size + index.n0).z)
       canvas.put(line)
 
