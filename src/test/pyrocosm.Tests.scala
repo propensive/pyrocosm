@@ -564,6 +564,41 @@ object Tests extends Suite(m"Pyrocosm tests"):
       page.contains(t"""<script src="/pyrocosm.js" defer""")
     . assert(_ == true)
 
+    test(m"the page is responsive and preconnects to the fonts' origins"):
+      ( page.contains(t"""<meta name="viewport" content="width=device-width, initial-scale=1">"""),
+        page.contains(t"""<link rel="preconnect" href="https://fonts.googleapis.com">"""),
+        page.contains(t"""<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">""") )
+    . assert(_ == (true, true, true))
+
+    test(m"a menu bar with the wordmark and the configuration link precedes the masthead"):
+      val nav = page.s.indexOf("<nav class=\"graffiti-top-menu pyro-menubar\">")
+      (nav >= 0, nav < page.s.indexOf("<header"), page.contains(t"""<a href="/config" class="pyro-menubar-link">Configuration</a>"""), page.contains(t"""<a href="/" class="pyro-wordmark">Pyrocosm</a>"""))
+    . assert(_ == (true, true, true, true))
+
+    test(m"the masthead precedes the main matter, outside it"):
+      val header = page.s.indexOf("<header")
+      val main = page.s.indexOf("<main")
+      val headerEnd = page.s.indexOf("</header>")
+      (header >= 0, header < main, headerEnd < main)
+    . assert(_ == (true, true, true))
+
+    test(m"a page with navigation and detail has both side columns, and says so"):
+      ( page.contains(t"""<aside class="graffiti-verso">"""), page.contains(t"""<aside class="graffiti-recto">"""),
+        page.contains(t"""<body dir="ltr" class="pyro-has-verso pyro-has-recto">""") )
+    . assert(_ == (true, true, true))
+
+    test(m"an interface without global controls has no toolbar"):
+      page.contains(t"pyro-toolbar")
+    . assert(_ == false)
+
+    test(m"global controls are a toolbar of commands in the masthead"):
+      val append = Action(t"append")
+      val controlled = Interface(Inline.text(t"Test"), arranged.panels, List(Control.Button(Inline.text(t"Append"), append)))
+      val markup = PyrocosmPage(controlled, html, WebTheme.default).markup.show
+      val toolbar = markup.s.indexOf("<menu class=\"pyro-toolbar\">")
+      (toolbar >= 0, toolbar < markup.s.indexOf("<main"), markup.contains(t"""<li class="pyro-control"><button id="${append.id}" class="pyro-button">Append</button></li>"""))
+    . assert(_ == (true, true, true))
+
     val prompt = Control.Field(Input(t"repl"), Control.Field.Kind.Code(Language.Scala), placeholder = t"scala>")
 
     val repl: Interface =
@@ -576,6 +611,11 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"a transcript is main content in both arrangements"):
       (WebArrangement.plan(repl).primary.map(_.id.label), TerminalArrangement.plan(repl, 80, 24).centre.map(_.id.label))
     . assert(_ == (List(t"transcript"), List(t"transcript")))
+
+    test(m"a page without navigation or detail has no side columns"):
+      val page = PyrocosmPage(repl, html, WebTheme.default).markup.show
+      (page.contains(t"""class="graffiti-verso""""), page.contains(t"""class="graffiti-recto""""), page.contains(t"""<body dir="ltr">"""))
+    . assert(_ == (false, false, true))
 
     test(m"a code field is an editable code element with its placeholder"):
       val page = PyrocosmPage(repl, html, WebTheme.default).markup.show
@@ -658,7 +698,25 @@ object Tests extends Suite(m"Pyrocosm tests"):
     val stylesheet: Text = WebStyles.css(WebTheme.default).show
 
     test(m"the stylesheet declares the palette as custom properties"):
-      stylesheet.contains(t"--pyro-bg: #002b36") && stylesheet.contains(t"--pyro-tone-success: #859900")
+      stylesheet.contains(t"--pyro-bg: #f5f5f7") && stylesheet.contains(t"--pyro-tone-accent: #d9480f") && stylesheet.contains(t"--pyro-on-accent: #ffffff") && stylesheet.contains(t"--pyro-code-bg: #16131f") && stylesheet.contains(t"--pyro-code-accent-keyword: #ff6633") && stylesheet.contains(t"--pyro-button: #f5c518") && stylesheet.contains(t"--pyro-title: #120b08") && stylesheet.contains(t"--pyro-menubar: #16131f") && stylesheet.contains(t"--pyro-on-menubar: #ffffff")
+    . assert(_ == true)
+
+    test(m"another theme is another root block"):
+      val solarized = WebStyles.css(WebTheme.SolarizedDark).show
+      solarized.contains(t"--pyro-bg: #002b36") && solarized.contains(t"--pyro-tone-success: #859900") && solarized.contains(t"--pyro-on-accent: #002b36") && solarized.contains(t"--pyro-code-bg: #073642")
+    . assert(_ == true)
+
+    test(m"the stylesheet begins by importing the fonts, and names all three"):
+      ( stylesheet.starts(t"@import url(\"https://fonts.googleapis.com/css2?family=Yantramanav"),
+        stylesheet.contains(t"\"Marcellus\""), stylesheet.contains(t"\"Yantramanav\""), stylesheet.contains(t"\"Sono\"") )
+    . assert(_ == (true, true, true, true))
+
+    test(m"the page's whole sheet, graffiti's rules included, still begins with the import"):
+      PyrocosmPage(repl, html, WebTheme.default).css.show.starts(t"@import url(")
+    . assert(_ == true)
+
+    test(m"the stylesheet adapts to a narrow viewport"):
+      stylesheet.contains(t"@media (max-width: 64rem)") && stylesheet.contains(t"@media (max-width: 40rem)")
     . assert(_ == true)
 
     test(m"the stylesheet draws a meter in every engine"):

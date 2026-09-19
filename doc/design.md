@@ -166,8 +166,15 @@ for live notices). The **arrangement solver** maps roles onto graffiti's page fe
 controls → a sticky toolbar; `Log` → a following card; `Prompt` → a docked bar. What the
 terminal *drops* at narrow widths the web *collapses*.
 
-One stylesheet, with the palette as CSS custom properties from the same iridescence colours the
-terminal uses. One WebSocket per tab carrying JSON patches (`Replace`, `Append`, `Enable`,
+One stylesheet, with the palette as CSS custom properties: `WebTheme.Ember` (the default: a
+light, warm page with flame accents) or `WebTheme.SolarizedDark`, the terminal's colours. The
+type is Marcellus for titles, Inter for text and IBM Plex Mono for code, from Google Fonts with
+system fallbacks; text is one size but for small tracked labels and code. The spacing, radii,
+measures and shadows are custom properties too (`--pyro-space-*`, `--pyro-measure`), so every
+rule names a step of the scale. The masthead and its toolbar of global controls span the page;
+the matter is centred within a measure, wider when a side column is present; a side column is
+drawn only when a panel is arranged there; and every column stacks on a narrow viewport. One
+WebSocket per tab carrying JSON patches (`Replace`, `Append`, `Enable`,
 `Decorate`, `Focus`, `Notify`) down and (`Press`, `Edit`, `Submit`, `Choose`, `Toggle`, `Key`,
 `Resize`) up, coalesced per animation frame. One generic script, `res/web/pyrocosm.js`, with
 nothing app-specific in it.

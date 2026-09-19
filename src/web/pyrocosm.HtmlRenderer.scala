@@ -73,7 +73,7 @@ class HtmlRenderer():
     case Inline.Emphasis(content)     => Em(phrase(content))
     case Inline.Toned(tone, content)  => Span(`class` = toneClass(tone))(phrase(content))
     case Inline.Code(_, tokens0)      => Code(`class` = cls(t"pyro-code"))(tokens(tokens0))
-    case Inline.Keystroke(keypress)   => Kbd(`class` = cls(t"pyro-key"))(keypress.show)
+    case Inline.Keystroke(keypress)   => Kbd(`class` = cls(t"pyro-key"))(keyText(keypress))
     case Inline.Reference(id)         => Code(`class` = cls(t"pyro-reference"))(id)
     case Inline.Break()               => Br
     case Inline.Symbol(glyph)         => Span(`class` = List(cls(t"pyro-glyph"), cls(t"pyro-glyph-${glyph.toString.tt.lower}")))(glyphText(glyph))
@@ -90,6 +90,10 @@ class HtmlRenderer():
 
     case Inline.Figure(value, precision) =>
       Span(`class` = cls(t"pyro-figure"))(Amounts.figure(value, precision))
+
+  // A keypress without the brackets clavichord's rendering puts around each key: a keycap is
+  // already a box, so `[⌃]+[C]` reads as `⌃+C`.
+  private def keyText(keypress: Keypress): Text = keypress.show.s.replace("[", "").nn.replace("]", "").nn.tt
 
   private def glyphText(glyph: Glyph): Text = glyph match
     case Glyph.Check      => t"✓"
@@ -290,6 +294,15 @@ class HtmlRenderer():
   private def gauge(status: Status, caption: Optional[List[Inline]]): Html of Flow =
     def duration(seconds: Double): Text = t"PT${Amounts.figure(seconds, 3)}S"
 
+    // A scalar status (a standing, a duration, a count) names its kind on the figure, so the
+    // stylesheet can set it on one line with its caption; a bar or a list stays a block.
+    val classes: List[Name[CssClass]] = status match
+      case Status.Standing(_)          => List(cls(t"pyro-gauge"), cls(t"pyro-gauge-standing"))
+      case Status.Elapsed(_)           => List(cls(t"pyro-gauge"), cls(t"pyro-gauge-elapsed"))
+      case Status.Remaining(_)         => List(cls(t"pyro-gauge"), cls(t"pyro-gauge-remaining"))
+      case Status.Reckoning(_, Unset)  => List(cls(t"pyro-gauge"), cls(t"pyro-gauge-count"))
+      case _                           => List(cls(t"pyro-gauge"))
+
     val body: Html of Flow = status match
       case Status.Fraction(value)        => Progress(`class` = cls(t"pyro-progress"), value = t"${(value*1000).toInt}", max = t"1000")(t"")
       case Status.Indeterminate()        => Progress(`class` = cls(t"pyro-progress"))(t"")
@@ -304,8 +317,8 @@ class HtmlRenderer():
           Li(`class` = cls(t"pyro-standing-${step.standing.toString.tt.lower}"))(Span(`class` = cls(t"pyro-standing"))(standingGlyph(step.standing)), t" ", phrase(step.name))
         }*)
 
-    caption.lay(Figure(`class` = cls(t"pyro-gauge"))(body)): caption =>
-      Figure(`class` = cls(t"pyro-gauge"))(Figcaption(phrase(caption)), body)
+    caption.lay(Figure(`class` = classes)(body)): caption =>
+      Figure(`class` = classes)(Figcaption(phrase(caption)), body)
 
   private def standingGlyph(standing: Standing): Text = standing match
     case Standing.Pending   => t"·"

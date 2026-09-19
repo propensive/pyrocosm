@@ -56,10 +56,15 @@ object WebArrangement:
         prompt = role(Panel.Role.Prompt),
         status = role(Panel.Role.Status) )
 
-// The page: a masthead holding the title, the status panels and the connection indicator; the
-// global controls as the top menu; navigation on the verso side; detail on the recto side; and
-// the primary, log and prompt panels as the main matter. Each panel is a card whose content
-// element the frontend replaces by id when its `Live` cell changes.
+// The page: a masthead holding the title, the status panels and the connection indicator, with
+// the global controls beneath it as a toolbar; navigation on the verso side; detail on the
+// recto side; and the primary, log and prompt panels as the main matter. A side whose panels
+// are absent is not drawn, so a page without detail has no right-hand column. Each panel is a
+// card whose content element the frontend replaces by id when its `Live` cell changes.
+//
+// The features are mixed in so that the chrome encloses the matter: `Mainstay` wraps the
+// columns in `<main>`, `Masthead` puts its `<header>` before it, and `TopMenu`, last, puts the
+// menu bar — the wordmark and a link to the configuration page — before that.
 object PyrocosmPage:
   // `<meta name="pyro-session" content="…">`, naming the page's session for the script.
   val SessionMeta = Tag.void["meta", Whatwg](presets = proscenium.Map(t"name" -> t"pyro-session"))
@@ -67,16 +72,33 @@ object PyrocosmPage:
   // `data-history="…"` on a field: the application's history, seeded for the script.
   given history: ("data-history" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
+  // A `crossorigin` value on a `link`, as honeycomb declares the attribute but no way to
+  // attribute a value to it.
+  given crossorigin: Crossorigin is Attributive to Whatwg.Crossorigin = (key, value) => (key, value.show)
+
 class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset)
-extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
+extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
   import HtmlRenderer.{cls, panelId, classes}
-  import PyrocosmPage.history
+  import PyrocosmPage.{history, crossorigin}
 
   private val plan: WebArrangement.Plan = WebArrangement.plan(interface)
 
   override def pageTitle: Text = Inline.plain(interface.title)
-  override def versoWidth: Quantity[Rems[1]] = 14.0*Rem
+  override def versoWidth: Quantity[Rems[1]] = 15.0*Rem
   override def rectoWidth: Quantity[Rems[1]] = 20.0*Rem
+
+  // A side column exists only when a panel is arranged there: the matter alone, otherwise.
+  protected override def versoArrangement
+    ( panel: Html of (? <: Flow), content: Html of (? <: Flow) )
+  :   Html of (? <: Flow) =
+
+    if plan.navigation.nil then content else super.versoArrangement(panel, content)
+
+  protected override def rectoArrangement
+    ( content: Html of (? <: Flow), panel: Html of (? <: Flow) )
+  :   Html of (? <: Flow) =
+
+    if plan.detail.nil then content else super.rectoArrangement(content, panel)
 
   // The controls other than a field are phrasing, so they fit the top menu; a field is flow.
   def controlFlow(control: Control): Html of Flow = control match
@@ -180,14 +202,31 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
 
   private def cards(panels: List[Panel]): Html of Flow = Fragment(panels.map(card)*)
 
-  override def masthead: Html of Flow =
-    Div(`class` = cls(t"pyro-masthead"))
-      ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
-        Fragment(plan.status.map { (panel: Panel) => Div(id = panelId(panel))(panelContent(panel)) }*),
-        Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
+  // The menu bar: a full-width band whose contents are centred to the wide measure, holding
+  // the wordmark, which is the way home, and the link to the configuration page.
+  protected override def menu: Html of "nav" =
+    Nav(`class` = List(TopMenu.menuClass, cls(t"pyro-menubar")))
+      ( Div(`class` = cls(t"pyro-menubar-inner"))
+          ( A(href = t"/", `class` = cls(t"pyro-wordmark"))(t"Pyrocosm"),
+            A(href = t"/config", `class` = cls(t"pyro-menubar-link"))(t"Configuration") ) )
 
-  override def menuItems: List[Html of Phrasing] =
-    interface.controls.filter { (control0: Control) => !control0.isInstanceOf[Control.Field] }.map { (control0: Control) => Span(`class` = cls(t"pyro-control"))(control(control0)) }
+  // The global controls other than a field, each an item of the masthead's toolbar.
+  private def toolbarItems: List[Html of "li"] =
+    interface.controls.filter { (control0: Control) => !control0.isInstanceOf[Control.Field] }
+    . map { (control0: Control) => Li(`class` = cls(t"pyro-control"))(control(control0)) }
+
+  // The brand row: the title, the status panels' content and the connection indicator; then,
+  // when the interface has any, the global controls as a `menu` of commands.
+  override def masthead: Html of Flow =
+    val brand: Html of Flow =
+      Div(`class` = cls(t"pyro-masthead"))
+        ( Div(`class` = cls(t"pyro-brand"))
+            ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
+              Fragment(plan.status.map { (panel: Panel) => Div(id = panelId(panel), `class` = cls(t"pyro-status"))(panelContent(panel)) }*) ),
+          Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
+
+    val items = toolbarItems
+    if items.nil then brand else Fragment(brand, Menu(`class` = cls(t"pyro-toolbar"))(items*))
 
   override def verso: Html of Flow = cards(plan.navigation)
   override def recto: Html of Flow = cards(plan.detail)
@@ -199,12 +238,25 @@ extends Archetype, Masthead, TopMenu, VersoPanel, RectoPanel, Mainstay:
     val named: Html of Metadata = session match
       case id: Text => PyrocosmPage.SessionMeta(content = id)
       case _        => Fragment[Metadata]()
-    Fragment[Metadata](Script(src = t"/pyrocosm.js", defer = true), named, super.head)
 
-  protected override def styles: Css = super.styles + WebStyles.css(theme)
+    // The fonts' origins, so the browser opens their connections while it reads the sheet.
+    val fonts: Html of Metadata =
+      Fragment[Metadata]
+        ( Link.Preconnect(href = t"https://fonts.googleapis.com"),
+          Link.Preconnect(href = t"https://fonts.gstatic.com", crossorigin = Crossorigin.Anonymous) )
+
+    Fragment[Metadata](fonts, Script(src = t"/pyrocosm.js", defer = true), named, super.head)
+
+  // The fonts' import first, as CSS requires; then graffiti's rules; then this page's own.
+  protected override def styles: Css = WebStyles.fonts + super.styles + WebStyles.rules(theme)
 
   // The page as served: graffiti's `html` inlines the stylesheet in a `<style>` element, but
   // this page links it, so a Pyrocosm application is restyled by serving another sheet. The
   // sheet itself is `css`, which the frontend serves at `/pyrocosm.css`.
+  // The body says which side columns the page has, so the sheet can widen its measure for them.
   def markup: Html of "html" =
-    Html(Head(Title(pageTitle), Link.Stylesheet(href = t"/pyrocosm.css"), head), Body(dir = direction.show)(frame))
+    val verso: List[Name[CssClass]] = if plan.navigation.nil then Nil else List(cls(t"pyro-has-verso"))
+    val recto: List[Name[CssClass]] = if plan.detail.nil then Nil else List(cls(t"pyro-has-recto"))
+    val sides: List[Name[CssClass]] = verso + recto
+
+    Html(Head(Title(pageTitle), Link.Stylesheet(href = t"/pyrocosm.css"), head), Body(dir = direction.show, `class` = sides)(frame))
