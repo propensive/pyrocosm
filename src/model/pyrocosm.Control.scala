@@ -38,16 +38,18 @@ object Control:
 
     // What a renderer draws over the user's text: highlighting tokens covering the whole value,
     // completion candidates at the caret, whether the text is an incomplete prefix (which
-    // decides what Enter does), and `detail`: blocks shown beneath the text while it is being
+    // decides what Enter does), `detail`: blocks shown beneath the text while it is being
     // typed, wrapped to the field's width: what the input is being read as, what the unfinished
-    // line has brought into scope, and so on. Supplied by the application, usually in response
-    // to `Edited`.
+    // line has brought into scope, and so on; and `prompt`: a short phrase drawn before the
+    // first row of the text, as a shell's prompt is, which the text starts past. Supplied by
+    // the application, usually in response to `Edited`.
     case class Decoration
       ( tokens:      List[Token]      = Nil,
         completions: List[Completion] = Nil,
         incomplete:  Boolean          = false,
         detail:      List[Block]      = Nil,
-        marks:       List[Block.Note] = Nil )  // error and warning spans over the tokens, by line
+        marks:       List[Block.Note] = Nil, // error and warning spans over the tokens, by line
+        prompt:      List[Inline]     = Nil )
 
     // A candidate at the caret. Accepting it replaces the identifier before the caret with
     // `name`, or, when `whole` is set, the whole text: a REPL's `/session name` completes the
