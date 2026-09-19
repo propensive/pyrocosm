@@ -27,7 +27,8 @@ package pyrocosm
 import soundness.{Language as _, *}
 
 // Phrasing content: the things which occur *within* a line of text. Comparable to Markdown's
-// inline nodes, with a single kind of emphasis, and richer in the ways an application needs —
+// inline nodes, with its two kinds of emphasis (stress and importance), and richer in the ways
+// an application needs —
 // keystrokes, highlighted code, mathematics, quantities, references and semantic symbols — so
 // that a renderer can give each the treatment its medium affords.
 object Inline:
@@ -59,7 +60,8 @@ object Inline:
 enum Inline:
   case Textual(text: Text)
   case Phrase(content: List[Inline])                // a run of phrasing which belongs together
-  case Emphasis(content: List[Inline])
+  case Emphasis(content: List[Inline])              // stress: italic where the medium has it
+  case Strong(content: List[Inline])                // importance: bold
   case Toned(tone: Tone, content: List[Inline])
   case Code(language: Language, tokens: List[Token])
   case Keystroke(keypress: Keypress)
@@ -79,6 +81,7 @@ enum Inline:
     case Textual(text)        => text
     case Phrase(content)      => Inline.plain(content)
     case Emphasis(content)    => Inline.plain(content)
+    case Strong(content)      => Inline.plain(content)
     case Toned(_, content)    => Inline.plain(content)
     case Code(_, tokens)      => tokens.map { (token: Token) => token.text }.join
     case Keystroke(keypress)  => keypress.show

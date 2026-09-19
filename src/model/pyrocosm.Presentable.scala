@@ -156,7 +156,7 @@ object Presentable extends Presentable2:
   private def prose(node: Prose): Inline = node match
     case Prose.Textual(text)       => Inline.Textual(text)
     case Prose.Emphasis(children*) => Inline.Emphasis(phrasing(List.from(children)))
-    case Prose.Strong(children*)   => Inline.Emphasis(phrasing(List.from(children)))
+    case Prose.Strong(children*)   => Inline.Strong(phrasing(List.from(children)))
     case Prose.Code(code)          => Inline.Code(Language.Plain, List(Token.plain(code)))
     case Prose.Softbreak           => Inline.Textual(" ")
     case Prose.Linebreak           => Inline.Break()

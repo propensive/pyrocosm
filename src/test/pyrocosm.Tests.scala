@@ -250,6 +250,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
                   Inline.Keystroke(Keypress.Ctrl('C')),
                   Inline.Textual(t" to stop; "),
                   Inline.Emphasis(Inline.text(t"emphasis")),
+                  Inline.Strong(Inline.text(t"strong")),
                   Inline.Toned(Tone.Success, Inline.text(t"ok")),
                   Inline.Link(Inline.Destination.Internal(run), Inline.text(t"again")),
                   Inline.Math(unsafely(Ergo.parse(t"(x↗2 + y↗2)"))),
