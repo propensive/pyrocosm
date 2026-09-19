@@ -71,6 +71,7 @@ class HtmlRenderer():
     case Inline.Textual(text)         => text
     case Inline.Phrase(content)       => phrase(content)
     case Inline.Emphasis(content)     => Em(phrase(content))
+    case Inline.Strong(content)       => Strong(phrase(content))
     case Inline.Toned(tone, content)  => Span(`class` = toneClass(tone))(phrase(content))
     case Inline.Code(_, tokens0)      => Code(`class` = cls(t"pyro-code"))(tokens(tokens0))
     case Inline.Keystroke(keypress)   => Kbd(`class` = cls(t"pyro-key"))(keyText(keypress))

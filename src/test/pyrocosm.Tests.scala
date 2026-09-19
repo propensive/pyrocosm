@@ -250,6 +250,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
                   Inline.Keystroke(Keypress.Ctrl('C')),
                   Inline.Textual(t" to stop; "),
                   Inline.Emphasis(Inline.text(t"emphasis")),
+                  Inline.Strong(Inline.text(t"strong")),
                   Inline.Toned(Tone.Success, Inline.text(t"ok")),
                   Inline.Link(Inline.Destination.Internal(run), Inline.text(t"again")),
                   Inline.Math(unsafely(Ergo.parse(t"(x↗2 + y↗2)"))),
@@ -643,6 +644,25 @@ object Tests extends Suite(m"Pyrocosm tests"):
       List(t"""<span class="pyro-tokens" hidden="">""", t"pyro-note", t"pyro-completions", t"println", t"reads as code", t"""<li class="pyro-replacement">""", t"pyro-note-erroneous").all(decoration.contains(_))
     . assert(_ == true)
 
+    test(m"a value a tab published is not sent back to it"):
+      val published = Published()
+      published.publish(t"repl", t"val x")
+      published.fresh(t"repl", t"val x")
+
+    . assert(_ == false)
+
+    test(m"a value the application writes is sent once, and is then what the tabs show"):
+      val published = Published()
+      published.publish(t"repl", t"val x")
+      (published.fresh(t"repl", t""), published.fresh(t"repl", t""))
+
+    . assert(_ == (true, false))
+
+    test(m"a field no tab has published sends its first value"):
+      Published().fresh(t"repl", t"1 + 1")
+
+    . assert(_ == true)
+
     test(m"a page seeds the field's history"):
       prompt.history() = List(t"val x = 1")
       PyrocosmPage(repl, html, WebTheme.default).markup.show.contains(t"""data-history="[&quot;val x = 1&quot;]"""")
@@ -745,6 +765,114 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
       (0 until first.length).forall { column => pty.buffer.char(column.z, Prim) == first.s.charAt(column) }
     . assert(_ == true)
+
+    // ── The code field ────────────────────────────────────────────────────────────────────
+
+    // A board in memory: the plain characters put on it, by cell, and where the caret was left.
+    class MemoryBoard(val width: Int, val height: Int) extends profanity.Board:
+      val cells: java.util.HashMap[Int, Char] = java.util.HashMap()
+      var column: Int = 0
+      var row: Int = 0
+      var caret: (Int, Int) = (0, 0)
+
+      def move(column: Ordinal, row: Ordinal): Unit =
+        this.column = column.n0
+        this.row = row.n0
+
+      def put(text: Text): Unit = text.s.foreach: char =>
+        if char == '\n' then
+          column = 0
+          row += 1
+        else
+          if row < height && column < width then cells.put(row*width + column, char)
+          column += 1
+
+      def put(text: Teletype): Unit = put(text.plain)
+
+      def clear(): Unit =
+        cells.clear()
+        column = 0
+        row = 0
+
+      def clearLine(): Unit = ()
+      def cursor(visible: Boolean): Unit = ()
+      def showCaret(column: Ordinal, row: Ordinal): Unit = caret = (column.n0, row.n0)
+      def flush(): Unit = ()
+
+      def line(row: Int): Text =
+        val builder = java.lang.StringBuilder()
+
+        (0 until width).foreach: column =>
+          builder.append(cells.getOrDefault(row*width + column, ' '))
+
+        builder.toString.tt
+
+    def codeField(value: Text, prompt: List[Inline]): CodeField =
+      val field: Control.Field =
+        Control.Field
+          ( Input(t"code"), Control.Field.Kind.Line, value = Live(value),
+            decoration = Live(Control.Field.Decoration(prompt = prompt)) )
+
+      CodeField(field, renderer, (_: Event) => (), pyrocosm.Session())
+
+    val arrow: List[Inline] = List(Inline.Toned(Tone.Accent, Inline.text(t"\ue0b0 ")))
+    val chevron: List[Inline] = Inline.text(t"> ")
+
+    test(m"a prompt is drawn before the text, which starts past it, as does the caret"):
+      val fixture = codeField(t"hello", arrow)
+      val grid = MemoryBoard(20, 4)
+      fixture.measure(20)
+      fixture.render(grid, true)
+      (grid.line(0).keep(7), grid.caret)
+
+    . assert(_ == (t"\ue0b0 hello", (7, 0)))
+
+    test(m"an empty prompt leaves the text and caret at the first column"):
+      val fixture = codeField(t"hello", Nil)
+      val grid = MemoryBoard(20, 4)
+      val rows = fixture.measure(20)(1)
+      fixture.render(grid, true)
+      (grid.line(0).keep(5), grid.caret, rows)
+
+    . assert(_ == (t"hello", (5, 0), 1))
+
+    test(m"the text wraps at the width less the prompt and hangs beneath it"):
+      val fixture = codeField(t"abcdefg", chevron)
+      val grid = MemoryBoard(6, 4)
+      val rows = fixture.measure(6)(1)
+      fixture.render(grid, true)
+      (grid.line(0), grid.line(1), grid.caret, rows)
+
+    . assert(_ == (t"> abcd", t"  efg ", (5, 1), 2))
+
+    test(m"a later line of a multi-line value hangs beneath the prompt"):
+      val fixture = codeField(t"ab\ncd", chevron)
+      val grid = MemoryBoard(10, 4)
+      fixture.measure(10)
+      fixture.render(grid, true)
+      (grid.line(0), grid.line(1), grid.caret)
+
+    . assert(_ == (t"> ab      ", t"  cd      ", (4, 1)))
+
+    test(m"a caret moved into the text keeps the prompt's offset"):
+      val fixture = codeField(t"hello", chevron)
+      fixture.handle(Keypress.Left)
+      fixture.handle(Keypress.Left)
+      val grid = MemoryBoard(20, 4)
+      fixture.measure(20)
+      fixture.render(grid, true)
+      grid.caret
+
+    . assert(_ == (5, 0))
+
+    test(m"a field too narrow for its prompt drops it"):
+      val fixture = codeField(t"ab", chevron)
+      val grid = MemoryBoard(2, 4)
+      val rows = fixture.measure(2)(1)
+      fixture.render(grid, true)
+      (grid.line(0), rows, grid.caret)
+
+    . assert(_ == (t"ab", 1, (0, 1)))
 
     // ── Git notes ─────────────────────────────────────────────────────────────────────────
 

@@ -220,12 +220,27 @@
       remaining -= length;
     }
     var range = document.createRange();
-    if (target) range.setStart(target, targetOffset);
+    var trailing = editor.querySelector("br.pyro-break");
+    // At the very end of a text that ends with a newline, the caret goes before the trailing
+    // break, which has the line box the position after the newline lacks.
+    if (trailing && offset >= editorText(editor).length) range.setStartBefore(trailing);
+    else if (target) range.setStart(target, targetOffset);
     else { range.selectNodeContents(editor); range.collapse(false); }
     range.collapse(true);
     var selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
+  }
+
+  // A trailing line break, so that an empty last line — or one of indentation alone — has a
+  // line box of its own: without one, the caret after a final newline is drawn, and text typed
+  // there lands, at the end of the line before. It is never part of the text.
+  function trailingBreak(editor) {
+    var text = editorText(editor), last = text.lastIndexOf("\n");
+    var wanted = last >= 0 && /^[ \t]*$/.test(text.slice(last + 1));
+    var existing = editor.querySelector("br.pyro-break");
+    if (wanted && !existing) { var br = document.createElement("br"); br.className = "pyro-break"; editor.appendChild(br); }
+    else if (!wanted && existing) existing.remove();
   }
 
   function emptiness(editor) {
@@ -305,6 +320,7 @@
       clearSuggestion(editor);
       editor.innerHTML = "";
       Array.prototype.forEach.call(tokens.childNodes, function (node) { editor.appendChild(node.cloneNode(true)); });
+      trailingBreak(editor);
       placeCaret(editor, caret);
     }
     var items = completionsOf(editor);
@@ -318,6 +334,7 @@
   function edited(editor) {
     dismissed[editor.id] = false;
     clearSuggestion(editor);
+    trailingBreak(editor);
     emptiness(editor);
     send({ kind: "edit", id: editor.id, text: editorText(editor), caret: caretOf(editor), index: 0 });
   }
@@ -325,6 +342,7 @@
   function setText(editor, text, caret) {
     clearSuggestion(editor);
     editor.textContent = text;
+    trailingBreak(editor);
     placeCaret(editor, caret);
     edited(editor);
   }
