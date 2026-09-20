@@ -143,7 +143,7 @@ enum Block:
   case Listing(ordered: Boolean, items: List[Block.Item])
   case Quotation(content: List[Block])
   // A rule stands between what precedes and follows it, or marks an edge: `Above` is drawn
-  // low in its row (`⎽`), a line above the content that follows; `Below` high (`‾`), a line
+  // low in its row (`⎽`), a line above the content that follows; `Below` high (`⎺`), a line
   // beneath the content before it. Both are what a transcript keeps of a submitted line's
   // frame.
   case Rule(side: Block.Side = Block.Side.Between)

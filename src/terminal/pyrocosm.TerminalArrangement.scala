@@ -153,7 +153,7 @@ object TerminalArrangement:
       case Pane.Widget(sizing, _)    => sizing.fraction
       case Pane.Branch(sizing, _, _) => sizing.fraction
 
-    stack(rule(t"⎽"), child.weight(share), rule(t"‾"))
+    stack(rule(t"⎽"), child.weight(share), rule(t"⎺"))
 
   // Ultimatum's `border`, with edges that hide with the content they frame.
   private def border(style: BorderStyle, hidden: () -> Boolean)(child: Pane): Pane =

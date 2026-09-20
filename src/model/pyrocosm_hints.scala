@@ -37,7 +37,7 @@ object terminal:
   enum Occupancy extends Hint:
     case Inline, Fullscreen
 
-  // `Rules`: no sides, a low line (`⎽`) above and a high line (`‾`) below, as a transcript's
+  // `Rules`: no sides, a low line (`⎽`) above and a high line (`⎺`) below, as a transcript's
   // entries keep of the prompt they were entered at (`Block.Rule` with an edge).
   enum Border extends Hint:
     case None, Light, Heavy, Rounded, Rules
