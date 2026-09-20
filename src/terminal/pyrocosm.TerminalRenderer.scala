@@ -234,7 +234,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
         val ascii = glyphs == Gaugeable.Glyphs.Ascii
         val rule = side match
           case Block.Side.Above   => if ascii then t"_" else t"⎽"
-          case Block.Side.Below   => if ascii then t"-" else t"‾"
+          case Block.Side.Below   => if ascii then t"-" else t"⎺"
           case Block.Side.Between => if ascii then t"-" else t"─"
         List(faint(Teletype(rule*width)))
 
