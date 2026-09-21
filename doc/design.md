@@ -458,10 +458,13 @@ that commit — and `-dirty` if the working tree has uncommitted changes.
 ## Releasing
 
 Pyrocosm releases to GitHub Releases, as the rest of the ecosystem does since Soundness #1929:
-`make release VERSION=X.Y.Z` (after bumping `pyrocosmVersion` in `build.mill`) builds from
-clean, stages the five library jars with their POM and ivy.xml embedded under
-`META-INF/maven/`, runs the tests, tags, uploads, checks every asset's digest against the local
-file, and publishes. A consumer installs a release into its local ivy repository with Soundness's
+a release is cut by tagging. Bump `pyrocosmVersion` in `build.mill`, merge it, wait for CI to
+go green on that commit, and then `git tag -s X.Y.Z && git push --tags`. The tag fires
+`.github/workflows/release.yml`, which runs the shared `release.sh` in propensive/.github: it
+gates (a signed tag, a green CI run on that very commit, every pin a released version), builds
+from a cold tree, stages the library jars with their POM and ivy.xml embedded under
+`META-INF/maven/`, uploads them into a draft, checks every asset's digest against the local
+file, and only then publishes. A consumer installs a release into its local ivy repository with Soundness's
 sync script pointed here (`SOUNDNESS_RELEASE_REPO=propensive/pyrocosm python3 sync_releases.py
 X.Y.Z`; the shared CI workflow does this from an `extra_releases` input), and names this
 repository among Burdock's hints when repackaging a launcher (`--github propensive/pyrocosm`),
