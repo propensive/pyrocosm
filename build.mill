@@ -19,7 +19,7 @@ object settings:
   // etc/refs and read by `deps`, below; every list here takes it as a parameter.
 
   // The version Pyrocosm's own libraries are released under. Bump (and commit) per release;
-  // etc/ci/release.sh refuses to release anything else. Snapshots override it through
+  // the release refuses to run when this pin disagrees with the tag. Snapshots override it through
   // `publishVersion`, never here.
   val pyrocosmVersion = "0.3.0"
 
@@ -118,7 +118,7 @@ object settings:
   // What a build of a tool identifies itself as, written into its jar as
   // `META-INF/pyrocosm/<name>/version` for `pyrocosm-cli` to read (`<name> about`,
   // `<name> --version`): the version a release or snapshot is published as, when
-  // `PYROCOSM_RELEASE_VERSION` names it (`make snapshot` and etc/ci/release.sh both set it);
+  // `PYROCOSM_RELEASE_VERSION` names it (`make snapshot` and the release both set it);
   // otherwise the pinned version with the filtered tree hash of HEAD — the identity
   // `make snapshot` would give this commit — and `-dirty` if the working tree has changes
   // that no commit records. Called from a `Task.Input`, so that HEAD is consulted on every
@@ -409,7 +409,7 @@ object pyrocosm extends Project:
 // `sync_releases.py` (pointed at this repository with `SOUNDNESS_RELEASE_REPO`) reconstructs
 // the ivy2 layout coursier resolves from, and Burdock, given `--github propensive/pyrocosm`,
 // matches the jar on a launcher's classpath to the released asset by digest and externalizes
-// it. `etc/ci/release.sh` uploads what `stage` produces.
+// it. The release (release.sh in propensive/.github) uploads what `stage` produces.
 object release extends Module:
   def modules: Seq[PublishModule] =
     Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.terminal, pyrocosm.web, pyrocosm.notes,

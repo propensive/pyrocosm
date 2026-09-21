@@ -67,11 +67,20 @@ snapshot:
 snapshot-prune:
 	./etc/shared snapshot-prune.sh pyrocosm $(DAYS)
 
-# Release to GitHub Releases: `make release VERSION=X.Y.Z`, after bumping `pyrocosmVersion` in
-# build.mill and committing. See etc/ci/release.sh.
+# Releases are cut by tagging, not by make. Bump `pyrocosmVersion`, merge it, and then `git tag -s
+# X.Y.Z && git push --tags`: the tag fires .github/workflows/release.yml, which runs the shared
+# release.sh in propensive/.github. That gates on a signed tag, on CI already being green on that
+# very commit, and on every pin being a release; then uploads the jars into a draft, checks every
+# asset's digest against the local file, and only then makes the release visible. If anything
+# fails, the release and the tag are both deleted. What this repository needs beyond the common
+# path is declared in etc/release. This target survives only to say so.
 release:
-	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=X.Y.Z" >&2; exit 1; fi
-	./etc/ci/release.sh "$(VERSION)"
+	@echo "Releases are triggered by tags, not by make. Bump pyrocosmVersion, merge it, then:" >&2
+	@echo "" >&2
+	@echo "    git tag -s X.Y.Z && git push --tags" >&2
+	@echo "" >&2
+	@echo "See propensive/.github." >&2
+	@exit 1
 
 dev:
 	./mill -w pyrocosm.model.compile
