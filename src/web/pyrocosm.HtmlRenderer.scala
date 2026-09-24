@@ -182,6 +182,7 @@ class HtmlRenderer():
 
     case Block.Chart(kind, series) => chart(kind, series)
     case Block.Gauge(status, caption) => gauge(status, caption)
+    case Block.Trace(stacks) => trace(stacks)
     case Block.Group(content) => Div(`class` = cls(t"pyro-group"))(blocks(content))
 
     // Captured output, verbatim, each line behind a gutter naming its stream.
@@ -260,6 +261,70 @@ class HtmlRenderer():
 
     val captioned: List[Html of "caption"] = caption.lay(Nil: List[Html of "caption"]) { caption => List(Caption(phrase(caption))) }
     Table(`class` = cls(t"pyro-table"))(Fragment(captioned*), head, body)
+
+  // A stack trace: a section per exception in the chain, each a heading naming the exception
+  // and its message, and a table of its frames laid out as the terminal lays them out—`at`, the
+  // class with its last segment in the package's accent (`pyro-trace-accent-N`, by order of first
+  // appearance), the method, the file, the line and the quoted source—with a `↳` row beneath a
+  // frame for each level of inlining. The location is contiguous, `File.scala:42`: the colon
+  // opens the line cell, and the stylesheet leaves no gap between it and the file cell, so the
+  // colons stack in a column. A repeated class or file name (`pyro-repeat`), a compiler-synthesised
+  // frame (`pyro-plumbing`) and an inlining row (`pyro-inlined`) are marked for the sheet to dim.
+  private def trace(stacks: List[Block.Trace.Stack]): Html of Flow =
+    def stack(stack: Block.Trace.Stack): Html of Flow =
+      val accents: Map[Text, Int] = Block.Trace.accents(stack)
+
+      def accentClass(namespace: Text): Name[CssClass] =
+        cls(t"pyro-trace-accent-${accents(namespace).or(0)%5 + 1}")
+
+      val heading =
+        Header(`class` = cls(t"pyro-trace-heading"))
+          ( Code(`class` = cls(t"pyro-trace-class"))(Em(t"${stack.component}."), Strong(stack.className)),
+            t": ",
+            Span(`class` = cls(t"pyro-trace-message"))(phrase(stack.message)) )
+
+      def frame(frame: Block.Trace.Frame, sameClass: Boolean, sameFile: Boolean): Html of "tr" =
+        val (prefix, segment) = Block.Trace.split(frame.owner)
+        val repeat: List[Name[CssClass]] = if sameClass then List(cls(t"pyro-repeat")) else Nil
+        val fileRepeat: List[Name[CssClass]] = if sameFile then List(cls(t"pyro-repeat")) else Nil
+        val plumbing: List[Name[CssClass]] = if frame.plumbing then List(cls(t"pyro-plumbing")) else Nil
+        val rowClasses: List[Name[CssClass]] = cls(t"pyro-frame") :: plumbing
+        val joined = Block.Trace.joined(frame)
+
+        Tr(`class` = rowClasses)
+          ( Td(`class` = cls(t"pyro-at"))(t"at"),
+            Td(`class` = cls(t"pyro-owner") :: accentClass(frame.namespace) :: repeat)
+              (Span(`class` = cls(t"pyro-prefix"))(prefix), Strong(segment)),
+            Td(`class` = cls(t"pyro-dot"))(if joined then t"." else t"⌗"),
+            Td(`class` = cls(t"pyro-method"))(frame.method),
+            Td(`class` = cls(t"pyro-file") :: fileRepeat)(frame.file),
+            Td(`class` = cls(t"pyro-line"))(Span(`class` = cls(t"pyro-colon"))(t":"), frame.line.let(_.show).or(t"")),
+            Td(`class` = List(cls(t"pyro-source"), cls(t"pyro-collapsible")))(Code(frame.code.or(t""))) )
+
+      def origin(origin: Block.Trace.Origin): Html of "tr" =
+        Tr(`class` = List(cls(t"pyro-frame"), cls(t"pyro-inlined")))
+          ( Td(`class` = cls(t"pyro-at"))(t"↳"),
+            Td(`class` = cls(t"pyro-owner"))(origin.owner.or(t"")),
+            Td(`class` = cls(t"pyro-dot"))(origin.owner.lay(t"")(_ => t".")),
+            Td(`class` = cls(t"pyro-method"))(origin.name.or(t"inlined from")),
+            Td(`class` = cls(t"pyro-file"))(origin.file),
+            Td(`class` = cls(t"pyro-line"))(Span(`class` = cls(t"pyro-colon"))(t":"), origin.line.show),
+            Td(`class` = List(cls(t"pyro-source"), cls(t"pyro-collapsible")))(Code(origin.code.or(t""))) )
+
+      val rows: List[Html of "tr"] =
+        stack.frames.fold((Nil: List[Html of "tr"], t"", t"")):
+          case ((acc, lastClass, lastFile), frame0) =>
+            val row = frame(frame0, frame0.owner == lastClass, frame0.file == lastFile)
+            val subRows = frame0.inlined.map(origin).reverse
+            (subRows + (row :: acc), frame0.owner, frame0.file)
+        . _1.reverse
+
+      Section(`class` = cls(t"pyro-trace"))(heading, Table(`class` = cls(t"pyro-frames"))(Tbody(rows*)))
+
+    Fragment[Flow](stacks.indexed.map { (stack0: Block.Trace.Stack, index: Ordinal) =>
+      if index.n0 == 0 then stack(stack0)
+      else Fragment[Flow](P(`class` = cls(t"pyro-caused-by"))(t"caused by:"), stack(stack0))
+    }*)
 
   // A chart is a figure holding a description list: each series is a term, and each of its
   // values a description. A bar or a histogram column is a `meter` of the value against the

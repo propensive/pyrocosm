@@ -67,6 +67,16 @@ trait WebTheme:
   def codeForeground: Chroma = foreground
   def codeAccent(accent: Token.Accent): Chroma = this.accent(accent)
 
+  // A stack trace's colours: the file, the method and the line, and the five accents its
+  // packages take in order of first appearance. Digression's own by default, which suit a dark
+  // ground; a light theme overrides them with deeper values.
+  def traceFile: Chroma = Chroma(0x5f9e9f)
+  def traceMethod: Chroma = Chroma(0xabcfdf)
+  def traceLine: Chroma = Chroma(0x47d1cc)
+
+  def traceAccents: List[Chroma] =
+    List(Chroma(0xf84020), Chroma(0xd88600), Chroma(0xfefe00), Chroma(0xfeae00), Chroma(0xaefe00))
+
   // The `:root` block. Cataclysm's `css` interpolator checks a substituted value against the
   // property's grammar and has no notion of a custom property, so the block is read from text
   // at runtime, where a `--name` declaration is accepted with any value.
@@ -89,8 +99,12 @@ trait WebTheme:
     val codeAccents: List[(Text, Chroma)] =
       Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]) { (acc, accent0) => acc :+ (t"code-accent-${accent0.toString.tt.lower}" -> codeAccent(accent0)) }
 
+    val trace: List[(Text, Chroma)] =
+      List(t"trace-file" -> traceFile, t"trace-method" -> traceMethod, t"trace-line" -> traceLine)
+      + traceAccents.indexed.map { (chroma, index) => t"trace-accent-${index.n1}" -> chroma }
+
     val declarations: Text =
-      (roles + tones + accents + codeAccents).map { (name, chroma) => t"--pyro-$name: ${WebTheme.hex(chroma)}" }.join(t"; ")
+      (roles + tones + accents + codeAccents + trace).map { (name, chroma) => t"--pyro-$name: ${WebTheme.hex(chroma)}" }.join(t"; ")
 
     t":root { $declarations }".read[Css]
 
@@ -180,6 +194,13 @@ object WebTheme:
 
     override def codeBackground: Chroma = night
     override def codeForeground: Chroma = codeText
+
+    // A trace sits on the light page, so its colours are deeper than digression's, in the
+    // page's own hues: the accents are the tones and links the rest of the page uses.
+    override def traceFile: Chroma = Chroma(0x2f6f70)
+    override def traceMethod: Chroma = Chroma(0x3b6f88)
+    override def traceLine: Chroma = Chroma(0x1e8f8a)
+    override def traceAccents: List[Chroma] = List(crimson, rust, gold, amber, leaf)
 
     override def codeAccent(accent: Token.Accent): Chroma = accent match
       case Token.Accent.Keyword  => codeKeyword

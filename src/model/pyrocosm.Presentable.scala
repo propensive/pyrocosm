@@ -28,7 +28,7 @@ import scala.compiletime
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Language as _, *}
 
-import dysasymptotics.{linearAccess, linearSize}
+import dysasymptotics.linearAccess
 
 // A value's rich rendering: what `show` is to text and `inspect` is to a debugger, `exhibit` is
 // to an interface. An instance yields phrasing (`in Inline`) or flow (`in Block`) content, and
@@ -117,34 +117,16 @@ object Presentable extends Presentable2:
     flow[List[element]] { list => Derivation.tabulate(list) }
 
   // A message's nested emphasis levels collapse to the model's single emphasis.
-  given message: Message is Presentable in Inline = message =>
-    val content: List[Inline] =
-      message.fold[List[Inline]](Nil): (acc, next, level) =>
-        acc :+ (if level == 0 then Inline.Textual(next) else Inline.Emphasis(Inline.text(next)))
-
-    Inline.Phrase(content)
+  given message: Message is Presentable in Inline = message => Inline.Phrase(Inline.message(message))
 
   given error: Error is Presentable in Inline = error => message.exhibit(error.message)
 
-  given stackTrace: StackTrace is Presentable in Block = stackTrace =>
-    val columns = List
-      ( Block.Column(Inline.text("Class")),
-        Block.Column(Inline.text("Method")),
-        Block.Column(Inline.text("File"), sizing = Block.Sizing.Collapsible(0.5)),
-        Block.Column(Inline.text("Line"), Block.Alignment.End, Block.Sizing.Rigid, numeric = true) )
+  // A stack trace is the model's own block, laid out as digression's terminal rendering is; an
+  // exception exhibits through its stack trace, resolved as far as the resolver in scope can.
+  given stackTrace: StackTrace is Presentable in Block = Block.Trace.of(_)
 
-    val rows = stackTrace.frames.map: (frame: StackTrace.Frame) =>
-      Block.Row:
-        List
-          ( Block.Cell(List(Inline.Code(Language.Scala, List(Token.plain(frame.displayClass))))),
-            Block.Cell(List(Inline.Code(Language.Scala, List(Token.plain(frame.displayMethod))))),
-            Block.Cell(Inline.text(frame.file)),
-            Block.Cell(frame.line.lay(Nil: List[Inline]) { line => List(Inline.Figure(line.toDouble, 0)) }) )
-
-    Block.Notice
-      ( Tone.Failure,
-        Inline.text(stackTrace.className),
-        List(Block.Paragraph(List(message.exhibit(stackTrace.message))), Block.Table(columns, rows)) )
+  given throwable: (resolver: StackTrace.Resolver) => Throwable is Presentable in Block =
+    throwable => Block.Trace.of(StackTrace(throwable))
 
   // A Markdown document, converted node for node. Both emphasis strengths become the model's
   // one emphasis; inline HTML is dropped; an inline image becomes a link to it.

@@ -131,6 +131,82 @@ object Block:
 
   case class Series(label: List[Inline], values: List[Double], tone: Optional[Tone] = Unset)
 
+  // A stack trace as data, digression's `StackTrace` reduced to what a rendering needs, so that
+  // the model neither serialises a fulminate message nor depends on how digression resolves a
+  // frame. Both renderers lay it out as digression's own terminal rendering does.
+  object Trace:
+    // One level of inlining beneath a frame, from the classfile's SMAP: detail about the frame
+    // above, not a frame of its own. `owner` and `name` are the inline definition, when resolved.
+    case class Origin
+      ( file:  Text,
+        line:  Int,
+        owner: Optional[Text] = Unset,
+        name:  Optional[Text] = Unset,
+        code:  Optional[Text] = Unset )
+
+    // `namespace` is the frame's package, which colours it; `owner` is the class to show (the
+    // chain of source definitions when resolved, else the demangled class name, with a leading
+    // `Ξ` for an object), and `method` the method to show. A `resolved` frame's source definition
+    // was found, so its owner and method are joined by `.` rather than `⌗`; a `plumbing` frame
+    // was synthesised by the compiler, and recedes.
+    case class Frame
+      ( namespace: Text,
+        owner:     Text,
+        method:    Text,
+        file:      Text,
+        line:      Optional[Int]  = Unset,
+        code:      Optional[Text] = Unset,
+        resolved:  Boolean        = false,
+        plumbing:  Boolean        = false,
+        inlined:   List[Origin]   = Nil )
+
+    // One exception of the chain: the root, then each cause in turn.
+    case class Stack(component: Text, className: Text, message: List[Inline], frames: List[Frame])
+
+    // The stack's namespaces in order of first appearance, each numbered from zero: what both
+    // renderers colour by, so a package takes the same accent in either medium.
+    def accents(stack: Stack): Map[Text, Int] =
+      stack.frames.map(_.namespace).distinct.indexed.map { (namespace, index) => namespace -> index.n0 }.to[Map]
+
+    // The last segment of an owner, `Ξ` marking an object, and everything before it.
+    private def pivot(owner: Text): Int = owner.s.lastIndexOf(".")
+    private def segment(owner: Text): Text = owner.s.substring(pivot(owner) + 1).nn.tt
+
+    // An owner as its prefix (with its trailing dot, or empty) and its last segment, less the
+    // `Ξ` which marks an object: what a renderer shows subdued, and what it shows in the accent.
+    def split(owner: Text): (Text, Text) =
+      val prefix = if pivot(owner) >= 0 then owner.s.substring(0, pivot(owner) + 1).nn.tt else t""
+      val last = segment(owner)
+      (prefix, if last.starts(t"Ξ") then last.skip(1) else last)
+
+    // Whether a frame's owner and method are joined by a dot: a resolved frame names a chain of
+    // source definitions, and an object's method is its member; otherwise `⌗` marks an unresolved
+    // JVM class and method.
+    def joined(frame: Frame): Boolean = frame.resolved || segment(frame.owner).starts(t"Ξ")
+
+    def of(stackTrace: StackTrace): Trace =
+      def origin(inlined: StackTrace.Frame.Inlined): Origin =
+        Origin
+          ( inlined.file, inlined.line, inlined.source.let(_.owner), inlined.source.let(_.name),
+            inlined.source.let(_.code).or(Unset) )
+
+      def frame(frame: StackTrace.Frame): Frame =
+        Frame
+          ( frame.method.prefix, frame.displayClass, frame.displayMethod, frame.file, frame.line,
+            frame.source.let(_.code).or(Unset), frame.source.present,
+            frame.source.lay(false)(_.kind.plumbing), frame.inlined.map(origin) )
+
+      def stack(stackTrace: StackTrace): Stack =
+        Stack
+          ( stackTrace.component, stackTrace.className, Inline.message(stackTrace.message),
+            stackTrace.frames.map(frame) )
+
+      def chain(stackTrace: StackTrace, done: List[Stack]): List[Stack] =
+        val next = stack(stackTrace) :: done
+        stackTrace.cause.lay(next.reverse) { cause => chain(cause, next) }
+
+      Trace(chain(stackTrace, Nil))
+
   def paragraph(text: Text): Block = Paragraph(Inline.text(text))
 
   // The TEL codecs, anchored as those of `Inline` are.
@@ -158,5 +234,6 @@ enum Block:
   case Graph(vertices: List[Block.Vertex], edges: List[Block.Edge])
   case Chart(kind: Block.Chart.Kind, series: List[Block.Series])
   case Gauge(status: Status, caption: Optional[List[Inline]] = Unset)
+  case Trace(stacks: List[Block.Trace.Stack])           // an exception's stack trace and its causes
   case Group(content: List[Block])                      // a run of blocks which belong together
   case Output(text: Text, error: Boolean = false)      // captured standard output or error, verbatim

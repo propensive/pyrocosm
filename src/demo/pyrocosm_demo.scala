@@ -313,7 +313,19 @@ object Samples:
         Block.Heading(2, Inline.text(t"Captured output")),
         Block.paragraph(t"A program's output is shown verbatim behind a gutter naming its stream: info for standard output, failure for standard error."),
         Block.Output(t"compiling 3 sources\ndone in 1.2 s\n"),
-        Block.Output(t"warning: unused import legacy.*\n", error = true) )
+        Block.Output(t"warning: unused import legacy.*\n", error = true),
+        Block.Heading(2, Inline.text(t"Stack traces")),
+        Block.paragraph(t"A stack trace is laid out as Soundness lays one out in a terminal: each package takes an accent in turn, the class's last segment is bold, a repeated class or file recedes, the location is one word aligned on its colon, and each cause follows the last."),
+        trace )
+
+  // A real trace, of an exception with a cause, thrown and caught here.
+  def trace: Block =
+    def inner(): Nothing = throw IllegalStateException("the index was rebuilt while it was being read")
+
+    def outer(): Nothing throws java.io.IOException =
+      try inner() catch case error: IllegalStateException => throw java.io.IOException("could not read the index", error)
+
+    try outer() catch case error: java.io.IOException => Block.Trace.of(StackTrace(error))
 
   def charts: List[Block] =
     val all: List[Standing] = cases[Standing]

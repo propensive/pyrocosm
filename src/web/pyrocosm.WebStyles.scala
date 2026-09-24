@@ -72,6 +72,10 @@ object WebStyles:
       val lower = accent.toString.tt.lower
       t".$name { color: var(--pyro-accent-$lower) } .pyro-codeblock .$name { color: var(--pyro-code-accent-$lower) }".read[Css]
 
+    // A trace's package accents, one rule per accent, read from text as the tones' are.
+    def traceAccent(index: Int): Css =
+      t".pyro-trace-accent-$index { color: var(--pyro-trace-accent-$index) }".read[Css]
+
     // The non-colour custom properties: the fonts, the spacing scale, the radii, the small and
     // the monospace text sizes, the two measures and the shadows. Read from text as custom
     // property declarations are (the theme's block is the same).
@@ -257,6 +261,29 @@ object WebStyles:
         + css".pyro-standing-running .pyro-standing { color: var(--pyro-tone-accent) }"
         + css".pyro-standing-pending .pyro-standing { color: var(--pyro-muted) }"
 
+    // A stack trace is set in the monospace face, its frames a table without rules or padding
+    // between the columns, as the terminal sets them: the class and the file end-aligned so the
+    // methods and the colons stack, the colon opening the line cell with no gap after the file.
+    // A repeated name, a plumbing frame and an inlining row recede; the quoted source is the
+    // first column to go when the viewport narrows (see `responsive`).
+    val trace: Css =
+      css".pyro-trace { font-family: var(--pyro-font-mono); font-variation-settings: 'MONO' 1; font-size: var(--pyro-text-mono); margin: 0 0 var(--pyro-space-4) 0; overflow-x: auto; line-height: 1.4 }"
+        + css".pyro-trace:last-child { margin-bottom: 0 }"
+        + css".pyro-trace-heading { margin-bottom: var(--pyro-space-1); white-space: nowrap }"
+        + css".pyro-trace-class { font-size: 1em } .pyro-trace-class em { font-style: italic; font-weight: 400 } .pyro-trace-class strong { font-weight: 700 }"
+        + css".pyro-frames { border-collapse: collapse; white-space: nowrap; margin: 0 }"
+        + css".pyro-frames td { padding: 0 0.25em; border: 0; vertical-align: baseline; line-height: 1.4 }"
+        + css".pyro-frames .pyro-at, .pyro-frames .pyro-dot, .pyro-colon { color: var(--pyro-muted) }"
+        + css".pyro-frames .pyro-owner { text-align: right; padding-right: 0 } .pyro-frames .pyro-dot { padding: 0 }"
+        + css".pyro-frames .pyro-method { padding-left: 0; color: var(--pyro-trace-method) }"
+        + css".pyro-frames .pyro-file { text-align: right; padding-right: 0; color: var(--pyro-trace-file) }"
+        + css".pyro-frames .pyro-line { text-align: left; padding-left: 0; color: var(--pyro-trace-line) }"
+        + css".pyro-frames .pyro-source { color: var(--pyro-trace-file); opacity: 0.7 } .pyro-frames .pyro-source code { font-size: 1em }"
+        + css".pyro-frames .pyro-prefix { opacity: 0.6 }"
+        + css".pyro-frames .pyro-repeat, .pyro-frames .pyro-plumbing > td, .pyro-frames .pyro-inlined > td { opacity: 0.6 }"
+        + css".pyro-frames .pyro-repeat strong { font-weight: 400 }"
+        + css".pyro-caused-by { margin: var(--pyro-space-2) 0 var(--pyro-space-1) 0; font-family: var(--pyro-font-mono); font-variation-settings: 'MONO' 1; font-size: var(--pyro-text-mono) }"
+
     val panels: Css =
       css".pyro-panel { background-color: var(--pyro-surface); border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius-card); box-shadow: var(--pyro-shadow-card); padding: var(--pyro-space-5); margin: 0 0 var(--pyro-space-5) 0; overflow: auto }"
         + css".pyro-panel:last-child { margin-bottom: 0 }"
@@ -314,11 +341,12 @@ object WebStyles:
     // phone: the gutters tighten, the title shrinks, the toolbar's buttons share the width, a
     // table scrolls sideways, and a peripheral panel gives way.
     val responsive: Css =
-      css"@media (max-width: 64rem) { .graffiti-verso-layout, .graffiti-recto-layout { grid-template-columns: 1fr } .graffiti-verso, .graffiti-recto { inline-size: auto; position: static } }"
+      css"@media (max-width: 64rem) { .graffiti-verso-layout, .graffiti-recto-layout { grid-template-columns: 1fr } .graffiti-verso, .graffiti-recto { inline-size: auto; position: static } .pyro-frames .pyro-source { display: none } }"
         + css"@media (max-width: 40rem) { main.graffiti-mainstay { padding-top: var(--pyro-space-4); padding-bottom: var(--pyro-space-6) } .pyro-panel, .graffiti-verso .pyro-panel, .graffiti-recto .pyro-panel, .pyro-role-primary.pyro-panel { padding: var(--pyro-space-4); border-radius: var(--pyro-radius); margin-bottom: var(--pyro-space-4) } .pyro-title { font-size: 2.38rem } .pyro-masthead { gap: var(--pyro-space-2) var(--pyro-space-4); min-height: 0 } .pyro-toolbar > li { flex: 1 1 auto } .pyro-toolbar .pyro-button { width: 100% } .pyro-table { display: block; overflow-x: auto } .pyro-record { grid-template-columns: 1fr; gap: var(--pyro-space-1) } .pyro-record dd { margin-bottom: var(--pyro-space-2) } .pyro-priority-peripheral { display: none } }"
 
     val tones: Css = Tone.values.foldLeft(Css(Nil)) { (acc, tone0) => acc + tone(tone0) }
     val accents: Css = Token.Accent.values.foldLeft(Css(Nil)) { (acc, accent0) => acc + accent(accent0) }
+    val traceAccents: Css = (1 to 5).foldLeft(Css(Nil)) { (acc, index) => acc + traceAccent(index) }
 
-    theme.variables + scale + base + layout + menubar + masthead + phrasing + label + flow + charts
-    + panels + controls + responsive + tones + accents
+    theme.variables + scale + base + layout + menubar + masthead + phrasing + label + flow + trace
+    + charts + panels + controls + responsive + tones + accents + traceAccents

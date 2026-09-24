@@ -240,6 +240,23 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     val figure = Figure(Inline.text(t"a chart"), drawing)
 
+    // A trace of two exceptions: a resolved frame with an inlining beneath it, a second frame of
+    // the same class and file, a plumbing frame of an object with no line, and a cause.
+    val trace: Block =
+      Block.Trace:
+        List
+          ( Block.Trace.Stack
+              ( t"java.lang", t"IllegalStateException", Inline.text(t"bad state"),
+                List
+                  ( Block.Trace.Frame
+                      ( t"pyrocosm", t"pyrocosm.Tests", t"run", t"Tests.scala", 42, t"val x = 1", true, false,
+                        List(Block.Trace.Origin(t"Inline.scala", 7, t"pyrocosm.Inline", t"text", t"List(Textual(text))")) ),
+                    Block.Trace.Frame(t"pyrocosm", t"pyrocosm.Tests", t"main", t"Tests.scala", 1234),
+                    Block.Trace.Frame(t"scala.runtime", t"scala.runtime.Ξfunction1", t"apply", t"function1.scala", Unset, Unset, false, true) ) ),
+            Block.Trace.Stack
+              ( t"java.io", t"IOException", Inline.text(t"disk"),
+                List(Block.Trace.Frame(t"java.io", t"java.io.File", t"open", t"File.java", 9)) ) )
+
     val rich: Block =
       Block.Group:
         List
@@ -278,7 +295,8 @@ object Tests extends Suite(m"Pyrocosm tests"):
             Block.Listing(true, List(Block.Item(List(Block.paragraph(t"one")), run))),
             Block.Record(List(Block.Entry(Inline.text(t"key"), List(Block.paragraph(t"value")))), Inline.text(t"R")),
             Block.Disclosure(Inline.text(t"more"), List(Block.Image(t"x.png", t"an image"), Block.Figure(figure)), true),
-            Block.Chart(Block.Chart.Kind.Sparkline, List(Block.Series(Inline.text(t"s"), List(1.0, 2.0)))) )
+            Block.Chart(Block.Chart.Kind.Sparkline, List(Block.Series(Inline.text(t"s"), List(1.0, 2.0)))),
+            trace )
 
     test(m"a block with every node round-trips as TEL"):
       rich.in[Tel].show.read[Tel].as[Block]
@@ -711,6 +729,65 @@ object Tests extends Suite(m"Pyrocosm tests"):
       captured.in[Tel].show.read[Tel].as[Block]
     . assert(_ == captured)
 
+    // ── Stack traces ──────────────────────────────────────────────────────────────────────
+
+    test(m"a stack trace exhibits as a trace with its cause chain"):
+      val exhibit: Block = StackTrace(Exception("outer", Exception("inner"))).exhibit
+      exhibit match
+        case Block.Trace(stacks) => stacks.map(_.className) == List(t"Exception", t"Exception") && stacks.all(_.frames.size > 0)
+        case _                   => false
+    . assert(_ == true)
+
+    test(m"an exception exhibits through its stack trace"):
+      val exhibit: Block = (Exception("oops"): Throwable).exhibit
+      exhibit match
+        case Block.Trace(stack :: Nil) => stack.message == Inline.text(t"oops") && stack.component == t"java.lang"
+        case _                         => false
+    . assert(_ == true)
+
+    val traceLines: List[Text] = renderer.block(trace, 120).map(_.plain)
+
+    test(m"a trace renders a headline, a line per frame and per inlining, and its cause"):
+      traceLines.size
+    . assert(_ == 8)
+
+    test(m"a trace's headline names the exception and its message"):
+      traceLines.at(Prim).or(t"")
+    . assert(_ == t"java.lang.IllegalStateException: bad state")
+
+    test(m"an inlining row follows its frame, and a cause follows the frames"):
+      (traceLines.at(Sec).or(t"").contains(t"run"), traceLines.at(Ter).or(t"").trim.starts(t"↳"), traceLines.at(Sen).or(t""))
+    . assert(_ == (true, true, t"caused by:"))
+
+    test(m"a location is contiguous text aligned on its colon"):
+      val rows: List[Text] = traceLines.skip(1).keep(4)
+      val colons: List[Int] = rows.map(_.s.indexOf(":"))
+      val contiguous = rows.all { (row: Text) => row.s.matches(".*\\S:\\d*(\\s.*)?") }
+      (colons.distinct.size, contiguous)
+    . assert(_ == (1, true))
+
+    val traceHtml: Text = html.block(trace).show
+
+    // The first stack's two `pyrocosm` frames share the first accent and its `scala.runtime`
+    // frame takes the second; the cause's own first package starts again from the first.
+    test(m"a trace's packages take accents in order of first appearance"):
+      val first = traceHtml.s.indexOf("pyro-trace-accent-1")
+      val second = traceHtml.s.indexOf("pyro-trace-accent-2")
+      (first < second, traceHtml.s.split("pyro-trace-accent-1").nn.length, traceHtml.s.split("pyro-trace-accent-2").nn.length)
+    . assert(_ == (true, 4, 2))
+
+    test(m"a plumbing frame, a repeated name, an inlining and a cause are marked"):
+      List(t"pyro-plumbing", t"pyro-repeat", t"pyro-inlined", t"pyro-caused-by").all(traceHtml.contains(_))
+    . assert(_ == true)
+
+    test(m"a location's file and colon cells are adjacent"):
+      traceHtml.contains(t"Tests.scala</td><td class=\"pyro-line\"><span class=\"pyro-colon\">:</span>42</td>")
+    . assert(_ == true)
+
+    test(m"a trace round-trips as TEL"):
+      trace.in[Tel].show.read[Tel].as[Block]
+    . assert(_ == trace)
+
     test(m"a sum without a Showable exhibits as its toString, not a record"):
       val exhibit: Inline | Block = (Node.Leaf(t"a"): Node).exhibit
       exhibit == Inline.Textual(t"Leaf(a)")
@@ -738,6 +815,12 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     test(m"the stylesheet adapts to a narrow viewport"):
       stylesheet.contains(t"@media (max-width: 64rem)") && stylesheet.contains(t"@media (max-width: 40rem)")
+    . assert(_ == true)
+
+    test(m"the stylesheet declares a trace's colours and folds its source column on a narrow viewport"):
+      val narrow = stylesheet.s.indexOf("@media (max-width: 64rem)")
+      val folded = narrow >= 0 && stylesheet.s.indexOf(".pyro-frames .pyro-source", narrow) > narrow
+      stylesheet.contains(t"--pyro-trace-accent-5") && stylesheet.contains(t"--pyro-trace-file") && folded
     . assert(_ == true)
 
     test(m"the stylesheet draws a meter in every engine"):
