@@ -294,6 +294,9 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
       case Block.Gauge(status, caption) =>
         gauge(status, caption, width, tick)
 
+      case Block.Trace(stacks) =>
+        trace(stacks, width)
+
       // A group's members belong together: no blank line between them.
       case Block.Group(content) =>
         content.bind { (member: Block) => this.block(member, width, tick, selected) }
@@ -412,6 +415,118 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
 
     layout.topRule.let(List(_)).or(Nil) + layout.titleLines + List(layout.titleRule) + body
       + layout.bottomRule.let(List(_)).or(Nil) + this.caption(caption)
+
+  // A stack trace, laid out as digression's terminal rendering lays one out: a headline naming
+  // the exception and its message, then a row per frame—`at`, the class with its last segment
+  // in the package's accent, the method, the location and the quoted source—and a `↳` row for
+  // each level of inlining beneath a frame; `caused by:` introduces each cause. The location is
+  // one cell, `File.scala:42`, the file padded on the left to the widest in the stack so that
+  // the colons align in a column. A repeated class or file name, and a compiler-synthesised
+  // frame, recede toward the background; the source column is the first to go when the width
+  // will not hold it.
+  private def trace(stacks: List[Block.Trace.Stack], width: Int): List[Teletype] =
+    val separator = theme.muted
+
+    def accent(index: Int): Chroma = theme.traceAccents.at((index%theme.traceAccents.size.max(1)).z).or(theme.foreground)
+
+    def stack(stack: Block.Trace.Stack): List[Teletype] =
+      val accents: Map[Text, Int] = Block.Trace.accents(stack)
+      val headline = tint(theme.foreground)(e"$Italic(${stack.component}.$Bold(${stack.className}))")
+      val init = e"$headline: ${phrase(stack.message)}"
+
+      // A row is a frame, or one level of inlining beneath it.
+      case class Row
+        ( frame:     Block.Trace.Frame,
+          sameClass: Boolean,
+          sameFile:  Boolean,
+          origin:    Optional[Block.Trace.Origin] = Unset )
+
+      val rows: List[Row] =
+        stack.frames.fold((Nil: List[Row], t"", t"")):
+          case ((acc, lastClass, lastFile), frame) =>
+            val subRows = frame.inlined.map(Row(frame, true, false, _)).reverse
+            (subRows + (Row(frame, frame.owner == lastClass, frame.file == lastFile) :: acc), frame.owner, frame.file)
+        . _1.reverse
+
+      val fileWidth: Int =
+        rows.map { (row: Row) => row.origin.lay(row.frame.file)(_.file).length }.maximum.or(0)
+
+      def at(row: Row): Teletype =
+        tint(separator)(Teletype(if row.origin.present then t" ↳" else t"at"))
+
+      def owner(row: Row): Teletype = row.origin match
+        case origin: Block.Trace.Origin =>
+          origin.owner.lay(blank) { owner => tint(theme.subdue(accent(0), 0.85))(Teletype(owner)) }
+
+        case _ =>
+          val frame = row.frame
+          val (prefix, segment) = Block.Trace.split(frame.owner)
+          val colour = accent(accents(frame.namespace).or(0))
+
+          if row.sameClass || frame.plumbing
+          then tint(theme.subdue(colour, 0.85))(Teletype(t"$prefix$segment"))
+          else e"${tint(theme.subdue(colour, 0.5))(Teletype(prefix))}${bold(tint(colour)(Teletype(segment)))}"
+
+      def dot(row: Row): Teletype = row.origin match
+        case origin: Block.Trace.Origin =>
+          origin.owner.lay(blank) { _ => tint(separator)(Teletype(t".")) }
+
+        case _ =>
+          tint(separator)(Teletype(if Block.Trace.joined(row.frame) then t"." else t"⌗"))
+
+      def method(row: Row): Teletype = row.origin match
+        case origin: Block.Trace.Origin =>
+          tint(theme.subdue(theme.traceMethod, 0.85))(Teletype(origin.name.or(t"inlined from")))
+
+        case _ =>
+          val colour = if row.frame.plumbing then theme.subdue(theme.traceMethod, 0.85) else theme.traceMethod
+          tint(colour)(Teletype(row.frame.method))
+
+      def location(row: Row): Teletype =
+        val (file, line, fileColour, lineColour) = row.origin match
+          case origin: Block.Trace.Origin =>
+            (origin.file, origin.line.show, theme.subdue(theme.traceFile, 0.5), theme.subdue(theme.traceLine, 0.5))
+
+          case _ =>
+            val fileColour = if row.sameFile then theme.subdue(theme.traceFile, 0.85) else theme.traceFile
+            (row.frame.file, row.frame.line.let(_.show).or(t""), fileColour, theme.traceLine)
+
+        e"${tint(fileColour)(Teletype(file.pad(fileWidth, Rtl)))}${tint(separator)(Teletype(t":"))}${tint(lineColour)(Teletype(line))}"
+
+      def code(row: Row): Teletype =
+        val code = row.origin.lay(row.frame.code)(_.code).or(t"")
+        tint(theme.subdue(theme.traceFile, 0.7))(Teletype(code))
+
+      val scaffold =
+        Scaffold[Row]
+          ( Column(blank)(at),
+            Column(blank, textAlign = TextAlignment.Right)(owner),
+            Column(blank)(dot),
+            Column(blank)(method),
+            Column(blank)(location),
+            Column(blank, sizing = columnar.Collapsible(0.5))(code) )
+
+      given style: TableStyle =
+        TableStyle
+          ( padding    = 0,
+            topLine    = Unset,
+            bottomLine = Unset,
+            titleLine  = Unset,
+            sideLines  = BoxLine.Blank,
+            innerLines = BoxLine.Blank,
+            charset    = LineCharset.Default )
+
+      val grid = scaffold.tabulate(rows).grid(width.max(8))
+      val dataOnly = grid.copy(sections = grid.sections.skip(1))
+
+      // A row is words the grid cannot break (a class name, a location), so one wider than the
+      // width, once the source column has gone, is wrapped hard as a code line is, rather than
+      // clipped.
+      Flow.wrap(init, width.max(1)).to[List] + dataOnly.render.to[List].bind { (row: Teletype) => hardWrap(row, width) }
+
+    stacks.indexed.bind: (stack0: Block.Trace.Stack, index: Ordinal) =>
+      val prefix: List[Teletype] = if index.n0 == 0 then Nil else List(tint(theme.foreground)(Teletype(t"caused by:")))
+      prefix + stack(stack0)
 
   private def chart(kind: Block.Chart.Kind, series: List[Block.Series], width: Int): List[Teletype] =
     val labelWidth = series.map(_.label).map(phrase).map(_.length).maximum.or(0)

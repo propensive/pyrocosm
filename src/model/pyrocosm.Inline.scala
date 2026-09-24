@@ -26,6 +26,8 @@ package pyrocosm
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Language as _, *}
 
+import dysasymptotics.linearSize
+
 // Phrasing content: the things which occur *within* a line of text. Comparable to Markdown's
 // inline nodes, with its two kinds of emphasis (stress and importance), and richer in the ways
 // an application needs —
@@ -49,6 +51,11 @@ object Inline:
 
   // The unstyled text of a phrase, for a plain renderer, a title attribute, or a width estimate.
   def plain(content: List[Inline]): Text = content.map { (inline: Inline) => inline.plain }.join
+
+  // A fulminate message as a phrase: its nested emphasis levels collapse to the model's one.
+  def message(message: Message): List[Inline] =
+    message.fold[List[Inline]](Nil): (acc, next, level) =>
+      acc :+ (if level == 0 then Textual(next) else Emphasis(text(next)))
 
   // The TEL codecs, anchored here so that they resolve from any package. They are derived in
   // `Codecs`, a sibling object, because a derived decoder fails to typecheck under capture

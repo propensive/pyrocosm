@@ -91,7 +91,9 @@ replace direct use of colours, weights and box characters.
 (lines of tokens plus `Note` ranges for annotated samples), `Table` (columns with escritoire-style
 `Sizing`; rows may carry a `Tone` and an `Action`, which is how master/detail is built),
 `Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Tree`, `Graph(vertices, edges)`,
-`Chart` (sparkline, bars, histogram only), `Gauge(status, caption)`, `Group`.
+`Chart` (sparkline, bars, histogram only), `Gauge(status, caption)`, `Trace` (an exception's
+stack trace and its causes, as the model's own frames: `Block.Trace.of` converts digression's
+`StackTrace`), `Group`, `Output`.
 
 ### Interface
 
@@ -140,7 +142,8 @@ trait Presentable extends Typeclass.Pure, Formal:
 because `present` is `Optional#present`. Resolution follows `Inspectable`: own instance, then
 `Showable` as text, then a wisteria-derived structural rendering (product → `Record`, sum by
 variant), then `toString`. Instances for Soundness types live in the companion: `Text`, numbers,
-`Keypress`, `Quantity`, `Message`, `Error`, `StackTrace`, `List[T]`, `Markdown of Layout`.
+`Keypress`, `Quantity`, `Message`, `Error`, `StackTrace` and `Throwable` (both as a
+`Block.Trace`), `List[T]`, `Markdown of Layout`.
 
 ## Renderers
 
@@ -450,6 +453,13 @@ that commit — and `-dirty` if the working tree has uncommitted changes.
 - **M6b Git notes** (done): the `notes` module above, with a suite driving a scratch
   repository through fingerprints, index binding, the reverse index, history, and a publish and
   fetch through a bare remote. Fume's roadmap items 3.1 and 3.2 build on it.
+- **M6c Stack traces** (done): `Block.Trace`, an exception chain as the model's own frames,
+  replacing the notice-and-table exhibit. The terminal lays it out as digression's own
+  rendering does (accents by package, bold last segment, repeated names and plumbing subdued,
+  `↳` rows for inlining, `caused by:`), at the panel's width, with the file, colon and line as
+  one word aligned on the colon; the web is a section and a frame table with `pyro-trace-*`
+  classes and `--pyro-trace-*` theme variables, its source column folding on a narrow viewport.
+  `Throwable` exhibits through it.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,
