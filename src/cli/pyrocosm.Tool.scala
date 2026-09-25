@@ -60,17 +60,34 @@ import systems.javaBaseSystem
 // port it serves on, and a bare `serve` asks for the front-end to be launched when the daemon
 // starts, so that it is simply there, for as long as the daemon lives, without a `serve`
 // command ever being run.
-case class Tool(name: Text, prose: Text, web: Optional[Tool.Web] = Unset)
+case class Tool
+  ( name: Text, prose: Text, web: Optional[Tool.Web] = Unset, services: List[Tool.Service] = Nil ):
+
+  // Every daemon-lifetime service the tool offers: its web front-end, if any, and the rest.
+  def allServices: List[Tool.Service] = web.lay(services) { web => web :: services }
 
 object Tool:
-  // A web front-end the daemon can serve: `serve` binds the port and returns only when `stop`
-  // is called from another thread. Pyrocosm's `WebFrontend` is the usual implementation, but
-  // this module does not depend on it, so that a tool with no web front-end depends on no web
-  // server either.
-  trait Web:
+  // A service the daemon runs for as long as it lives, once a configuration asks for it: a bare
+  // `keyword` in a config file starts it when the daemon starts, `portKeyword` names the setting
+  // giving its port (defaulting to `port`), and `serve` binds and returns only when `stop` is
+  // called from another thread. `settings` reads any other setting the service needs, by its
+  // camelCase name, through the same cascade a `Setting` uses. The web front-end is one such
+  // service (`Web`); a listener for other machines (fume's remote worker) is another.
+  trait Service:
+    def keyword: Text
+    def portKeyword: Text
     def port: Int
-    def serve(port: Int)(using Monitor, Probate): Unit
+    def serve(port: Int, settings: Text => Optional[Text])(using Monitor, Probate): Unit
     def stop(): Unit
+
+  // A web front-end the daemon can serve, started by `serve` on `port`. Pyrocosm's
+  // `WebFrontend` is the usual implementation, but this module does not depend on it, so that
+  // a tool with no web front-end depends on no web server either.
+  trait Web extends Service:
+    def keyword: Text = t"serve"
+    def portKeyword: Text = t"port"
+    def serve(port: Int)(using Monitor, Probate): Unit
+    def serve(port: Int, settings: Text => Optional[Text])(using Monitor, Probate): Unit = serve(port)
 
   // A `Status` must be an `object`, not a `val` (soundness#1811), so that the precise union of
   // an `execute` block's result type documents it in the manpage's EXIT STATUS section.
@@ -94,10 +111,10 @@ object Tool:
   // tool requires a configuration file to exist.
   private val cache: TrieMap[Text, Cached] = TrieMap()
 
-  // The web front-ends launched in this daemon, by tool name: at most one per tool, for as
-  // long as the daemon lives, or until `quit`. The instances are pure, so the map holds them
-  // without laundering.
-  private val serving: juc.ConcurrentHashMap[Text, Web] = juc.ConcurrentHashMap()
+  // The services launched in this daemon, by tool name and keyword: at most one of each per
+  // tool, for as long as the daemon lives, or until `quit`. The instances are pure, so the map
+  // holds them without laundering.
+  private val serving: juc.ConcurrentHashMap[Text, Service] = juc.ConcurrentHashMap()
 
   // Reads and parses the file in two separately-scoped `safely` regions — one `Tactic` for the
   // filesystem read, another for the TEL parse — rather than one region with a union `Tactic`:
@@ -258,25 +275,41 @@ object Tool:
         case _ =>
           dispatch
 
-    // Launches the web front-end if the configuration asks for it (`serve`), once per daemon.
-    // Runs on every invocation, since the daemon starts with the first of them, but only for a
-    // real invocation: never for a tab-completion or the help tree's probe. The task runs under
-    // the daemon's own monitor, which the `cli` block supplies, so it outlives the client that
-    // happened to start it.
+    // Launches every service the configuration asks for (`serve`, `listen`, …), once per
+    // daemon. Runs on every invocation, since the daemon starts with the first of them, but
+    // only for a real invocation: never for a tab-completion or the help tree's probe. The
+    // task runs under the daemon's own monitor, which the `cli` block supplies, so it outlives
+    // the client that happened to start it.
     private def launch()(using cli: Cli, monitor: Monitor, configurator: Configurator): Unit =
       cli match
         case _: Invocation =>
-          tool.web.let: web =>
-            val wanted: Boolean = configurator.read(t"serve").present
+          tool.allServices.each: (service: Service) =>
+            val wanted: Boolean = configurator.read(service.keyword).present
+            val key: Text = Text(s"${tool.name.s}/${service.keyword.s}")
 
-            if wanted && Tool.serving.putIfAbsent(tool.name, web) == null then
+            if wanted && Tool.serving.putIfAbsent(key, service) == null
+            then
               val port: Int =
-                configurator.read(t"port").let { text => safely(text.as[Int]) }.or(web.port)
+                configurator.read(service.portKeyword).let { text => safely(text.as[Int]) }
+                . or(service.port)
 
-              async(web.serve(port))
+              val settings: Text => Optional[Text] = configurator.read(_)
+              async(service.serve(port, settings))
 
         case _ =>
           ()
+
+    // Runs `service` interactively from an invocation (`<tool> serve`, `<tool> listen`), unless
+    // the daemon already runs it, in which case nothing more is needed; returns when it stops.
+    def run(service: Service, port: Int)
+       (using monitor: Monitor, probate: Probate, configurator: Configurator)
+    :   Unit =
+
+      val key: Text = Text(s"${tool.name.s}/${service.keyword.s}")
+      val settings: Text => Optional[Text] = configurator.read(_)
+
+      if Tool.serving.putIfAbsent(key, service) == null then
+        try service.serve(port, settings) finally Tool.serving.remove(key)
 
     private def showVersion()(using invocation: Invocation): Exit =
       given Stdio = invocation.stdio
@@ -351,7 +384,11 @@ object Tool:
     // cleanly.
     private def quit()(using invocation: Invocation, service: DaemonService[?]): Exit =
       given Stdio = invocation.stdio
-      Optional(Tool.serving.remove(tool.name)).let(_.stop())
+
+      tool.allServices.each: (service: Service) =>
+        val key: Text = Text(s"${tool.name.s}/${service.keyword.s}")
+        Optional(Tool.serving.remove(key)).let(_.stop())
+
       Out.println(t"${tool.name}: stopping the daemon")
       service.shutdown()
       Exit.Ok

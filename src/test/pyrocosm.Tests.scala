@@ -62,6 +62,14 @@ enum Direct derives CanEqual:
   case Leaf
   case Branch(left: Direct, value: Int, right: Direct)
 
+// Message types for the remote channel tests: two layouts, so a protocol mismatch can be shown.
+enum Ping derives CanEqual:
+  case Hello(text: Text, count: Int)
+  case Count(count: Int)
+
+enum Pong derives CanEqual:
+  case Hello(text: Text)
+
 object Tests extends Suite(m"Pyrocosm tests"):
   // The plain-`java` entry point the release script and CI use (`java -cp <test jar>
   // pyrocosm.Tests`): since Soundness 0.65.0 a `Suite` has no `main` of its own — the host,
@@ -1208,6 +1216,310 @@ object Tests extends Suite(m"Pyrocosm tests"):
       test(m"a build that wrote no version resource has an unknown version"):
         demo.version
       . assert(_ == t"unknown")
+
+    // ── Remote machines ───────────────────────────────────────────────────────────────────
+
+    suite(m"Remote"):
+      import probates.cancelProbate
+      import alphabets.hexLowerCase
+
+      def ascii(text: Text): Data = Array.unsafeFrozen(text.s.getBytes("US-ASCII").nn)
+      def bytes(data: Data): List[Byte] = data.to[List]
+
+      // Codecs made as a tool makes its own: at the concrete type, with the throwing tactics.
+      def pingCodec(name: Text): Channel.Codec[Ping] =
+        import Channel.derivation.throwing
+        val schema: Tels = Tels.tels[Ping](name)
+        Channel.Codec(name, schema, message => Channel.encode(message, schema), data => Channel.decode[Ping](data))
+
+      def pongCodec(name: Text): Channel.Codec[Pong] =
+        import Channel.derivation.throwing
+        val schema: Tels = Tels.tels[Pong](name)
+        Channel.Codec(name, schema, message => Channel.encode(message, schema), data => Channel.decode[Pong](data))
+
+      val codec: Channel.Codec[Ping] = pingCodec(t"ping")
+
+      suite(m"Channel"):
+        test(m"a codec's fingerprint is 32 bytes and stable"):
+          (codec.fingerprint.length, codec.protocol == pingCodec(t"ping").protocol)
+        . assert(_ == (32, true))
+
+        test(m"a different message layout has a different fingerprint"):
+          pongCodec(t"ping").protocol == codec.protocol
+        . assert(_ == false)
+
+        test(m"messages, raw bytes and handshake frames round-trip in order"):
+          val (left, right) = Duplex.pair()
+          val sender = Channel(codec, left)
+          val receiver = Channel(codec, right)
+          sender.send(Ping.Hello(t"hi", 3))
+          sender.sendRaw(ascii(t"payload"))
+          sender.sendHandshake(Data.fill(32) { i => i.toByte }, ascii(t"doc"))
+          sender.send(Ping.Count(7))
+
+          val first = receiver.receive()
+          val second = receiver.receive()
+          val third = receiver.receive()
+          val fourth = receiver.receive()
+
+          val raw: List[Byte] = second match
+            case Channel.Frame.Raw(data) => bytes(data)
+            case _                       => Nil
+
+          val handshake: (Int, List[Byte]) = third match
+            case Channel.Frame.Handshake(fingerprint, document) => (fingerprint.length, bytes(document))
+            case _                                             => (0, Nil)
+
+          (first, raw, handshake, fourth)
+        . assert(_ == (Channel.Frame.Message(Ping.Hello(t"hi", 3)), bytes(ascii(t"payload")),
+                       (32, bytes(ascii(t"doc"))), Channel.Frame.Message(Ping.Count(7))))
+
+        test(m"a large raw frame crosses chunk boundaries intact"):
+          val (left, right) = Duplex.pair()
+          val sender = Channel(codec, left)
+          val receiver = Channel(codec, right)
+          val big: Data = Data.fill(300000) { i => (i%251).toByte }
+          sender.sendRaw(big)
+          receiver.receive() match
+            case Channel.Frame.Raw(data) => data.length == big.length && Channel.same(data, big)
+            case _                       => false
+        . assert(_ == true)
+
+        test(m"a closed duplex reads as Closed"):
+          val (left, right) = Duplex.pair()
+          left.close()
+          Channel(codec, right).receive()
+        . assert(_ == Channel.Frame.Closed)
+
+      suite(m"Blobs"):
+        val root: Text = java.nio.file.Files.createTempDirectory("pyrocosm-blobs").nn.toString.tt
+
+        def put(path: Text, content: Text): Unit =
+          val file = java.nio.file.Path.of(root.s, path.s).nn
+          java.nio.file.Files.createDirectories(file.getParent.nn)
+          java.nio.file.Files.writeString(file, content.s)
+
+        put(t"classes/a/One.class", t"one")
+        put(t"classes/b/Two.class", t"two")
+        put(t"copy/b/Two.class", t"two")
+        put(t"copy/a/One.class", t"one")
+        put(t"lib.jar", t"not really a jar")
+
+        def path(relative: Text): Path on Linux = unsafely(t"$root/$relative".as[Path on Linux])
+
+        test(m"digests are 64 hex characters"):
+          Blobs.digest(ascii(t"abc"))
+        . assert(_ == t"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+
+        test(m"a directory bundles deterministically whatever the order it was written"):
+          val (first, _) = unsafely(Blobs.prepare(path(t"classes"), t"classes"))
+          val (second, _) = unsafely(Blobs.prepare(path(t"copy"), t"copy"))
+          (first.digest == second.digest, first.directory)
+        . assert(_ == (true, true))
+
+        test(m"a bundle contains every file under its relative path"):
+          val (_, data) = unsafely(Blobs.prepare(path(t"classes"), t"classes"))
+          val zipfile = unsafely(Zipfile.read(data))
+          zipfile.entries.map(_.ref.encode.s.stripPrefix("/")).stdlib.sorted.to(List)
+        . assert(_ == List("a/One.class", "b/Two.class"))
+
+        test(m"a jar is digested as it is"):
+          val (entry, data) = unsafely(Blobs.prepare(path(t"lib.jar"), t"lib.jar"))
+          (entry.directory, entry.digest == Blobs.digest(ascii(t"not really a jar")), data.length)
+        . assert(_ == (false, true, 16))
+
+        test(m"chunks partition the data and an empty blob is one chunk"):
+          val data: Data = Data.fill(Blobs.chunk*2 + 5) { i => i.toByte }
+          val chunks = Blobs.chunks(data)
+          (chunks.map(_(0)), chunks.map(_(1).length), Blobs.chunks(Data()).size)
+        . assert(_ == (List(0, Blobs.chunk, Blobs.chunk*2), List(Blobs.chunk, Blobs.chunk, 5), 1))
+
+        test(m"a store keeps what it is given under its digest, and rejects a lie"):
+          java.nio.file.Files.createDirectories(java.nio.file.Path.of(root.s, "store"))
+          val store = Blobs.Store(path(t"store"))
+          val data = ascii(t"blob")
+          val digest = Blobs.digest(data)
+          val stored = store.put(digest, data)
+          val lied = store.put(t"0"*64, data)
+          (stored, lied, store.has(digest), store.missing(List(digest, t"0"*64)))
+        . assert(_ == (true, false, true, List(t"0"*64)))
+
+        test(m"an assembly stores a blob once its last chunk arrives"):
+          val store = Blobs.Store(path(t"store"))
+          val data: Data = Data.fill(3000) { i => (i*7).toByte }
+          val digest = Blobs.digest(data)
+          val assembly = Blobs.Assembly(store)
+          val first = assembly.receive(digest, Channel.slice(data, 0, 1000), false)
+          val second = assembly.receive(digest, Channel.slice(data, 1000, 3000), true)
+          (first, second, store.has(digest))
+        . assert(_ == (Unset, true, true))
+
+      suite(m"Machine"):
+        val document: Tel = unsafely(t"""tel 1.0
+
+machine linux-box
+  host build.example.org
+  port 8091
+  identity sha256:${t"ab"*32}
+  token not-a-file
+  capability linux x86-64
+  capability quiet
+
+machine nameless
+  port 1
+
+machine mac-mini
+  host 10.0.0.7
+""".read[Tel])
+
+        val machines: List[Machine] = Machine.parse(document)
+
+        test(m"machine blocks parse, and one without a host is skipped"):
+          machines.map(_.name)
+        . assert(_ == List(t"linux-box", t"mac-mini"))
+
+        test(m"a machine's fields are read"):
+          machines.prim.let: machine =>
+            (machine.host, machine.port, machine.identity.let(Peer.render(_)), machine.token, machine.capabilities)
+        . assert(_ == (t"build.example.org", 8091, t"sha256:${t"ab"*32}", t"not-a-file", List(t"linux", t"x86-64", t"quiet")))
+
+        test(m"a missing port takes the tool's default"):
+          machines.map(_.portOr(9000))
+        . assert(_ == List(8091, 9000))
+
+        test(m"an earlier document overrides a later one by name"):
+          val override0: Tel = unsafely(t"tel 1.0\n\nmachine mac-mini\n  host 10.0.0.8\n".read[Tel])
+          Machine.resolve(List(override0, document)).map(machine => (machine.name, machine.host))
+        . assert(_ == List((t"mac-mini", t"10.0.0.8"), (t"linux-box", t"build.example.org")))
+
+        test(m"a token that names no file is the secret itself"):
+          Machine.secret(t"not-a-file")
+        . assert(_ == t"not-a-file")
+
+        test(m"a token that names a file is the file's trimmed content"):
+          val file = java.nio.file.Files.createTempFile("pyrocosm-token", "").nn
+          java.nio.file.Files.writeString(file, "  s3cret\n")
+          Machine.secret(file.toString.tt)
+        . assert(_ == t"s3cret")
+
+        test(m"fingerprints parse in every rendering"):
+          val expected: Data = Data.fill(32) { i => (i + 1).toByte }
+          val hex: Text = expected.serialize[Hex]
+          val colons: Text = hex.s.toUpperCase.nn.grouped(2).mkString(":").tt
+          List(t"sha256:$hex", hex, colons, t"SHA256:$colons", t"sha256:abc").map(Peer.parseFingerprint(_) == Unset)
+        . assert(_ == List(false, false, false, false, true))
+
+      suite(m"Peer"):
+        import supervisors.globalSupervisor
+
+        val state: Text = java.nio.file.Files.createTempDirectory("pyrocosm-state").nn.toString.tt
+        val config: Text = java.nio.file.Files.createTempDirectory("pyrocosm-config").nn.toString.tt
+
+        given Environment = name =>
+          if name == t"XDG_STATE_HOME" then state
+          else if name == t"XDG_CONFIG_HOME" then config
+          else Unset
+
+        val identity: Peer.Identity = unsafely(Peer.identity)
+        val token: Text = Peer.token.or(t"")
+
+        test(m"an identity is generated once and read back thereafter"):
+          val again = unsafely(Peer.identity)
+          (identity.fingerprint.length, Channel.same(again.fingerprint, identity.fingerprint), token.s.length)
+        . assert(_ == (32, true, 64))
+
+        // A worker that echoes each message's text back, reversed, until the client closes.
+        def echo(session: Peer.Session[Ping]): Unit =
+          def recur(): Unit = session.receive() match
+            case Channel.Frame.Message(Ping.Hello(text, count)) =>
+              session.send(Ping.Hello(text.s.reverse.tt, count + 1))
+              recur()
+
+            case Channel.Frame.Raw(data) =>
+              session.sendRaw(data)
+              recur()
+
+            case _ =>
+              ()
+
+          recur()
+
+        def worker(gate: () => Optional[Text]): Peer.Listener[Ping] =
+          Peer.Listener(t"demo", t"1.0", codec, token, identity, List(t"quiet"), gate)(echo)
+
+        def machine(fingerprint: Data, secret: Text, port: Int): Machine =
+          Machine(t"worker", t"127.0.0.1", port, fingerprint, secret, Nil)
+
+        def serving[result](listener: Peer.Listener[Ping])(block: Int => result): result =
+          import threading.platformThreading
+
+          supervise:
+            val port: Int = Port[Tcp]().number
+            val task = async(listener.serve(port))
+            Thread.sleep(300)
+
+            try block(port) finally
+              listener.stop()
+              safely(task.await())
+
+        test(m"a pinned client with the right token is welcomed and exchanges messages"):
+          serving(worker(() => Unset)): port =>
+            unsafely:
+              Peer.connect(machine(identity.fingerprint, token, port), t"demo", t"1.0", codec, 1): session =>
+                session.send(Ping.Hello(t"abc", 1))
+                val reply = session.receive()
+                session.sendRaw(ascii(t"raw"))
+                val echoed = session.receive() match
+                  case Channel.Frame.Raw(data) => bytes(data)
+                  case _                       => Nil
+
+                (reply, echoed, session.peer.tool, session.peer.capabilities, session.peer.identity.cores > 0)
+        . assert(_ == (Channel.Frame.Message(Ping.Hello(t"cba", 2)), bytes(ascii(t"raw")), t"demo", List(t"quiet"), true))
+
+        test(m"a wrong token is refused"):
+          serving(worker(() => Unset)): port =>
+            try
+              unsafely(Peer.connect(machine(identity.fingerprint, t"wrong", port), t"demo", t"1.0", codec, 1)(_ => t"welcomed"))
+            catch case error: Peer.Error => error.reason match
+              case Peer.Error.Reason.Refused(reason) => reason
+              case other                             => other.toString.tt
+        . assert(_ == Peer.Refusal.token)
+
+        test(m"a busy worker refuses"):
+          serving(worker(() => Peer.Refusal.busy)): port =>
+            try
+              unsafely(Peer.connect(machine(identity.fingerprint, token, port), t"demo", t"1.0", codec, 1)(_ => t"welcomed"))
+            catch case error: Peer.Error => error.reason match
+              case Peer.Error.Reason.Refused(reason) => reason
+              case other                             => other.toString.tt
+        . assert(_ == Peer.Refusal.busy)
+
+        test(m"another tool's protocol is refused"):
+          serving(worker(() => Unset)): port =>
+            try
+              unsafely(Peer.connect(machine(identity.fingerprint, token, port), t"demo", t"1.0", pongCodec(t"pong"), 1)(_ => t"welcomed"))
+            catch case error: Peer.Error => error.reason match
+              case Peer.Error.Reason.Refused(reason) => reason
+              case other                             => other.toString.tt
+        . assert(_ == Peer.Refusal.protocol)
+
+        test(m"a client pinning the wrong identity cannot connect"):
+          serving(worker(() => Unset)): port =>
+            val wrong: Data = Data.fill(32) { i => i.toByte }
+            try
+              unsafely(Peer.connect(machine(wrong, token, port), t"demo", t"1.0", codec, 1)(_ => t"welcomed"))
+            catch case error: Peer.Error => error.reason match
+              case Peer.Error.Reason.Unreachable(_) => t"unreachable"
+              case other                            => other.toString.tt
+        . assert(_ == t"unreachable")
+
+        test(m"a machine declaring no identity is refused before connecting"):
+          try
+            unsafely(Peer.connect(Machine(t"x", t"127.0.0.1", 1, Unset, token, Nil), t"demo", t"1.0", codec, 1)(_ => t"welcomed"))
+          catch case error: Peer.Error => error.reason match
+            case Peer.Error.Reason.NoIdentity(name) => name
+            case other                              => other.toString.tt
+        . assert(_ == t"x")
 
 // Counts the outcomes for the summary line. A class rather than local `var's, because the event
 // sink is a pure `TestEvent -> Unit` and may capture nothing tracked.
