@@ -282,8 +282,41 @@ object Peer:
     ( lambda: Session[message] => result )
   :   result raises Error =
 
-    val fingerprint: Data = machine.identity.or(abort(Error(Error.Reason.NoIdentity(machine.name))))
-    val secret: Text = machine.token.let(Machine.secret(_)).or(abort(Error(Error.Reason.NoToken(machine.name))))
+    exchange(machine, tool, version, codec, defaultPort)(lambda) match
+      case scala.Right(value) => value
+      case scala.Left(reason) => abort(Error(reason))
+
+  // As `connect`, but yielding the reason the session could not be had instead of raising it:
+  // the form for a caller whose own error handling cannot host a `raises`.
+  def exchange[message, result]
+    ( machine: Machine, tool: Text, version: Text, codec: Channel.Codec[message], defaultPort: Int )
+    ( lambda: Session[message] => result )
+  :   scala.Either[Error.Reason, result] =
+
+    machine.identity match
+      case fingerprint: Data =>
+        machine.token.let(Machine.secret(_)) match
+          case secret: Text => exchange(machine, fingerprint, secret, tool, version, codec, defaultPort)(lambda)
+          case _            => scala.Left(Error.Reason.NoToken(machine.name))
+
+      case _ =>
+        scala.Left(Error.Reason.NoIdentity(machine.name))
+
+  // The words of a reason, for a caller that has no `Diagnostics` to make an `Error` with.
+  def explain(reason: Error.Reason): Text = reason match
+    case Error.Reason.NoIdentity(machine) => t"machine $machine declares no identity fingerprint to pin"
+    case Error.Reason.NoToken(machine)    => t"machine $machine declares no token"
+    case Error.Reason.Unreachable(machine) => t"machine $machine could not be connected to"
+    case Error.Reason.Refused(reason)     => t"the peer refused the connection: $reason"
+    case Error.Reason.Protocol(theirs, ours) => t"the peer speaks protocol $theirs, not $ours"
+    case Error.Reason.Disconnected        => t"the peer closed the connection during the handshake"
+    case Error.Reason.Identity            => t"this machine's identity could not be created or read"
+
+  private def exchange[message, result]
+    ( machine: Machine, fingerprint: Data, secret: Text, tool: Text, version: Text,
+      codec: Channel.Codec[message], defaultPort: Int )
+    ( lambda: Session[message] => result )
+  :   scala.Either[Error.Reason, result] =
 
     given Tls = TlsAcceptance().pinning(fingerprint).tls()
     val endpoint = SecureEndpoint(machine.host, machine.portOr(defaultPort))
@@ -331,6 +364,4 @@ object Peer:
 
       catch case error: java.io.IOException => scala.Left(Error.Reason.Unreachable(machine.name))
 
-    exchange match
-      case scala.Right(value) => value
-      case scala.Left(reason) => abort(Error(reason))
+    exchange
