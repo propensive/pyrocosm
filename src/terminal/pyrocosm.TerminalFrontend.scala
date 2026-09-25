@@ -148,7 +148,7 @@ extends Frontend:
 
     given consoleSession: Console = new Console:
       val stdio: Stdio = stdio0
-      override def trap(handler: PartialFunction[UnixSignal | WindowsSignal, SignalResponse]): Unit =
+      override def trap(handler: PartialFunction[profanity.Signal, SignalResponse]): Unit =
         console.trap(handler)
 
     if stopped then handle(Event.Closed) else interactive: terminal ?=>
