@@ -112,6 +112,15 @@ object settings:
     "eucalyptus-core")
   . map(component(soundness))
 
+  // Connections between tools on different machines: TLS sockets (coaxial), content digests
+  // (gastronomy), the blob cache and identity files (galilei, ambience), bundling directories
+  // (zeppelin), and the BinTEL wire form (stratiform).
+  def remoteDeps(soundness: String) = Seq(
+    "coaxial-jvm", "gastronomy-core", "galilei-jvm", "ambience-core", "zeppelin-core",
+    "stratiform-core", "urticose-core", "parasite-core", "eucalyptus-core", "serpentine-core",
+    "monotonous-core", "gossamer-core", "contingency-core", "vacuous-core", "hieroglyph-core")
+  . map(component(soundness))
+
   def demoDeps(soundness: String) = Seq("exoskeleton-completions", "ethereal-core").map(component(soundness))
   def testDeps(soundness: String) = Seq("probably-cli", "probably-events", "yossarian-core").map(component(soundness))
 
@@ -386,6 +395,21 @@ object pyrocosm extends Project:
   object cli extends Component(), Publishing:
     def mvnDeps = Task(settings.cliDeps(deps.soundness()))
 
+  // Reaching another machine's tool: `Machine` declarations, the TLS `Peer` identity and
+  // handshake, the framed BinTEL `Channel`, and the content-addressed `Blobs` store, shared by
+  // fume (remote test runs) and Fury. Depends on no other module here. `dev.propensive:pyrocosm-remote`.
+  object remote extends Component(), Publishing:
+    def mvnDeps = Task(settings.remoteDeps(deps.soundness()))
+
+    // Compiled WITHOUT capture checking, as Probably's `events` module is: stratiform's derived
+    // TEL codecs — the handshake's, and every tool's message codec made through `Channel` —
+    // expand to instances the capture checker sees as fresh capabilities where a pure instance
+    // is required. Their derivation sites must therefore sit in an unchecked module; tools
+    // keep their own message enums in one too (fume's `relay`).
+    override def scalacOptions =
+      (settings.scalaOptions ++ settings.predef).filterNot: option =>
+        option == "-Ycc-new" || option == "-language:experimental.captureChecking"
+
   // The gallery: every node in both frontends, the fixture for judging appearance.
   object demo extends Component(terminal, web, cli):
     def mvnDeps = Task(settings.demoDeps(deps.soundness()))
@@ -399,9 +423,14 @@ object pyrocosm extends Project:
       os.write.over(file, buildVersion() + "\n", createFolders = true)
       super.resources() ++ Seq(PathRef(Task.dest))
 
-  object test extends Component(model, compiler, terminal, web, notes, cli):
+  object test extends Component(model, compiler, terminal, web, notes, cli, remote):
     def mvnDeps = Task(settings.testDeps(deps.soundness()))
     def finalMainClass = "pyrocosm.Tests"
+
+    // Unchecked like `remote`, whose codec derivations the tests exercise at their own types.
+    override def scalacOptions =
+      (settings.scalaOptions ++ settings.predef).filterNot: option =>
+        option == "-Ycc-new" || option == "-language:experimental.captureChecking"
 
 // The release: the six library modules' jars, each with its POM and ivy.xml embedded under
 // `META-INF/maven/<group>/<artifactId>/`, named `<artifactId>-<version>.jar`, exactly as the
@@ -413,7 +442,7 @@ object pyrocosm extends Project:
 object release extends Module:
   def modules: Seq[PublishModule] =
     Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.terminal, pyrocosm.web, pyrocosm.notes,
-        pyrocosm.cli)
+        pyrocosm.cli, pyrocosm.remote)
 
   private def withDescriptors(source: os.Path, target: os.Path, entries: Seq[(String, os.Path)])
   :   Unit =
