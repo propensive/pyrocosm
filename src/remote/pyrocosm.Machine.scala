@@ -26,8 +26,8 @@ import java.net as jn
 
 import soundness.*
 
-import charDecoders.utf8Decoder
-import charEncoders.utf8Encoder
+import charsets.utf8Charset
+import codepages.utf8Codepage
 import filesystemBackends.javaBaseFilesystem
 import logging.silentLogging
 import systems.javaBaseSystem

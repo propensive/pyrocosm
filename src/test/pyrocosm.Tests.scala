@@ -26,7 +26,7 @@ package pyrocosm
 // `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which would outrank this
 // package's own definitions, since a wildcard import beats a package member declared in another
 // file.
-import soundness.{Control as _, Filter as _, Glyph as _, Language as _, Standing as _, Status as _, Step as _, Token as _, Tool as _, *}
+import soundness.{Control as _, Filter as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
 
 import clavichord.Keypress
 import probably.TestEvent
@@ -38,7 +38,7 @@ import strategies.throwUnsafely
 import formatting.indentedCssFormatting
 import tableStyles.thickTableStyle
 import errorDiagnostics.emptyDiagnostics
-import charEncoders.utf8Encoder
+import codepages.utf8Codepage
 import textMetrics.uniformMetric
 import palettes.solarizedDarkGaugePalette
 import discriminables.jsonByKindDiscriminable

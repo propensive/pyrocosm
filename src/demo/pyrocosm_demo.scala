@@ -28,7 +28,7 @@ import scala.caps
 // `Standing` (ultimatum), `Status` (exoskeleton), `Step` (ultimatum), `Token` (harlequin) and
 // `Tool` (anthology), which would outrank this package's own definitions, since a wildcard
 // import beats a package member declared in another file.
-import soundness.{Control as _, Glyph as _, Language as _, Standing as _, Status as _, Step as _, Token as _, Tool as _, *}
+import soundness.{Control as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
 
 import murmuration.zip
 
