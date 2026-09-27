@@ -1219,6 +1219,77 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     // ── Remote machines ───────────────────────────────────────────────────────────────────
 
+    suite(m"Credential"):
+      val home: Text = java.nio.file.Files.createTempDirectory("pyrocosm-credentials").nn.toString.tt
+      val keyFile = java.nio.file.Files.createTempFile("pyrocosm-key", "").nn
+      java.nio.file.Files.writeString(keyFile, "  sk-from-file\n")
+      val empty = java.nio.file.Files.createTempFile("pyrocosm-empty", "").nn
+
+      val document: Tel = unsafely(t"""tel 1.0
+
+credential anthropic
+  env ANTHROPIC_API_KEY
+  file ${keyFile.toString.tt}
+  command echo sk-from-command
+
+credential empty
+  file ${empty.toString.tt}
+
+credential nameless
+  env NOTHING
+""".read[Tel])
+
+      given WorkingDirectory = () => home
+      given Environment = name => if name == t"ANTHROPIC_API_KEY" then t"sk-from-env" else Unset
+
+      test(m"credential blocks parse with their sources in order"):
+        Credential.parse(document).map: credential =>
+          (credential.name, credential.sources.size)
+      . assert(_ == List((t"anthropic", 3), (t"empty", 1), (t"nameless", 1)))
+
+      test(m"the first source that yields a value wins"):
+        Credential.parse(document).prim.let(_.obtain())
+      . assert(_ == t"sk-from-env")
+
+      test(m"an unset variable falls through to the file"):
+        given Environment = _ => Unset
+        Credential.parse(document).prim.let(_.obtain())
+      . assert(_ == t"sk-from-file")
+
+      test(m"an empty file falls through to the command"):
+        given Environment = _ => Unset
+        val sources = List(Credential.Source.File(empty.toString.tt), Credential.Source.Command(List(t"echo", t"sk-from-command")))
+        Credential(t"x", sources).obtain()
+      . assert(_ == t"sk-from-command")
+
+      test(m"a failing command yields nothing"):
+        Credential(t"x", List(Credential.Source.Command(List(t"false")))).obtain()
+      . assert(_ == Unset)
+
+      test(m"an empty file yields nothing"):
+        Credential.parse(document).at(Prim + 1).let(_.obtain())
+      . assert(_ == Unset)
+
+      test(m"an earlier document overrides a later one by name"):
+        val override0: Tel = unsafely(t"tel 1.0\n\ncredential anthropic\n  env OTHER_KEY\n".read[Tel])
+        Credential.resolve(List(override0, document)).map(credential => (credential.name, credential.sources.size))
+      . assert(_ == List((t"anthropic", 1), (t"empty", 1), (t"nameless", 1)))
+
+      test(m"a tool resolves a well-known credential by default"):
+        val demo: Tool = Tool(t"demo", prose = t"A tool.")
+        given Environment = name => if name == t"ANTHROPIC_API_KEY" then t"sk-default" else if name == t"XDG_CONFIG_HOME" then home else Unset
+        demo.credential(t"anthropic", home)
+      . assert(_ == t"sk-default")
+
+      test(m"a tool prefers the shared credentials file to the default"):
+        val demo: Tool = Tool(t"demo", prose = t"A tool.")
+        val shared = java.nio.file.Path.of(home.s, "pyrocosm", "credentials.tel").nn
+        java.nio.file.Files.createDirectories(shared.getParent.nn)
+        java.nio.file.Files.writeString(shared, s"tel 1.0\n\ncredential anthropic\n  file ${keyFile.toString}\n")
+        given Environment = name => if name == t"ANTHROPIC_API_KEY" then t"sk-default" else if name == t"XDG_CONFIG_HOME" then home else Unset
+        demo.credential(t"anthropic", home)
+      . assert(_ == t"sk-from-file")
+
     suite(m"Remote"):
       import probates.cancelProbate
       import alphabets.hexLowerCase
