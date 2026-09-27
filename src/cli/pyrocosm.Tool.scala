@@ -209,6 +209,19 @@ object Tool:
     def repoConfig(directory: Text): Optional[Tel] = tool.repoFile(directory).let(Tool.document(_))
     def userConfig(using Environment): Optional[Tel] = tool.userFile.let(Tool.document(_))
 
+    // The credential called `name`, resolved through the cascade every Pyrocosm tool shares:
+    // the repository's `config.tel`, then the user's `<name>/config.tel`, then the shared
+    // `$XDG_CONFIG_HOME/pyrocosm/credentials.tel`, then a built-in default for a well-known
+    // name (`anthropic` reads `ANTHROPIC_API_KEY`). The first declaration wins, and its sources
+    // are tried in order (see `Credential`). `Unset` if no source yields a value.
+    def credential(name: Text, directory: Text)(using Environment, WorkingDirectory)
+    :   Optional[Text] =
+
+      val declared: List[Credential] =
+        Credential.resolve(List(tool.repoConfig(directory), tool.userConfig, Credential.shared))
+
+      (declared + Credential.defaults).filter(_.name == name).prim.let(_.obtain())
+
     // The configuration files as one source for the `Setting` cascade, the repository's file
     // taking priority over the user's. The caller composes the properties and the environment
     // ahead of it (`standard` does so).

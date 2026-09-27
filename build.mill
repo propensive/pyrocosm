@@ -109,7 +109,7 @@ object settings:
   def cliDeps(soundness: String) = Seq(
     "exoskeleton-completions", "exoskeleton-manpage", "ethereal-core", "ambience-core",
     "galilei-jvm", "serpentine-core", "stratiform-core", "revolution-core", "parasite-core",
-    "eucalyptus-core")
+    "eucalyptus-core", "guillotine-core")
   . map(component(soundness))
 
   // Connections between tools on different machines: TLS sockets (coaxial), content digests
