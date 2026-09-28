@@ -21,7 +21,7 @@ object settings:
   // The version Pyrocosm's own libraries are released under. Bump (and commit) per release;
   // the release refuses to run when this pin disagrees with the tag. Snapshots override it through
   // `publishVersion`, never here.
-  val pyrocosmVersion = "0.3.0"
+  val pyrocosmVersion = "0.4.0"
 
   val scalaOptions = Seq(
     "-Zalias-captures",
