@@ -27,7 +27,7 @@ package pyrocosm
 import soundness.{Filter as _, *}
 
 import logging.silentLogging
-import charEncoders.utf8Encoder
+import codepages.utf8Codepage
 import errorDiagnostics.emptyDiagnostics
 
 // Metadata attached to source states through git notes, for every Pyrocosm tool. Two families

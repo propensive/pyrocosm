@@ -26,7 +26,7 @@ package pyrocosm
 // definitions, since a wildcard import beats a package member declared in another file. Excluded
 // too: `Em` (cataclysm), `Span` (denominative), so the name is the HTML element `htmlDoms`
 // supplies.
-import soundness.{Em as _, Glyph as _, Span as _, *}
+import soundness.{Em as _, Span as _, *}
 
 import murmuration.zip
 import sortingAlgorithms.timsort

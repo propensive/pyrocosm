@@ -33,7 +33,7 @@ import soundness.{Control as _, *}
 import perihelion.{Channel, Message}
 
 import dysasymptotics.{linearAccess, linearSize}
-import charEncoders.utf8Encoder
+import codepages.utf8Codepage
 import formatting.{compactJsonFormatting, compactCssFormatting}
 import strategies.throwUnsafely
 import logging.silentLogging

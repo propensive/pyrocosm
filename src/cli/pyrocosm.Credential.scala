@@ -24,7 +24,7 @@ package pyrocosm
 
 import soundness.*
 
-import charDecoders.utf8Decoder
+import charsets.utf8Charset
 import filesystemBackends.javaBaseFilesystem
 import logging.silentLogging
 import systems.javaBaseSystem

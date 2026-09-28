@@ -24,7 +24,7 @@ package pyrocosm
 
 import soundness.*
 
-import charEncoders.utf8Encoder
+import codepages.utf8Codepage
 
 // What kind of metadata a type is: the name of the notes ref that holds it (`bench` is
 // `refs/notes/pyrocosm/bench`) and its wire form, TEL text, as the rest of the ecosystem's
