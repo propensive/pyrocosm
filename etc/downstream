@@ -1,0 +1,5 @@
+# The repositories each release of Pyrocosm is proposed to, as a draft pull request moving their
+# pins to it, and to the Soundness and xek it was built against. See propensive/.github.
+propensive/fume
+propensive/flame
+propensive/flair
