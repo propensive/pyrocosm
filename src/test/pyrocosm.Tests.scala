@@ -22,11 +22,11 @@
                                                                                                   */
 package pyrocosm
 
-// Excluded from the umbrella: `Control` (coaxial), `Glyph` (phoenicia), `Language` (cosmopolite),
-// `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which would outrank this
-// package's own definitions, since a wildcard import beats a package member declared in another
-// file.
-import soundness.{Control as _, Filter as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
+// Excluded from the umbrella: `Control` (coaxial), `Figure` (savagery), `Glyph` (phoenicia),
+// `Language` (cosmopolite), `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which
+// would outrank this package's own definitions, since a wildcard import beats a package member
+// declared in another file.
+import soundness.{Control as _, Figure as _, Filter as _, Glyph as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
 
 import clavichord.Keypress
 import probably.TestEvent
@@ -335,9 +335,53 @@ object Tests extends Suite(m"Pyrocosm tests"):
         case _                                    => false
     . assert(_ == true)
 
+    // ── Rich media ────────────────────────────────────────────────────────────────────────
+
+    // A two-by-two raster, red over blue, built without a format.
+    val raster: Raster = Raster(2, 2) { (x, y) => if y == 0 then Chroma(255, 0, 0) else Chroma(0, 0, 255) }
+
+    test(m"a raster exhibits as an image carried in a data: URI"):
+      val exhibit: Block = raster.exhibit
+      exhibit match
+        case Block.Image(source, alt) => source.starts(t"data:image/png;base64,") && alt == t"2×2 PNG"
+        case _                        => false
+    . assert(_ == true)
+
+    test(m"a raster in a format exhibits in that format"):
+      val exhibit: Block = raster.to[Gif].exhibit
+      exhibit match
+        case Block.Image(source, alt) => source.starts(t"data:image/gif;base64,") && alt == t"2×2 GIF"
+        case _                        => false
+    . assert(_ == true)
+
+    test(m"an SVG exhibits as a figure carrying its markup"):
+      val exhibit: Block = Svg(10, 5).exhibit
+      exhibit match
+        case Block.Figure(figure) => figure.svg.starts(t"<svg") && Inline.plain(figure.alt) == t"10×5 SVG"
+        case _                    => false
+    . assert(_ == true)
+
     // ── The terminal renderer ─────────────────────────────────────────────────────────────
 
     val renderer = TerminalRenderer()
+
+    val image: Block = raster.exhibit
+
+    test(m"a data: image draws in colour, two pixel rows to a line"):
+      renderer.block(image, 40).map(_.plain)
+    . assert(_ == List(t"▀▀"))
+
+    test(m"a data: image is cropped to the width"):
+      renderer.block(image, 1).map(_.plain)
+    . assert(_ == List(t"▀"))
+
+    test(m"a data: URI that is not an image falls back to its description"):
+      renderer.block(Block.Image(t"data:image/png;base64,AAAA", t"broken"), 40).map(_.plain)
+    . assert(_ == List(t"[broken]"))
+
+    test(m"an image elsewhere is described with where it is"):
+      renderer.block(Block.Image(t"x.png", t"an image"), 40).map(_.plain)
+    . assert(_ == List(t"[an image] x.png"))
 
     val prose: Block =
       Block.paragraph(t"The quick brown fox jumps over the lazy dog, again and again, until the line is far too long for forty columns.")

@@ -37,7 +37,7 @@ import dysasymptotics.linearAccess
 //
 // Resolution follows `Inspectable`: a type's own instance first; then its `Showable`, as plain
 // text; then a structural rendering derived from its shape (a product as a record, a sum by its
-// variant); and, as a last resort, its `toString`.
+// variant); and, as a last resort, its `Inspectable`, which itself ends in `toString`.
 object Presentable extends Presentable2:
   // Constructors that fix `Form`, so that an instance can be written as a lambda.
   def phrase[value](lambda: value => Inline): value is Presentable in Inline = lambda(_)
@@ -178,13 +178,15 @@ trait Presentable2 extends Presentable3:
 
 trait Presentable3:
   // The structural fallback applies to products only: a sum (a stdlib `List` or `Option`,
-  // say, whose variants are not the point) falls through to its `Showable` or its `toString`
+  // say, whose variants are not the point) falls through to its `Showable` or its `Inspectable`
   // rather than to a record of its variant. A sum exhibits by variant through an explicit
-  // `derives Presentable`.
+  // `derives Presentable`. `Inspectable` comes last because it always resolves: spectacular
+  // derives one for any type, ending in a `toString` in curly quotes, so it is this fallback's
+  // `toString` too.
   inline given derived: [value] => value is Presentable = compiletime.summonFrom:
     case given (`value` is Showable)       => Presentable.phrase[value] { value => Inline.Textual(value.show) }
     case given ProductReflection[`value`]  => Presentable.Derivation.derived[value]
-    case _                                 => Presentable.phrase[value] { value => Inline.Textual(value.toString.tt) }
+    case given (`value` is Inspectable)    => Presentable.phrase[value] { value => Inline.Textual(value.inspect) }
 
 trait Presentable extends Typeclass.Pure, Formal:
   type Form <: Inline | Block
