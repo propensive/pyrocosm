@@ -37,6 +37,9 @@ import treeStyles.roundedTreeStyle
 import processions.checklistProcession
 import sparklines.blockSparkline
 import timers.compactElapsed
+import monotonous.alphabets.base64Standard
+import hallucination.allRasterFormats
+import teletypeables.graphicalTeletype
 
 // The static half of the terminal frontend: phrasing to a styled line, and a block to styled
 // lines at a width. Everything effectful (repainting, focus, scrolling) is in the fixtures; this
@@ -199,6 +202,21 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
   private def indented(lines: List[Teletype], prefix: Teletype, continuation: Teletype): List[Teletype] =
     lines.indexed.map { (line: Teletype, index: Ordinal) => (if index.n0 == 0 then prefix else continuation).append(line) }
 
+  // A data: URI's image as lines of half-block glyphs, one column per pixel, cropped to the
+  // width (a terminal cannot shrink an image; the rows are not cropped, the terminal scrolls).
+  // A data: URI that is not Base64 of a format hallucination knows is `Unset`.
+  private def picture(source: Text, columns: Int): Optional[List[Teletype]] =
+    val payload: Text = source.cut(t",", 2).at(Sec).or(t"")
+
+    safely(Raster(payload.deserialize[Base64])).let: raster =>
+      val cropped: Raster is Graphical = new Graphical:
+        type Self = Raster
+        def width(self: Raster): Int = raster.width.min(columns)
+        def height(self: Raster): Int = raster.height
+        def pixel(self: Raster, x: Int, y: Int): Chroma = raster(x, y)
+
+      graphicalTeletype[Raster](using cropped).teletype(raster).cut(t"\n").filter(_.length > 0)
+
   def block(block: Block, width: Int, tick: Tick = Tick.zero, selected: Optional[Action] = Unset)
   :   List[Teletype] =
 
@@ -271,8 +289,12 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
         if open then head :: blocks(content, width - 2, tick, selected).map { (line: Teletype) => Teletype(t"  ").append(line) }
         else List(head)
 
+      // An image carried inline (a data: URI) is drawn in colour, two pixel rows per line, or
+      // described if it cannot be decoded; one elsewhere is described, with where it is.
       case Block.Image(source, alt) =>
-        List(faint(e"$Italic([$alt])").append(faint(Teletype(t" $source"))))
+        val described: Teletype = faint(e"$Italic([$alt])")
+        if source.starts(t"data:") then picture(source, width).or(List(described))
+        else List(described.append(faint(Teletype(t" $source"))))
 
       // A drawing has no terminal form; its description stands in for it.
       case Block.Figure(figure) =>
