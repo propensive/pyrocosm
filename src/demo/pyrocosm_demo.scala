@@ -147,6 +147,7 @@ object Samples:
         Block.Listing(false, List(Block.Item(List(Block.paragraph(t"first"))), Block.Item(List(Block.paragraph(t"second"))))),
         Block.Record(List(Block.Entry(Inline.text(t"name"), List(Block.paragraph(t"gallery"))), Block.Entry(Inline.text(t"version"), List(Block.paragraph(t"0.1.0")))), Inline.text(t"Record")),
         Block.Tree(List(Block.TreeNode(Inline.text(t"root"), List(Block.TreeNode(Inline.text(t"leaf")), Block.TreeNode(Inline.text(t"branch"), List(Block.TreeNode(Inline.text(t"leaf")))))))),
+        j"""{"name": "gallery", "modules": ["model", "terminal", "web"], "theme": {"dark": true, "accent": {"hue": 210, "chroma": 0.1}}}""".exhibit,
         Block.Graph
           ( List(Block.Vertex(t"a", Inline.text(t"model")), Block.Vertex(t"b", Inline.text(t"terminal")), Block.Vertex(t"c", Inline.text(t"web"))),
             List(Block.Edge(t"b", t"a"), Block.Edge(t"c", t"a")) ),

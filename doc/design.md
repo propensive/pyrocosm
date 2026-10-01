@@ -90,7 +90,7 @@ replace direct use of colours, weights and box characters.
 `Paragraph`, `Heading`, `Listing` (items may carry an `Action`), `Quotation`, `Rule`, `Code`
 (lines of tokens plus `Note` ranges for annotated samples), `Table` (columns with escritoire-style
 `Sizing`; rows may carry a `Tone` and an `Action`, which is how master/detail is built),
-`Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Tree`, `Graph(vertices, edges)`,
+`Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Tree` (whose nodes may be collapsible, `open`), `Graph(vertices, edges)`,
 `Chart` (sparkline, bars, histogram only), `Gauge(status, caption)`, `Trace` (an exception's
 stack trace and its causes, as the model's own frames: `Block.Trace.of` converts digression's
 `StackTrace`), `Group`, `Output`.
