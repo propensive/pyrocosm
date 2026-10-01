@@ -158,6 +158,69 @@ object Tests extends Suite(m"Pyrocosm tests"):
         case _                           => false
     . assert(_ == true)
 
+    // ── Trees of data ─────────────────────────────────────────────────────────────────────
+
+    // A node's label as text, and the open states down the first branch.
+    def labels(node: Block.TreeNode): List[Text] = Inline.plain(node.label) :: node.children.bind(labels)
+    def opens(node: Block.TreeNode): List[Optional[Boolean]] = node.open :: node.children.prim.lay(Nil: List[Optional[Boolean]])(opens)
+
+    val jsonTree: Block = j"""{"name": "Ada", "tags": ["x", "y"], "nested": {"deep": {"n": 1}}}""".exhibit
+
+    test(m"JSON exhibits as a tree of its keys and values"):
+      jsonTree match
+        case Block.Tree(root :: Nil) => labels(root)
+        case _                       => Nil
+    . assert: texts =>
+        texts.exists(_.contains(t"name")) && texts.exists(_.contains(t"\"Ada\"")) && texts.exists(_.contains(t"[1] "))
+          && texts.exists(_.contains(t"2 elements"))
+
+    test(m"the root and its children start open, anything deeper closed"):
+      jsonTree match
+        case Block.Tree(root :: Nil) =>
+          val nested = root.children.at(Ter).or(root)
+          (root.open, nested.open, nested.children.prim.let(_.open), root.children.prim.let(_.open))
+        case _ => Unset
+    . assert(_ == (true, true, false, Unset))
+
+    test(m"YAML exhibits as a tree"):
+      y"""name: Ada
+tags:
+  - x
+  - y
+""".exhibit match
+        case Block.Tree(root :: Nil) => labels(root)
+        case _                       => Nil
+    . assert: texts =>
+        texts.exists(_.contains(t"name: Ada")) && texts.exists(_.contains(t"- y")) && texts.exists(_.contains(t"2 items"))
+
+    test(m"CBOR exhibits as a tree"):
+      Person(t"Ada", 36).in[Cbor].exhibit match
+        case Block.Tree(root :: Nil) => labels(root)
+        case _                       => Nil
+    . assert: texts =>
+        texts.exists(_.contains(t"\"Ada\"")) && texts.exists(_.contains(t"age: 36")) && texts.exists(_.contains(t"2 entries"))
+
+    test(m"XML exhibits as a tree of its elements"):
+      x"""<a b="1"><c>text</c><d><e/></d></a>""".exhibit match
+        case Block.Tree(root :: Nil) => (labels(root), opens(root))
+        case _                       => (Nil, Nil)
+    . assert: (texts, opens) =>
+        texts.exists(_.contains(t"<a b=\"1\">")) && texts.exists(_ == t"<c>text</c>") && texts.exists(_ == t"<e/>")
+          && opens == List(true, Unset)
+
+    test(m"TEL exhibits as a tree of its compounds"):
+      t"""person Ada\n  age 36\n  address\n    city London\n""".read[Tel].exhibit match
+        case Block.Tree(root :: Nil) => (labels(root), opens(root))
+        case _                       => (Nil, Nil)
+    . assert: (texts, opens) =>
+        texts == List(t"person Ada", t"age 36", t"address", t"city London") && opens == List(true, Unset)
+
+    test(m"a collapsible node renders as details named by its path"):
+      val text = HtmlRenderer().block(jsonTree).show
+      text.contains(t"""<details class="pyro-node" open data-node="0">""") && text.contains(t"""data-node="0.2.0"""")
+        && !text.contains(t"""open data-node="0.2.0"""")
+    . assert(_ == true)
+
     test(m"markdown converts node for node"):
       val exhibit: Block = Parser.parse(t"# Title\n\nSome *emphasis* here.").exhibit
 
@@ -303,6 +366,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
             Block.Listing(true, List(Block.Item(List(Block.paragraph(t"one")), run))),
             Block.Record(List(Block.Entry(Inline.text(t"key"), List(Block.paragraph(t"value")))), Inline.text(t"R")),
             Block.Disclosure(Inline.text(t"more"), List(Block.Image(t"x.png", t"an image"), Block.Figure(figure)), true),
+            Block.Tree(List(Block.TreeNode(Inline.text(t"root"), List(Block.TreeNode(Inline.text(t"leaf"))), open = true))),
             Block.Chart(Block.Chart.Kind.Sparkline, List(Block.Series(Inline.text(t"s"), List(1.0, 2.0)))),
             trace )
 

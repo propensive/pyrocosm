@@ -80,8 +80,11 @@ object settings:
     "punctuation-core",    // Markdown -> Block
     "digression-core",     // StackTrace
     "dissonance-core",     // Diff
-    "jacinta-core",        // JSON, at the browser edge only
-    "stratiform-core")     // TEL codecs, the canonical wire form
+    "jacinta-core",        // JSON, at the browser edge only, and exhibited as a tree
+    "stratiform-core",     // TEL codecs, the canonical wire form, and TEL exhibited as a tree
+    "xylophone-core",      // XML -> Block.Tree
+    "breviloquence-core",  // CBOR -> Block.Tree
+    "ypsiloid-core")       // YAML -> Block.Tree
   . map(component(soundness))
 
   // The image codecs (hallucination) are here so that a `Block.Image` carrying a data: URI can

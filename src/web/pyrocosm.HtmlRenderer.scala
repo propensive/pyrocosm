@@ -50,12 +50,16 @@ object HtmlRenderer:
   // The DOM id of a panel or a handle: what a patch replaces and what an event names.
   def panelId(panel: Panel): Text = t"pyro-panel-${panel.id.label}"
 
+  // `data-node="0.2.1"` on a collapsible tree node: its path within its tree, by which the
+  // script keeps the open state a reader gave it across repaints of its panel.
+  given nodePath: ("data-node" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
   // A class list, omitted when it is empty: honeycomb's own writes `class=""`.
   given classes: List[Name[CssClass]] is Attributive to Whatwg.CssClassList =
     (key, value) => if value.nil then Unset else (key, value.join(t" "))
 
 class HtmlRenderer():
-  import HtmlRenderer.{toneClass, accentClass, cls, classes}
+  import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath}
 
   def phrase(content: List[Inline]): Html of Phrasing = Fragment(content.map(inline1)*)
 
@@ -166,7 +170,8 @@ class HtmlRenderer():
 
       Figure(id = figure.id, `class` = cls(t"pyro-drawing"))(holder, Figcaption(phrase(figure.alt)))
 
-    case Block.Tree(roots) => Ul(`class` = cls(t"pyro-tree"))(roots.map(treeNode)*)
+    case Block.Tree(roots) =>
+      Ul(`class` = cls(t"pyro-tree"))(roots.indexed.map { (root: Block.TreeNode, index: Ordinal) => treeNode(root, t"${index.n0}") }*)
 
     // A graph as its vertices, each with what it depends on; a drawn layout is later work.
     case Block.Graph(vertices, edges) =>
@@ -200,10 +205,27 @@ class HtmlRenderer():
   private def item(item: Block.Item): Html of "li" =
     item.action.lay(Li(blocks(item.content))) { action => Li(id = action.id, `class` = cls(t"pyro-action"))(blocks(item.content)) }
 
-  private def treeNode(node: Block.TreeNode): Html of "li" =
+  // A collapsible node (one with `open` and children) is a `<details>` whose summary is its
+  // label, named by its path for the script; any other node is its label and its children.
+  private def treeNode(node: Block.TreeNode, path: Text): Html of "li" =
     val label: Html of Phrasing = node.tone.lay(phrase(node.label)) { tone => Span(`class` = toneClass(tone))(phrase(node.label)) }
-    val children: Html of Flow = if node.children.nil then Fragment[Flow]() else Ul(node.children.map(treeNode)*)
-    node.action.lay(Li(label, children)) { action => Li(id = action.id, `class` = cls(t"pyro-action"))(label, children) }
+
+    val children: Html of Flow =
+      if node.children.nil then Fragment[Flow]()
+      else Ul(node.children.indexed.map { (child: Block.TreeNode, index: Ordinal) => treeNode(child, t"$path.${index.n0}") }*)
+
+    val plain: List[Html of Flow] = List(label, children)
+
+    val content: List[Html of Flow] =
+      if node.children.nil then plain
+      else node.open.lay(plain): (open: Boolean) =>
+        val details: Html of Flow =
+          if open then Details(`class` = cls(t"pyro-node"), open = true, `data-node` = path)(Summary(label), children)
+          else Details(`class` = cls(t"pyro-node"), `data-node` = path)(Summary(label), children)
+
+        List(details)
+
+    node.action.lay(Li(content*)) { action => Li(id = action.id, `class` = cls(t"pyro-action"))(content*) }
 
   private def vertexLabel(vertex: Block.Vertex): Html of Phrasing =
     val label: Html of Phrasing = vertex.tone.lay(phrase(vertex.label)) { tone => Span(`class` = toneClass(tone))(phrase(vertex.label)) }
