@@ -216,7 +216,7 @@ object WebStyles:
         + css".pyro-tree li { padding-left: var(--pyro-space-4) }"
         + css".pyro-node > summary { cursor: pointer; list-style: none; padding: var(--pyro-space-1) 0 }"
         + css".pyro-node > summary::-webkit-details-marker { display: none }"
-        + css".pyro-node > summary::before { content: '\\25B8'; display: inline-block; width: var(--pyro-space-4); margin-left: calc(-1 * var(--pyro-space-4)); color: var(--pyro-muted); transition: transform 120ms ease }"
+        + css".pyro-node > summary::before { content: '▸'; display: inline-block; width: var(--pyro-space-4); margin-left: calc(-1 * var(--pyro-space-4)); color: var(--pyro-muted); transition: transform 120ms ease }"
         + css".pyro-node[open] > summary::before { transform: rotate(90deg) }"
         + css".pyro-node > summary:hover { color: var(--pyro-tone-accent) } .pyro-node > summary:hover::before { color: var(--pyro-tone-accent) }"
         + css".pyro-graph { list-style: none; padding: 0; margin: 0 0 var(--pyro-space-4) 0 } .pyro-arrow { color: var(--pyro-muted) }"
