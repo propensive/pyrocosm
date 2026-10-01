@@ -337,14 +337,21 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     // ── Rich media ────────────────────────────────────────────────────────────────────────
 
-    // A two-by-two raster, red over blue, built without a format.
-    val raster: Raster = Raster(2, 2) { (x, y) => if y == 0 then Chroma(255, 0, 0) else Chroma(0, 0, 255) }
+    // A two-by-two raster, red over blue, built without a format: typed by its layout.
+    val raster: Raster by Rgb = Raster(2, 2) { (x, y) => if y == 0 then Chroma(255, 0, 0) else Chroma(0, 0, 255) }
 
     test(m"a raster exhibits as an image carried in a data: URI"):
       val exhibit: Block = raster.exhibit
       exhibit match
         case Block.Image(source, alt) => source.starts(t"data:image/png;base64,") && alt == t"2×2 PNG"
         case _                        => false
+    . assert(_ == true)
+
+    test(m"a raster of no particular format exhibits as PNG"):
+      val exhibit: Block = (raster: Raster).exhibit
+      exhibit match
+        case Block.Image(source, _) => source.starts(t"data:image/png;base64,")
+        case _                      => false
     . assert(_ == true)
 
     test(m"a raster in a format exhibits in that format"):
