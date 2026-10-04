@@ -9,16 +9,16 @@ test:
 	./mill pyrocosm.test.assembly
 	fume run -c out/pyrocosm/test/assembly.dest/out.jar $(TESTS)
 
-# The gallery as an Ethereal executable, packaged by the pinned `xeq` builder script (fetched
-# into dist/xeq and verified against etc/xeq.tsv) exactly as fume, flame and flair are; then
+# The gallery as an Ethereal executable, packaged by the pinned `xek` builder (fetched into
+# dist/xek and verified against etc/xek.tsv) exactly as fume, flame and flair are; then
 # run interactively in the terminal, or once, statically, at a width.
-gallery: xeq-fetch
+gallery: xek-fetch
 	./mill pyrocosm.demo.assembly
-	dist/xeq build --jar out/pyrocosm/demo/assembly.dest/out.jar --out gallery
+	dist/xek out/pyrocosm/demo/assembly.dest/out.jar gallery
 
-# Fetch the pinned `xeq` builder script into dist/xeq.
-xeq-fetch:
-	./etc/shared xeq-fetch.sh
+# Fetch the pinned `xek` builder into dist/xek.
+xek-fetch:
+	./etc/shared xek-fetch.sh
 
 demo: gallery
 	./gallery
@@ -85,4 +85,4 @@ release:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: check build test gallery xeq-fetch demo static serve publishLocal stage sync-deps tools snapshot snapshot-prune release dev
+.PHONY: check build test gallery xek-fetch demo static serve publishLocal stage sync-deps tools snapshot snapshot-prune release dev
