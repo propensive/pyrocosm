@@ -122,7 +122,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
           else Option(value = index.n0.toString.tt)(Inline.plain(option))
         }*)
 
-    case _: Control.Field => Fragment[Phrasing]()
+    case _: Control.Field => Html.Fragment[Phrasing]()
 
   // A line or multiline field is a textarea. A code field is an editable `code` element, which
   // the script paints with the decoration's tokens: a textarea cannot carry styled spans. A
@@ -160,7 +160,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
     // The tokens as code lines, so the decoration's marks lay over them as a code block's notes.
     val tokens: Html of Flow =
-      if decoration0.tokens.nil then Fragment[Flow]()
+      if decoration0.tokens.nil then Html.Fragment[Flow]()
       else
         val lines: List[Block.Line] = Block.Line.split(decoration0.tokens)
         val count: Int = lines.size
@@ -172,17 +172,17 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
         Span(`class` = cls(t"pyro-tokens"), hidden = t"")(rendered*)
 
     val detail: Html of Flow =
-      if decoration0.detail.nil then Fragment[Flow]()
+      if decoration0.detail.nil then Html.Fragment[Flow]()
       else Div(`class` = cls(t"pyro-note"))(renderer.blocks(decoration0.detail))
 
     // A candidate that replaces the whole text says so, for the script.
     val list: Html of Flow =
-      if decoration0.completions.nil then Fragment[Flow]()
+      if decoration0.completions.nil then Html.Fragment[Flow]()
       else Ul(`class` = cls(t"pyro-completions"))(decoration0.completions.map { (completion: Control.Field.Completion) =>
         val classes: List[Name[CssClass]] = if completion.whole then List(cls(t"pyro-replacement")) else Nil
         Li(`class` = classes)(Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature)) }*)
 
-    Fragment(tokens, detail, list)
+    Html.Fragment(tokens, detail, list)
 
   def panelContent(panel: Panel): Html of Flow =
     Div(id = t"${panelId(panel)}-content", `class` = cls(t"pyro-panel-content"))(renderer.blocks(panel.content()))
@@ -193,14 +193,14 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
         cls(t"pyro-role-${panel.role.toString.tt.lower}"),
         cls(t"pyro-priority-${panel.priority.toString.tt.lower}") )
 
-    val heading: Html of Flow = panel.title.lay(Fragment[Flow]()) { title => H2(renderer.phrase(title)) }
+    val heading: Html of Flow = panel.title.lay(Html.Fragment[Flow]()) { title => H2(renderer.phrase(title)) }
     val controls: Html of Flow =
-      if panel.controls.nil then Fragment[Flow]()
+      if panel.controls.nil then Html.Fragment[Flow]()
       else Footer(`class` = cls(t"pyro-controls"))(panel.controls.map(controlFlow)*)
 
     Section(id = panelId(panel), `class` = classes)(heading, panelContent(panel), controls)
 
-  private def cards(panels: List[Panel]): Html of Flow = Fragment(panels.map(card)*)
+  private def cards(panels: List[Panel]): Html of Flow = Html.Fragment(panels.map(card)*)
 
   // The menu bar: a full-width band whose contents are centred to the wide measure, holding
   // the wordmark, which is the way home, and the link to the configuration page.
@@ -222,30 +222,30 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
       Div(`class` = cls(t"pyro-masthead"))
         ( Div(`class` = cls(t"pyro-brand"))
             ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
-              Fragment(plan.status.map { (panel: Panel) => Div(id = panelId(panel), `class` = cls(t"pyro-status"))(panelContent(panel)) }*) ),
+              Html.Fragment(plan.status.map { (panel: Panel) => Div(id = panelId(panel), `class` = cls(t"pyro-status"))(panelContent(panel)) }*) ),
           Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
 
     val items = toolbarItems
-    if items.nil then brand else Fragment(brand, Menu(`class` = cls(t"pyro-toolbar"))(items*))
+    if items.nil then brand else Html.Fragment(brand, Menu(`class` = cls(t"pyro-toolbar"))(items*))
 
   override def verso: Html of Flow = cards(plan.navigation)
   override def recto: Html of Flow = cards(plan.detail)
-  def content: Html of Flow = Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
+  def content: Html of Flow = Html.Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
 
   // The session this page belongs to, if it has one of its own, for the script to name when it
   // opens its socket.
   protected override def head: Html of Metadata =
     val named: Html of Metadata = session match
       case id: Text => PyrocosmPage.SessionMeta(content = id)
-      case _        => Fragment[Metadata]()
+      case _        => Html.Fragment[Metadata]()
 
     // The fonts' origins, so the browser opens their connections while it reads the sheet.
     val fonts: Html of Metadata =
-      Fragment[Metadata]
+      Html.Fragment[Metadata]
         ( Link.Preconnect(href = t"https://fonts.googleapis.com"),
           Link.Preconnect(href = t"https://fonts.gstatic.com", crossorigin = Crossorigin.Anonymous) )
 
-    Fragment[Metadata](fonts, Script(src = t"/pyrocosm.js", defer = true), named, super.head)
+    Html.Fragment[Metadata](fonts, Script(src = t"/pyrocosm.js", defer = true), named, super.head)
 
   // The fonts' import first, as CSS requires; then graffiti's rules; then this page's own.
   protected override def styles: Css = WebStyles.fonts + super.styles + WebStyles.rules(theme)

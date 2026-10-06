@@ -27,18 +27,23 @@ import scala.collection.concurrent.TrieMap
 
 import soundness.*
 
+import charsets.utf8Charset
+import codepages.utf8Codepage
 import errorDiagnostics.stackTracesDiagnostics
 import filesystemBackends.javaBaseFilesystem
+import httpBackends.javaNetHttp
+import internetAccess.online
 import logging.silentLogging
 import probates.cancelProbate
 import systems.javaBaseSystem
+import textSanitizers.skipSanitizer
 
 // A command-line tool built on Pyrocosm, as its daemon knows it: the command's name, which is
 // also the name of its configuration directories, the prose that opens its manpage, and the
 // web front-end it can serve, if it has one. There is one `Tool` per application, and its
 // `standard` method gives the application the subcommands every Pyrocosm tool shares —
-// `about`, `install`, `quit` and `--version` — and the configuration files every tool reads,
-// without touching how the application defines its own subcommands and flags.
+// `about`, `install`, `upgrade`, `quit` and `--version` — and the configuration files every tool
+// reads, without touching how the application defines its own subcommands and flags.
 //
 // Configuration comes from two TEL files: the repository's `.pyrocosm/<name>/config.tel`,
 // found by walking up from the invocation's working directory exactly as `.git` is found, so a
@@ -59,7 +64,18 @@ import systems.javaBaseSystem
 // Two keywords are read by `Tool` itself, for a tool with a `web` front-end: `port` is the
 // port it serves on, and a bare `serve` asks for the front-end to be launched when the daemon
 // starts, so that it is simply there, for as long as the daemon lives, without a `serve`
-// command ever being run.
+// command ever being run. A third, `no-upgrade-check`, turns off the daily check for a newer
+// release (below).
+//
+// UPGRADES. Once a day, in the background of the daemon, a released tool fetches the manifest of
+// its newest release (`Release`). When that is newer than the running build, the `upgrade`
+// subcommand is offered by tab-completion; it is accepted at any time, and fails with
+// `NoUpgrade` when there is nothing newer. `upgrade` downloads the executable for this platform,
+// checks its digest, and stages it for the launcher (`Upgrade.stage`), which verifies its
+// signature against the key in the RUNNING executable and swaps it in at the start of the next
+// invocation — so the daemon never replaces itself, and the launcher's verdict is read, reported
+// once, and acknowledged by the next invocation (`report`). A development build, whose version
+// is not a release's, never checks.
 case class Tool
   ( name: Text, prose: Text, web: Optional[Tool.Web] = Unset, services: List[Tool.Service] = Nil ):
 
@@ -92,6 +108,8 @@ object Tool:
   // A `Status` must be an `object`, not a `val` (soundness#1811), so that the precise union of
   // an `execute` block's result type documents it in the manpage's EXIT STATUS section.
   object InstallFailed extends Status(8, t"the tab-completions or manpage could not be installed")
+  object NoUpgrade extends Status(9, t"no newer release is available")
+  object UpgradeFailed extends Status(10, t"the newer release could not be downloaded or staged")
 
   // The standard subcommands and flags, in an object so that `Install` does not shadow
   // `exoskeleton.Install`, the error type, for the rest of this one.
@@ -99,6 +117,12 @@ object Tool:
     val About = Subcommand("about", "show this tool's name, version and daemon")
     val Install = Subcommand("install", "install shell tab-completions and the manpage")
     val Quit = Subcommand("quit", "stop the background daemon, and any web front-end it serves")
+
+    // `upgrade` is always accepted, but SUGGESTED only while a newer release is known: the
+    // hidden twin is what `standard` matches against otherwise (`upgradeCommand`).
+    val Upgrade = Subcommand("upgrade", "replace this executable with the newest release")
+    val HiddenUpgrade =
+      Subcommand("upgrade", "replace this executable with the newest release", hidden = true)
     val Version = Flag[Unit]("version", false, List('v'), "show the version")
     val Force = Flag[Unit]("force", false, List('f'), "overwrite an installed manpage")
 
@@ -115,6 +139,14 @@ object Tool:
   // tool, for as long as the daemon lives, or until `quit`. The instances are pure, so the map
   // holds them without laundering.
   private val serving: juc.ConcurrentHashMap[Text, Service] = juc.ConcurrentHashMap()
+
+  // The newest release each tool in this daemon knows of, by tool name, from the last check
+  // (`refresh`); and the tools whose daily check has been started in this daemon.
+  private val releases: juc.ConcurrentHashMap[Text, Release] = juc.ConcurrentHashMap()
+  private val checking: juc.ConcurrentHashMap[Text, Boolean] = juc.ConcurrentHashMap()
+
+  // How old a cached manifest may be before it is fetched again: the check is daily.
+  private val checkInterval: Long = 24*60*60*1000L
 
   // Reads and parses the file in two separately-scoped `safely` regions — one `Tactic` for the
   // filesystem read, another for the TEL parse — rather than one region with a union `Tactic`:
@@ -186,6 +218,10 @@ object Tool:
         try String(stream.readAllBytes(), "UTF-8").trim.nn.tt finally stream.close()
       . or(t"unknown")
 
+    // The version as a `Semver`, which only a release's (or a snapshot's) version is: `Unset`
+    // for a development build, whose version is a tree hash.
+    def releaseVersion: Optional[Semver] = safely(tool.version.as[Semver])
+
     // The nearest `.pyrocosm/<name>/config.tel` at or above `directory`, or `Unset` if no ancestor
     // has one. The FILE is what is sought: neither a `.pyrocosm` holding only other tools'
     // directories, nor a `.pyrocosm/<name>` without a `config.tel` (holding only state, say),
@@ -241,10 +277,10 @@ object Tool:
     // attached to every subcommand. An application with a flag-first arm of its own still sees
     // its invocation, since only a present `--version` is consumed here.
     // `inline`, so that `dispatch` is expanded in place: as a closure it would capture the
-    // `Cli` and `DaemonService` that are also passed here, which separation checking (on in
+    // `Cli` and `Resident` that are also passed here, which separation checking (on in
     // the tools' builds) rejects. The flags are read through `present`, below, and never here.
     inline def standard(inline dispatch: Configurator ?=> Execution)
-       (using cli: Cli, service: DaemonService[?], monitor: Monitor, environment: Environment)
+       (using cli: Cli, service: Resident, monitor: Monitor, environment: Environment)
        (using Interpreter)
     :   Execution =
 
@@ -255,6 +291,7 @@ object Tool:
         Configurator.properties ++ Configurator.environment ++ tool.configurator(directory)
 
       tool.launch()
+      tool.report()
 
       // `--version` is read only when the first argument is a flag, so that it is registered
       // where a flag can stand without being attached to every subcommand; it is read
@@ -283,7 +320,24 @@ object Tool:
               execute(tool.quit())
 
             case _ =>
-              dispatch
+              val upgrade: Subcommand = tool.upgradeCommand
+
+              arguments match
+                case upgrade() :: _ =>
+                  // The manifest is fetched afresh for a real invocation only — never for a
+                  // tab-completion — so that `upgrade` sees a release published since the daily
+                  // check. Two `execute` blocks, not one returning a three-way union of
+                  // statuses, which capture checking rejects (soundness#1811).
+                  cli match
+                    case _: Invocation => tool.refresh(force = true)
+                    case _             => ()
+
+                  tool.available match
+                    case Unset             => execute(tool.noUpgrade())
+                    case release: Release  => execute(tool.stage(release))
+
+                case _ =>
+                  dispatch
 
         case _ =>
           dispatch
@@ -293,9 +347,14 @@ object Tool:
     // only for a real invocation: never for a tab-completion or the help tree's probe. The
     // task runs under the daemon's own monitor, which the `cli` block supplies, so it outlives
     // the client that happened to start it.
-    private def launch()(using cli: Cli, monitor: Monitor, configurator: Configurator): Unit =
+    private def launch()
+       (using cli: Cli, monitor: Monitor, configurator: Configurator, environment: Environment)
+    :   Unit =
+
       cli match
         case _: Invocation =>
+          tool.check()
+
           tool.allServices.each: (service: Service) =>
             val wanted: Boolean = configurator.read(service.keyword).present
             val key: Text = Text(s"${tool.name.s}/${service.keyword.s}")
@@ -324,13 +383,152 @@ object Tool:
       if Tool.serving.putIfAbsent(key, service) == null then
         try service.serve(port, settings) finally Tool.serving.remove(key)
 
+    // Starts the daily check for a newer release, once per daemon, for a released build whose
+    // configuration does not say `no-upgrade-check`. The task runs under the daemon's monitor,
+    // so it outlives the invocation that started it, and it never raises: a failed check leaves
+    // the last known release in place.
+    private def check()
+       (using monitor: Monitor, configurator: Configurator, environment: Environment)
+    :   Unit =
+
+      val wanted: Boolean =
+        tool.releaseVersion.present && !configurator.read(t"noUpgradeCheck").present
+
+      if wanted && Tool.checking.putIfAbsent(tool.name, true) == null then
+        async:
+          while true do
+            tool.refresh(force = false)
+            snooze(24*Hour)
+
+    // The cached manifest, `$XDG_CACHE_HOME/<name>/upgrade.tsv`, so that a daemon restarted
+    // within a day of the last check does not fetch again.
+    private def manifestCache(using Environment): Optional[Path on Linux] =
+      safely(Xdg.cacheHome[Path on Linux] / Name[Linux](tool.name) / Name[Linux](t"upgrade.tsv"))
+
+    // The newest release, from the cache if it is fresh enough and `force` is not set, and
+    // otherwise fetched (and cached). Whatever is learned is remembered for `available`; `Unset`
+    // if nothing could be read.
+    private def refresh(force: Boolean)(using Environment): Optional[Release] =
+      val cache: Optional[Path on Linux] = tool.manifestCache
+
+      val cached: Optional[Release] =
+        if force then Unset else cache.let: file =>
+          safely(summon[FilesystemBackend on Linux].stat(file, true)).let: stat =>
+            val age: Long = java.lang.System.currentTimeMillis() - stat.modified
+            if age < Tool.checkInterval then safely(file.read[Text]).let(Release.parse(_))
+            else Unset
+
+      val release: Optional[Release] = cached.or:
+        safely(Release.manifestUrl(tool.name).as[HttpUrl].fetch().receive[Text]).let: text =>
+          Release.parse(text).also:
+            cache.let: file =>
+              safely(file.write(text))
+
+      release.let: release =>
+        Tool.releases.put(tool.name, release)
+
+      release
+
+    // The newest release this daemon knows of, if it is newer than the running build: by build
+    // id when the launcher gave the daemon one, and by version otherwise.
+    private def available(using resident: Resident): Optional[Release] =
+      Optional(Tool.releases.get(tool.name)).let: release =>
+        val newer: Boolean =
+          if resident.buildId > 0 then release.build > resident.buildId
+          else
+            tool.releaseVersion.let: current =>
+              safely(release.version.as[Semver]).let(current < _)
+            . or(false)
+
+        if newer then release else Unset
+
+    // The `upgrade` subcommand to match: suggested while a newer release is known, hidden
+    // otherwise. Either way the word is accepted.
+    private def upgradeCommand(using resident: Resident): Subcommand =
+      if tool.available.present then Tool.ui.Upgrade else Tool.ui.HiddenUpgrade
+
+    // Reports, once and on standard error, what the launcher did with a staged upgrade: this
+    // invocation's launcher checked `.pending` before it connected, so its verdict is already on
+    // disk. Nothing is printed for a tab-completion or the help tree's probe.
+    private def report()(using cli: Cli, environment: Environment): Unit =
+      cli match
+        case invocation: Invocation =>
+          given Stdio = invocation.stdio
+
+          Upgrade.outcome.let: outcome =>
+            outcome.result match
+              case Upgrade.Outcome.Result.Applied =>
+                Err.println(t"${tool.name}: upgraded to ${tool.version}")
+
+              case result =>
+                val reason: Message = result.communicate
+                Err.println(t"${tool.name}: the staged upgrade was not applied: $reason")
+
+            Upgrade.acknowledge()
+
+        case _ =>
+          ()
+
+    // `upgrade` when nothing newer is known: the manifest has just been fetched afresh by
+    // `standard`, so this is the newest release, or the check could not reach it.
+    private def noUpgrade()(using invocation: Invocation): Tool.NoUpgrade.type =
+      given Stdio = invocation.stdio
+      Out.println(t"No release newer than ${tool.name} ${tool.version} is known")
+      Tool.NoUpgrade
+
+    // `upgrade` when `release` is newer: downloads its executable for this platform, checks the
+    // digest, and stages it for the launcher to verify and apply. An executable built without a
+    // key cannot be upgraded in place, and is told how to reinstall instead.
+    private def stage(release: Release)(using invocation: Invocation, environment: Environment)
+    :   Tool.UpgradeFailed.type | Exit =
+
+      given Stdio = invocation.stdio
+
+      if Upgrade.pending then
+        Out.println(t"An upgrade is already staged, and takes effect when ${tool.name} next runs")
+        Exit.Ok
+      else if !Upgrade.enabled then
+        val name: Text = tool.name
+        Out.println(t"$name ${release.version} is available, but this executable has no key.")
+        Out.println(t"Reinstall it with: curl -fsSL https://propensive.dev/${tool.name} | sh")
+        Tool.UpgradeFailed
+      else
+        val platform: Optional[Text] = Release.platform
+        val executable: Optional[Release.Executable] = platform.let(release.executable(_))
+
+        executable match
+          case Unset =>
+            Out.println(t"${tool.name} ${release.version} has no executable for this platform")
+            Tool.UpgradeFailed
+
+          case executable: Release.Executable =>
+            Out.println(t"Downloading ${tool.name} ${release.version} for ${platform.or(t"?")}...")
+
+            Release.download(executable) match
+              case Unset =>
+                Out.println(t"The download failed, or did not have the digest the release promised")
+                Tool.UpgradeFailed
+
+              case data: Data =>
+                recover:
+                  case error: Upgrade.Error =>
+                    Out.println(t"The upgrade could not be staged: ${error.message}")
+                    Tool.UpgradeFailed
+
+                . protect:
+                    Upgrade.stage(data)
+                    val name: Text = tool.name
+                    val version: Text = release.version
+                    Out.println(t"$name $version is staged, and takes effect when $name next runs")
+                    Exit.Ok
+
     private def showVersion()(using invocation: Invocation): Exit =
       given Stdio = invocation.stdio
       Out.println(tool.version)
       Exit.Ok
 
     private def about(directory: Text)
-       (using invocation: Invocation, service: DaemonService[?], environment: Environment)
+       (using invocation: Invocation, service: Resident, environment: Environment)
     :   Exit =
 
       given Stdio = invocation.stdio
@@ -352,7 +550,7 @@ object Tool:
 
     // Installs the tool's shell tab-completions and its manpage. `Completions.ensure` writes the
     // zsh/bash/fish completion script (the same call the built-in `{admin} install` uses); it
-    // needs an `Entrypoint`, which the ambient Ethereal `DaemonService` supplies (it extends
+    // needs an `Entrypoint`, which the ambient Ethereal `Resident` supplies (it extends
     // `Entrypoint`). The manpage's structure comes from `service.help()` — the same subcommand
     // and flag tree the completions register, discovered by re-running the dispatch in completion
     // mode — so `man <name>` can never disagree with the CLI, and the EXIT STATUS section is
@@ -360,13 +558,13 @@ object Tool:
     // completions installs even when the tool is not yet on the `PATH`, so a freshly-built binary
     // can set itself up before being installed as a command.
     private def install(force: Boolean)
-       (using invocation: Invocation, service: DaemonService[?])
+       (using invocation: Invocation, service: Resident)
        (using erased Effectful)
     :   Tool.InstallFailed.type | Exit =
 
       given Stdio = invocation.stdio
 
-      // The `DaemonService` extends `Entrypoint`, and `Completions.ensure` accepts a TRACKED
+      // The `Resident` extends `Entrypoint`, and `Completions.ensure` accepts a TRACKED
       // `Entrypoint^`, so the service is passed on with its capture intact, without laundering.
       given entrypoint: (Entrypoint^{service}) = service
       given manual: Manual = Manual(prose = tool.prose, version = safely(tool.version.as[Semver]))
@@ -395,7 +593,7 @@ object Tool:
     // Stops the front-end this daemon serves, if any, then the daemon itself. The shutdown is
     // deferred until this invocation's exit status has been delivered, so the client returns
     // cleanly.
-    private def quit()(using invocation: Invocation, service: DaemonService[?]): Exit =
+    private def quit()(using invocation: Invocation, service: Resident): Exit =
       given Stdio = invocation.stdio
 
       tool.allServices.each: (service: Service) =>
