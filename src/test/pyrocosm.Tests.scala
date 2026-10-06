@@ -1268,6 +1268,49 @@ object Tests extends Suite(m"Pyrocosm tests"):
         demo.version
       . assert(_ == t"unknown")
 
+    suite(m"Release"):
+      val manifest: Text = t"""# the newest release
+version	0.6.0
+build	6000
+signed-by	
+linux-x64	https://example.com/fume-linux-x64	aaaa
+macos-arm64	https://example.com/fume-macos-arm64	bbbb
+windows-x64	https://example.com/fume-windows-x64.exe	cccc
+"""
+
+      test(m"a manifest parses to its version, build and executables"):
+        Release.parse(manifest).let { release => (release.version, release.build, release.executables.size) }
+      . assert(_ == (t"0.6.0", 6000L, 3))
+
+      test(m"an empty signed-by reads as unset"):
+        Release.parse(manifest).let(_.signedBy)
+      . assert(_ == Unset)
+
+      test(m"a signed-by key is kept"):
+        Release.parse(t"version\t1.0.0\nbuild\t1\nsigned-by\tdeadbeef\n").let(_.signedBy)
+      . assert(_ == t"deadbeef")
+
+      test(m"an executable is found by its platform label"):
+        Release.parse(manifest).let(_.executable(t"macos-arm64")).let(_.sha256)
+      . assert(_ == t"bbbb")
+
+      test(m"an unpublished platform has no executable"):
+        Release.parse(manifest).let(_.executable(t"linux-arm64"))
+      . assert(_ == Unset)
+
+      test(m"a manifest without a build does not parse"):
+        Release.parse(t"version\t1.0.0\n")
+      . assert(_ == Unset)
+
+      test(m"a manifest whose build is not a number does not parse"):
+        Release.parse(t"version\t1.0.0\nbuild\tsoon\n")
+      . assert(_ == Unset)
+
+      test(m"the running platform has a label"):
+        import systems.javaBaseSystem
+        Release.platform
+      . assert(_ != Unset)
+
     // ── Remote machines ───────────────────────────────────────────────────────────────────
 
     suite(m"Credential"):

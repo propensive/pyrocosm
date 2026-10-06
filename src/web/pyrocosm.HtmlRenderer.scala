@@ -57,7 +57,7 @@ object HtmlRenderer:
 class HtmlRenderer():
   import HtmlRenderer.{toneClass, accentClass, cls, classes}
 
-  def phrase(content: List[Inline]): Html of Phrasing = Fragment(content.map(inline1)*)
+  def phrase(content: List[Inline]): Html of Phrasing = Html.Fragment(content.map(inline1)*)
 
   def token(token: Token): Html of Phrasing =
     val classes: List[Name[CssClass]] =
@@ -65,7 +65,7 @@ class HtmlRenderer():
       accentClass(token.accent) :: extra
     Span(`class` = classes)(token.text)
 
-  def tokens(tokens: List[Token]): Html of Phrasing = Fragment(tokens.map(token)*)
+  def tokens(tokens: List[Token]): Html of Phrasing = Html.Fragment(tokens.map(token)*)
 
   private def inline1(node: Inline): Html of Phrasing = node match
     case Inline.Textual(text)         => text
@@ -115,7 +115,7 @@ class HtmlRenderer():
 
   // ── Blocks ────────────────────────────────────────────────────────────────────────────────
 
-  def blocks(blocks: List[Block]): Html of Flow = Fragment(blocks.map(block)*)
+  def blocks(blocks: List[Block]): Html of Flow = Html.Fragment(blocks.map(block)*)
 
   def block(block: Block): Html of Flow = block match
     case Block.Paragraph(content) => P(phrase(content))
@@ -145,7 +145,7 @@ class HtmlRenderer():
 
     case Block.Notice(tone, title, content) =>
       Aside(`class` = List(cls(t"pyro-notice"), toneClass(tone)))
-        (Fragment[Flow](title.lay(Fragment[Flow]()) { title => Header(Strong(phrase(title))) }, blocks(content)))
+        (Html.Fragment[Flow](title.lay(Html.Fragment[Flow]()) { title => Header(Strong(phrase(title))) }, blocks(content)))
 
     case Block.Disclosure(summary, content, open) =>
       if open then Details(`class` = cls(t"pyro-disclosure"), open = true)(Summary(phrase(summary)), blocks(content))
@@ -176,8 +176,8 @@ class HtmlRenderer():
           val dependencies = edges.filter(_.from == vertex.id).map { (edge: Block.Edge) => labels(edge.to).or(Inline.text(edge.to)) }
           val label = vertexLabel(vertex)
           if dependencies.nil then Li(label)
-          else Li(label, Span(`class` = cls(t"pyro-arrow"))(t" → "), Fragment(dependencies.indexed.map { (target, index) =>
-            Fragment[Phrasing](if index.n0 == 0 then Fragment[Phrasing]() else t", ", phrase(target)) }*))
+          else Li(label, Span(`class` = cls(t"pyro-arrow"))(t" → "), Html.Fragment(dependencies.indexed.map { (target, index) =>
+            Html.Fragment[Phrasing](if index.n0 == 0 then Html.Fragment[Phrasing]() else t", ", phrase(target)) }*))
         }*)
 
     case Block.Chart(kind, series) => chart(kind, series)
@@ -193,7 +193,7 @@ class HtmlRenderer():
       val count = trimmed.size
       val rows: List[Html of Phrasing] = trimmed.indexed.map: (line: Text, index: Ordinal) =>
         val text: Text = if index.n0 == count - 1 then line else t"$line\n"
-        Fragment[Phrasing](Span(`class` = gutter)(t"░ "), text)
+        Html.Fragment[Phrasing](Span(`class` = gutter)(t"░ "), text)
 
       Pre(`class` = List(cls(t"pyro-output"), if error then cls(t"pyro-output-stderr") else cls(t"pyro-output-stdout")))(rows*)
 
@@ -202,7 +202,7 @@ class HtmlRenderer():
 
   private def treeNode(node: Block.TreeNode): Html of "li" =
     val label: Html of Phrasing = node.tone.lay(phrase(node.label)) { tone => Span(`class` = toneClass(tone))(phrase(node.label)) }
-    val children: Html of Flow = if node.children.nil then Fragment[Flow]() else Ul(node.children.map(treeNode)*)
+    val children: Html of Flow = if node.children.nil then Html.Fragment[Flow]() else Ul(node.children.map(treeNode)*)
     node.action.lay(Li(label, children)) { action => Li(id = action.id, `class` = cls(t"pyro-action"))(label, children) }
 
   private def vertexLabel(vertex: Block.Vertex): Html of Phrasing =
@@ -234,7 +234,7 @@ class HtmlRenderer():
 
     val ordered: List[Html of Phrasing] = pieces.reverse
 
-    Span(`class` = cls(t"pyro-line"))(Fragment(ordered*), if last then Fragment[Phrasing]() else t"\n")
+    Span(`class` = cls(t"pyro-line"))(Html.Fragment(ordered*), if last then Html.Fragment[Phrasing]() else t"\n")
 
   private def table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]]): Html of Flow =
     def columnClasses(column: Block.Column): List[Name[CssClass]] =
@@ -253,14 +253,14 @@ class HtmlRenderer():
 
     val body = Tbody(rows.map { (row: Block.Row) =>
         val cells = columns.indexed.map { (column, index) =>
-          Td(`class` = columnClasses(column))(row.cells.at(index).lay(Fragment[Phrasing]()) { cell => phrase(cell.content) })
+          Td(`class` = columnClasses(column))(row.cells.at(index).lay(Html.Fragment[Phrasing]()) { cell => phrase(cell.content) })
         }
         val classes: List[Name[CssClass]] = row.tone.lay(Nil: List[Name[CssClass]]) { tone => List(toneClass(tone)) }
         row.action.lay(Tr(`class` = classes)(cells*)) { action => Tr(id = action.id, `class` = cls(t"pyro-action") :: classes)(cells*) }
       }*)
 
     val captioned: List[Html of "caption"] = caption.lay(Nil: List[Html of "caption"]) { caption => List(Caption(phrase(caption))) }
-    Table(`class` = cls(t"pyro-table"))(Fragment(captioned*), head, body)
+    Table(`class` = cls(t"pyro-table"))(Html.Fragment(captioned*), head, body)
 
   // A stack trace: a section per exception in the chain, each a heading naming the exception
   // and its message, and a table of its frames laid out as the terminal lays them out—`at`, the
@@ -321,9 +321,9 @@ class HtmlRenderer():
 
       Section(`class` = cls(t"pyro-trace"))(heading, Table(`class` = cls(t"pyro-frames"))(Tbody(rows*)))
 
-    Fragment[Flow](stacks.indexed.map { (stack0: Block.Trace.Stack, index: Ordinal) =>
+    Html.Fragment[Flow](stacks.indexed.map { (stack0: Block.Trace.Stack, index: Ordinal) =>
       if index.n0 == 0 then stack(stack0)
-      else Fragment[Flow](P(`class` = cls(t"pyro-caused-by"))(t"caused by:"), stack(stack0))
+      else Html.Fragment[Flow](P(`class` = cls(t"pyro-caused-by"))(t"caused by:"), stack(stack0))
     }*)
 
   // A chart is a figure holding a description list: each series is a term, and each of its
