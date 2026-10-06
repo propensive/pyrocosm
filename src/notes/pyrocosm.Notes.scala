@@ -28,6 +28,7 @@ import soundness.{Filter as _, *}
 
 import logging.silentLogging
 import codepages.utf8Codepage
+import environments.javaBaseEnvironment
 import errorDiagnostics.emptyDiagnostics
 
 // Metadata attached to source states through git notes, for every Pyrocosm tool. Two families

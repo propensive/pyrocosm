@@ -55,7 +55,7 @@ inline given rasterPresentable: [raster <: Raster] => raster is Presentable in B
 
 given svgPresentable: Svg is Presentable in Block = svg =>
   val size: Text = t"${Media.dimension(svg.width)}×${Media.dimension(svg.height)}"
-  Block.Figure(Figure(Inline.text(t"$size SVG"), svg.xml.show))
+  Block.Figure(Figure(Inline.text(t"$size SVG"), svg.in[Xml].show))
 
 object Media:
   def image(raster: Raster, rasterizable: Rasterizable): Block =
