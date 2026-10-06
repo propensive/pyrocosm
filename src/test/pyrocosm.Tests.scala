@@ -1492,6 +1492,7 @@ machine nameless
 
 machine mac-mini
   host 10.0.0.7
+  host mac-mini.example.org
 """.read[Tel])
 
         val machines: List[Machine] = Machine.parse(document)
@@ -1502,8 +1503,8 @@ machine mac-mini
 
         test(m"a machine's fields are read"):
           machines.prim.let: machine =>
-            (machine.host, machine.port, machine.identity.let(Peer.render(_)), machine.token, machine.capabilities)
-        . assert(_ == (t"build.example.org", 8091, t"sha256:${t"ab"*32}", t"not-a-file", List(t"linux", t"x86-64", t"quiet")))
+            (machine.hosts, machine.port, machine.identity.let(Peer.render(_)), machine.token, machine.capabilities)
+        . assert(_ == (List(t"build.example.org"), 8091, t"sha256:${t"ab"*32}", t"not-a-file", List(t"linux", t"x86-64", t"quiet")))
 
         test(m"a missing port takes the tool's default"):
           machines.map(_.portOr(9000))
@@ -1511,8 +1512,28 @@ machine mac-mini
 
         test(m"an earlier document overrides a later one by name"):
           val override0: Tel = unsafely(t"tel 1.0\n\nmachine mac-mini\n  host 10.0.0.8\n".read[Tel])
-          Machine.resolve(List(override0, document)).map(machine => (machine.name, machine.host))
-        . assert(_ == List((t"mac-mini", t"10.0.0.8"), (t"linux-box", t"build.example.org")))
+          Machine.resolve(List(override0, document)).map(machine => (machine.name, machine.hosts))
+        . assert(_ == List((t"mac-mini", List(t"10.0.0.8")), (t"linux-box", List(t"build.example.org"))))
+
+        test(m"a machine may have several hosts, in the order declared"):
+          machines.map(_.hosts)
+        . assert(_ == List(List(t"build.example.org"), List(t"10.0.0.7", t"mac-mini.example.org")))
+
+        test(m"hosts are tried nearest first: private addresses and .local names, then names, then public addresses"):
+          Machine.ordered:
+            List
+              ( t"203.0.113.9", t"build.example.org", t"192.168.1.20", t"2001:db8::1", t"fd00::7",
+                t"mac-mini.local", t"10.1.2.3", t"100.119.0.4", t"172.20.0.1", t"172.32.0.1" )
+        . assert:
+            _ == List
+                  ( t"192.168.1.20", t"fd00::7", t"mac-mini.local", t"10.1.2.3", t"172.20.0.1",
+                    t"build.example.org", t"100.119.0.4", t"203.0.113.9", t"2001:db8::1",
+                    t"172.32.0.1" )
+
+        test(m"this machine's addresses end with its hostname, and include no loopback address"):
+          val addresses = Machine.addresses
+          (addresses.stdlib.lastOption.map(_ == Machine.Identity.local.hostname), addresses.exists(_.starts(t"127.")))
+        . assert(_ == (Some(true), false))
 
         test(m"a token that names no file is the secret itself"):
           Machine.secret(t"not-a-file")
@@ -1570,7 +1591,7 @@ machine mac-mini
           Peer.Listener(t"demo", t"1.0", codec, token, identity, List(t"quiet"), gate)(echo)
 
         def machine(fingerprint: Data, secret: Text, port: Int): Machine =
-          Machine(t"worker", t"127.0.0.1", port, fingerprint, secret, Nil)
+          Machine(t"worker", List(t"127.0.0.1"), port, fingerprint, secret, Nil)
 
         def serving[result](listener: Peer.Listener[Ping])(block: Int => result): result =
           import threading.platformThreading
@@ -1637,11 +1658,110 @@ machine mac-mini
 
         test(m"a machine declaring no identity is refused before connecting"):
           try
-            unsafely(Peer.connect(Machine(t"x", t"127.0.0.1", 1, Unset, token, Nil), t"demo", t"1.0", codec, 1)(_ => t"welcomed"))
+            unsafely(Peer.connect(Machine(t"x", List(t"127.0.0.1"), 1, Unset, token, Nil), t"demo", t"1.0", codec, 1)(_ => t"welcomed"))
           catch case error: Peer.Error => error.reason match
             case Peer.Error.Reason.NoIdentity(name) => name
             case other                              => other.toString.tt
         . assert(_ == t"x")
+
+        // An address in TEST-NET-1 (RFC 5737), which nothing answers, listed first and on a
+        // private network, so that it is tried first: the connection is made to the next.
+        test(m"an address which never answers does not keep the connection from the next"):
+          serving(worker(() => Unset)): port =>
+            val machine = Machine(t"worker", List(t"10.255.255.1", t"127.0.0.1"), port, identity.fingerprint, token, Nil)
+            val started = java.lang.System.currentTimeMillis
+            val address = unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1)(_.address))
+            (address, java.lang.System.currentTimeMillis - started < 5000L)
+        . assert(_ == (t"127.0.0.1", true))
+
+        test(m"a machine none of whose addresses answers is unreachable"):
+          val machine = Machine(t"nowhere", List(t"127.0.0.1"), Port[Tcp]().number, identity.fingerprint, token, Nil)
+          try unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1)(_ => t"welcomed"))
+          catch case error: Peer.Error => error.reason match
+            case Peer.Error.Reason.Unreachable(name) => name
+            case other                               => other.toString.tt
+        . assert(_ == t"nowhere")
+
+        def invitation(lifetime: Duration = 60.0*Second, tool: Text = t"demo"): Invitation =
+          unsafely(Peer.invite(tool, 1, lifetime))
+
+        test(m"an invitation survives being written as one word"):
+          val original = invitation()
+          val word = Invitation.encode(original)
+          val read = unsafely(Invitation.parse(word))
+
+          // A fingerprint is bytes, which compare by reference, so the rest are compared alone.
+          val none: Data = Data()
+
+          val same: Boolean =
+            read.copy(identity = none) == original.copy(identity = none)
+            && Channel.same(read.identity, original.identity)
+
+          (same, word.cut(t" ").stdlib.length, word.length < 400)
+        . assert(_ == (true, 1, true))
+
+        test(m"an invitation names this machine, its addresses and its certificate"):
+          val made = invitation()
+          (made.name, made.hosts == Machine.addresses, Channel.same(made.identity, identity.fingerprint), made.token.length)
+        . assert(_ == (Machine.Identity.local.hostname, true, true, 64))
+
+        test(m"a word which is not an invitation is refused"):
+          capture[Invitation.Error](Invitation.parse(t"hello")).reason
+        . assert(_ == Invitation.Error.Reason.Malformed)
+
+        test(m"an expired invitation is refused"):
+          val word = Invitation.encode(invitation(lifetime = -1.0*Second))
+          capture[Invitation.Error](Invitation.parse(word)).reason
+        . assert(_ == Invitation.Error.Reason.Expired)
+
+        // Joining over a real connection: the token the invitation carried admits the joiner once,
+        // and is exchanged for one of its own, which goes on admitting it until it is revoked.
+        def joining(name: Text, made: Invitation, port: Int): Optional[Machine] =
+          val machine = made.copy(port = port, hosts = List(t"127.0.0.1"))
+          safely(unsafely(Peer.join(machine, name, t"demo", t"1.0", codec)(_ => ()))(0))
+
+        test(m"an invitation admits its bearer once, and is exchanged for a token of its own"):
+          serving(worker(() => Unset)): port =>
+            val made = invitation()
+            val joined: Optional[Machine] = joining(t"inviter", made, port)
+            val again: Optional[Machine] = joining(t"inviter2", made, port)
+
+            val reconnected: Optional[Text] = joined.let: machine =>
+              safely(unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1)(_ => t"welcomed")))
+
+            (joined.present, again.absent, reconnected, joined.let(_.token).let(Machine.secret(_)) != made.token)
+        . assert(_ == (true, true, t"welcomed", true))
+
+        test(m"a joined machine is declared in the shared file, with all its hosts"):
+          val shared: Optional[Tel] = Machine.shared
+          shared.let(Machine.parse(_).filter(_.name == t"inviter").map(_.hosts))
+        . assert(_ == List(List(t"127.0.0.1")))
+
+        test(m"joining again under the same name replaces the declaration"):
+          serving(worker(() => Unset)): port =>
+            joining(t"inviter", invitation(), port)
+            Machine.shared.let(Machine.parse(_).stdlib.count(_.name == t"inviter"))
+        . assert(_ == 1)
+
+        test(m"an invitation to another tool is refused before connecting"):
+          val made = invitation(tool = t"other")
+          capture[Invitation.Error](Peer.join(made, t"x", t"demo", t"1.0", codec)(_ => ())).reason
+        . assert(_ == Invitation.Error.Reason.Tool(t"other"))
+
+        test(m"a machine admitted by invitation is listed, and once revoked is refused"):
+          serving(worker(() => Unset)): port =>
+            val joined: Optional[Machine] = joining(t"revocable", invitation(), port)
+            val listed: Boolean = Peer.peers.exists(_(1) == t"demo")
+            val revoked: Int = Peer.revoke(Machine.Identity.local.hostname, t"demo")
+
+            val after: Text = joined.lay(t"not joined"): machine =>
+              try unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1)(_ => t"welcomed"))
+              catch case error: Peer.Error => error.reason match
+                case Peer.Error.Reason.Refused(reason) => reason
+                case other                             => other.toString.tt
+
+            (listed, revoked >= 1, after)
+        . assert(_ == (true, true, Peer.Refusal.token))
 
 // Counts the outcomes for the summary line. A class rather than local `var's, because the event
 // sink is a pure `TestEvent -> Unit` and may capture nothing tracked.
