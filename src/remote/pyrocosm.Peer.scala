@@ -45,11 +45,18 @@ import textSanitizers.skipSanitizer
 // then carries one tool's messages over a `Channel`, after a handshake that is Pyrocosm's own:
 //
 //   controller → worker   hello    tool, protocol fingerprint, tool version, token, hostname
+//   worker → controller   granted  a token of the controller's own, if it presented an invitation's
 //   worker → controller   welcome  tool, protocol, version, the worker's identity and capabilities
 //                    or   refused  a reason
 //
 // The `Refused` reasons are fixed words so a tool can render them; the tool's own protocol runs
 // from the first frame after `welcome`.
+//
+// Beside the machine's own token, a listener admits the bearer of an `Invitation`'s token, once,
+// before it expires, and sends it `granted` — a token of its own, which goes on admitting it until
+// it is revoked — before `welcome` (see `Admissions`). `join` is the other side of that: it
+// records the granted token, and declares the machine in the shared `machines.tel`. A machine
+// may have several addresses; a connection is made to the nearest which answers (`nearest`).
 object Peer:
   enum Handshake:
     case Hello(tool: Text, protocol: Text, version: Text, token: Text, hostname: Text)
@@ -66,6 +73,10 @@ object Peer:
         capability: List[Text] )
 
     case Refused(reason: Text)
+
+    // Sent before `welcome` to a caller which presented an invitation's token: the token it
+    // is to present from now on, which the invitation's was exchanged for.
+    case Granted(token: Text)
 
   lazy val handshake: Channel.Codec[Handshake] =
     import Channel.derivation.throwing
@@ -199,7 +210,14 @@ object Peer:
   // One connection after its handshake: the tool's messages and raw payloads both ways, and
   // what the other side said about itself (a controller sees the worker's identity and
   // capabilities; a worker sees the controller's tool version and hostname).
-  class Session[message](channel: Channel[message], val peer: Info):
+  // `address` is which of the machine's hosts the connection was made to, and `granted` the
+  // token a worker gave in exchange for an invitation's, on the side which made the connection.
+  class Session[message]
+    ( channel:     Channel[message],
+      val peer:    Info,
+      val address: Optional[Text] = Unset,
+      val granted: Optional[Text] = Unset ):
+
     def send(message: message): Unit = channel.send(message)
     def send(message: message, raw: Data): Unit = channel.send(message, raw)
     def sendRaw(data: Data): Unit = channel.sendRaw(data)
@@ -220,7 +238,12 @@ object Peer:
       identity:     Identity,
       capabilities: List[Text],
       gate:         () => Optional[Text] )
-    ( handler: Session[message] => Unit ):
+    ( handler: Session[message] => Unit )
+    ( using environment: Environment ):
+
+    // Who else, beside the holder of `token`, may be let in: callers this machine invited, and
+    // those it admitted by invitation before.
+    private val admissions: Admissions = Admissions()
 
     private val stopped: Promise[Unit] = Promise()
 
@@ -234,24 +257,37 @@ object Peer:
             case Handshake.Hello(theirTool, protocol, theirVersion, theirToken, theirHost) =>
               if theirTool != tool then refuse(channel, Refusal.tool)
               else if protocol != codec.protocol then refuse(channel, Refusal.protocol)
-              else if theirToken != token then refuse(channel, Refusal.token)
               else gate() match
-                case reason: Text => refuse(channel, reason)
-                case _ =>
-                  val local = Machine.Identity.local
+                case reason: Text =>
+                  refuse(channel, reason)
 
-                  val welcome =
-                    Handshake.Welcome
-                      ( tool, codec.protocol, version, local.hostname, local.os, local.arch,
-                        local.cores, local.jvm, capabilities )
+                case _ => admissions.admit(theirToken, token, tool, theirHost) match
+                  case pyrocosm.Admission.Refused =>
+                    refuse(channel, Refusal.token)
 
-                  channel.sendHandshake(handshake.fingerprint, handshake.encode(welcome))
+                  case admission =>
+                    admission match
+                      case pyrocosm.Admission.Invited(granted) =>
+                        val grant = Handshake.Granted(granted)
+                        channel.sendHandshake(handshake.fingerprint, handshake.encode(grant))
 
-                  // What the worker knows of the controller: its tool's version and hostname.
-                  val controller =
-                    Info(theirTool, theirVersion, Machine.Identity(theirHost, t"", t"", 0, t""), Nil)
+                      case _ =>
+                        ()
 
-                  handler(Session(channel, controller))
+                    val local = Machine.Identity.local
+
+                    val welcome =
+                      Handshake.Welcome
+                        ( tool, codec.protocol, version, local.hostname, local.os, local.arch,
+                          local.cores, local.jvm, capabilities )
+
+                    channel.sendHandshake(handshake.fingerprint, handshake.encode(welcome))
+
+                    // What the worker knows of the controller: its tool's version and hostname.
+                    val controller =
+                      Info(theirTool, theirVersion, Machine.Identity(theirHost, t"", t"", 0, t""), Nil)
+
+                    handler(Session(channel, controller))
 
             case _ =>
               refuse(channel, Refusal.protocol)
@@ -302,6 +338,84 @@ object Peer:
       case _ =>
         scala.Left(Error.Reason.NoIdentity(machine.name))
 
+  // ── invitations ──────────────────────────────────────────────────────────────────────────
+
+  // An invitation to this machine for `tool`, listening on `port`, which admits one caller
+  // before `lifetime` has passed. Its token is recorded, as a digest, where every listener on
+  // this machine looks (`Admissions`), and is shown nowhere else but in the invitation.
+  def invite(tool: Text, port: Int, lifetime: Duration)(using Environment)
+  :   Invitation raises Error =
+
+    val fingerprint: Data = identity.fingerprint
+    val token: Text = Admissions.random(32)
+    val expires: Instant over Unix = now() + lifetime
+    val name: Text = Machine.Identity.local.hostname
+    Admissions().issue(token, tool, expires)
+    Invitation(name, Machine.addresses, port, fingerprint, token, expires, tool)
+
+  // Where a joiner keeps the token it was granted by the machine of this name.
+  def tokenFile(name: Text)(using Environment): Optional[Path on Linux] =
+    safely(Directories.configHome[Path on Linux] / "pyrocosm" / "tokens" / name)
+
+  // Accepts `invitation` for `tool`: connects to the machine it invites to, presents its token,
+  // and lends the session to `lambda`; then records the token the machine granted in exchange,
+  // and declares the machine, as `name`, in the shared `machines.tel` — every address, the port,
+  // the fingerprint and the token's file — replacing any declaration of that name. What comes
+  // back is the machine as declared, and what `lambda` made of the session.
+  def join[message, result]
+    ( invitation: Invitation, name: Text, tool: Text, version: Text, codec: Channel.Codec[message] )
+    ( lambda: Session[message] => result )
+    ( using Environment )
+  :   (Machine, result) raises Invitation.Error raises Error =
+
+    if invitation.tool != tool
+    then abort(Invitation.Error(Invitation.Error.Reason.Tool(invitation.tool)))
+
+    // A listener refuses an invitation's token, as any other it does not know, as `bad-token`:
+    // to the bearer of an invitation, that means it has been used, or has expired there.
+    val outcome: (Optional[Text], result) =
+      import errorDiagnostics.emptyDiagnostics
+
+      mitigate:
+        case Error(Error.Reason.Refused(Refusal.token)) =>
+          Invitation.Error(Invitation.Error.Reason.Used)
+
+      . protect:
+          connect(invitation.machine(name), tool, version, codec, invitation.port): session =>
+            (session.granted, lambda(session))
+
+    outcome(0) match
+      case granted: Text =>
+        val file: Path on Linux =
+          tokenFile(name).or(abort(Invitation.Error(Invitation.Error.Reason.Unwritable)))
+
+        val written: Optional[Unit] = safely:
+          file.parent.let: parent =>
+            if !parent.existent() then parent.create[Directory](CreateFlag.Parents)
+
+          file.write(granted)
+          restrict(file)
+
+        if written.absent then abort(Invitation.Error(Invitation.Error.Reason.Unwritable))
+
+        val machine: Machine =
+          Machine(name, invitation.hosts, invitation.port, invitation.identity, file.encode, Nil)
+
+        if Machine.declare(machine).absent
+        then abort(Invitation.Error(Invitation.Error.Reason.Unwritable))
+
+        (machine, outcome(1))
+
+      case _ =>
+        abort(Invitation.Error(Invitation.Error.Reason.Used))
+
+  // The machines this one has admitted by invitation, with the tool each was admitted to.
+  def peers(using Environment): List[(Text, Text)] = Admissions().peers
+
+  // Refuses, from now on, the machine of this name, admitted by invitation to `tool`; how many
+  // tokens that undid.
+  def revoke(name: Text, tool: Text)(using Environment): Int = Admissions().revoke(name, tool)
+
   // The words of a reason, for a caller that has no `Diagnostics` to make an `Error` with.
   def explain(reason: Error.Reason): Text = reason match
     case Error.Reason.NoIdentity(machine) => t"machine $machine declares no identity fingerprint to pin"
@@ -312,6 +426,44 @@ object Peer:
     case Error.Reason.Disconnected        => t"the peer closed the connection during the handshake"
     case Error.Reason.Identity            => t"this machine's identity could not be created or read"
 
+  // How long the next of a machine's addresses is waited for before it is tried alongside the
+  // earlier ones, and how long, in all, any of them is waited for.
+  private val stagger: Duration = 0.25*Second
+  private val patience: Duration = 15.0*Second
+
+  // Connects to the first of `hosts` to answer, completing TLS to the certificate `Tls` pins:
+  // the nearest first (`Machine.ordered`), each of the others begun `stagger` after the one
+  // before it, in the manner of RFC 8305, so that an address which never answers — one on a
+  // network the caller is not on — delays the connection by `stagger`, not by the system's
+  // connect timeout, which coaxial does not let a caller shorten. The first to complete is
+  // kept; any other that completes after it is closed. A host whose certificate is not the one
+  // pinned fails its TLS handshake, so a different machine at a reused address never wins.
+  private def nearest(hosts: List[Text], port: Int)(using Tls): Optional[(Text, Duplex)] =
+    import threading.platformThreading
+    import probates.cancelProbate
+
+    val connectable: SecureEndpoint is Connectable = summon[SecureEndpoint is Connectable]
+    val ordered: List[Text] = Machine.ordered(hosts)
+    val winner: Promise[(Text, Duplex)] = Promise()
+    val failures: Atomic[Int] = Atomic(0)
+    val count: Int = ordered.stdlib.length
+
+    safely:
+      supervise:
+        ordered.stdlib.zipWithIndex.foreach: (host, index) =>
+          async:
+            if index > 0 then snooze(stagger*index.toDouble)
+
+            if winner.ready then () else
+              try
+                val duplex: Duplex = connectable.connect(SecureEndpoint(host, port), Unset)
+                winner.offer((host, duplex))
+                if !winner().let(_(1) == duplex).or(false) then duplex.close()
+              catch case _: Exception =>
+                if failures.since(_ + 1) >= count then winner.cancel()
+
+        winner.await(patience)
+
   private def exchange[message, result]
     ( machine: Machine, fingerprint: Data, secret: Text, tool: Text, version: Text,
       codec: Channel.Codec[message], defaultPort: Int )
@@ -319,20 +471,12 @@ object Peer:
   :   scala.Either[Error.Reason, result] =
 
     given Tls = TlsAcceptance().pinning(fingerprint).tls()
-    val endpoint = SecureEndpoint(machine.host, machine.portOr(defaultPort))
 
     // The exchange yields either the lambda's result or the reason it could not run; a socket
-    // or TLS failure (the pin not matching, the host unreachable) is an `IOException` from the
-    // connection, and reads as unreachable.
-    // The endpoint's `Connectable` is a tracked capability (it carries the `Online` evidence),
-    // which the pure `duplex` extension cannot take, so the connection is made through it
-    // directly and closed here.
-    val connectable: SecureEndpoint is Connectable = summon[SecureEndpoint is Connectable]
-
-    val exchange: scala.Either[Error.Reason, result] =
-      try
-        val duplex: Duplex = connectable.connect(endpoint, Unset)
-
+    // or TLS failure (the pin not matching, the host unreachable) at every address reads as
+    // unreachable.
+    nearest(machine.hosts, machine.portOr(defaultPort)) match
+      case (address: Text, duplex: Duplex) =>
         try
           val channel = Channel(codec, duplex)
 
@@ -341,27 +485,35 @@ object Peer:
 
           channel.sendHandshake(handshake.fingerprint, handshake.encode(hello))
 
-          channel.receive() match
-            case Channel.Frame.Handshake(theirs, document) =>
-              if !Channel.same(theirs, handshake.fingerprint)
-              then scala.Left(Error.Reason.Protocol(theirs.serialize[Hex], handshake.protocol))
-              else safely(handshake.decode(document)) match
-                case Handshake.Welcome(theirTool, protocol, theirVersion, hostname, os, arch, cores, jvm, capabilities) =>
-                  if protocol != codec.protocol
-                  then scala.Left(Error.Reason.Protocol(protocol, codec.protocol))
-                  else
-                    val identity = Machine.Identity(hostname, os, arch, cores, jvm)
-                    val info = Info(theirTool, theirVersion, identity, capabilities)
-                    scala.Right(lambda(Session(channel, info)))
+          // A worker sends `granted` before `welcome` to a caller which presented an
+          // invitation's token; anything else first is the `welcome` or a refusal.
+          def welcomed(granted: Optional[Text]): scala.Either[Error.Reason, result] =
+            channel.receive() match
+              case Channel.Frame.Handshake(theirs, document) =>
+                if !Channel.same(theirs, handshake.fingerprint)
+                then scala.Left(Error.Reason.Protocol(theirs.serialize[Hex], handshake.protocol))
+                else safely(handshake.decode(document)) match
+                  case Handshake.Granted(token) =>
+                    welcomed(token)
 
-                case Handshake.Refused(reason) => scala.Left(Error.Reason.Refused(reason))
-                case _                         => scala.Left(Error.Reason.Disconnected)
+                  case Handshake.Welcome(theirTool, protocol, theirVersion, hostname, os, arch, cores, jvm, capabilities) =>
+                    if protocol != codec.protocol
+                    then scala.Left(Error.Reason.Protocol(protocol, codec.protocol))
+                    else
+                      val identity = Machine.Identity(hostname, os, arch, cores, jvm)
+                      val info = Info(theirTool, theirVersion, identity, capabilities)
+                      scala.Right(lambda(Session(channel, info, address, granted)))
 
-            case _ =>
-              scala.Left(Error.Reason.Disconnected)
+                  case Handshake.Refused(reason) => scala.Left(Error.Reason.Refused(reason))
+                  case _                         => scala.Left(Error.Reason.Disconnected)
+
+              case _ =>
+                scala.Left(Error.Reason.Disconnected)
+
+          try welcomed(Unset) catch case error: java.io.IOException =>
+            scala.Left(Error.Reason.Unreachable(machine.name))
 
         finally duplex.close()
 
-      catch case error: java.io.IOException => scala.Left(Error.Reason.Unreachable(machine.name))
-
-    exchange
+      case _ =>
+        scala.Left(Error.Reason.Unreachable(machine.name))

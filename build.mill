@@ -21,7 +21,7 @@ object settings:
   // The version Pyrocosm's own libraries are released under. Bump (and commit) per release;
   // the release refuses to run when this pin disagrees with the tag. Snapshots override it through
   // `publishVersion`, never here.
-  val pyrocosmVersion = "0.5.0"
+  val pyrocosmVersion = "0.6.0"
 
   val scalaOptions = Seq(
     "-Zalias-captures",
@@ -129,7 +129,9 @@ object settings:
   def remoteDeps(soundness: String) = Seq(
     "coaxial-jvm", "gastronomy-core", "galilei-jvm", "ambience-core", "zeppelin-core",
     "stratiform-core", "urticose-core", "parasite-core", "eucalyptus-core", "serpentine-core",
-    "monotonous-core", "gossamer-core", "contingency-core", "vacuous-core", "hieroglyph-core")
+    "monotonous-core", "gossamer-core", "contingency-core", "vacuous-core", "hieroglyph-core",
+    "aviation-core",      // invitations' expiry
+    "stratiform-base256") // an invitation as one word
   . map(component(soundness))
 
   def demoDeps(soundness: String) = Seq("exoskeleton-completions", "ethereal-core").map(component(soundness))
