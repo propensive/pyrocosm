@@ -371,9 +371,18 @@ object Peer:
     if invitation.tool != tool
     then abort(Invitation.Error(Invitation.Error.Reason.Tool(invitation.tool)))
 
+    // A listener refuses an invitation's token, as any other it does not know, as `bad-token`:
+    // to the bearer of an invitation, that means it has been used, or has expired there.
     val outcome: (Optional[Text], result) =
-      connect(invitation.machine(name), tool, version, codec, invitation.port): session =>
-        (session.granted, lambda(session))
+      import errorDiagnostics.emptyDiagnostics
+
+      mitigate:
+        case Error(Error.Reason.Refused(Refusal.token)) =>
+          Invitation.Error(Invitation.Error.Reason.Used)
+
+      . protect:
+          connect(invitation.machine(name), tool, version, codec, invitation.port): session =>
+            (session.granted, lambda(session))
 
     outcome(0) match
       case granted: Text =>

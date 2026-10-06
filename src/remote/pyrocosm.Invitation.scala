@@ -91,7 +91,7 @@ object Invitation:
     given communicable: Reason is Communicable =
       case Reason.Malformed  => m"it is not an invitation"
       case Reason.Expired    => m"it has expired"
-      case Reason.Used       => m"it has been used already, or was never issued"
+      case Reason.Used       => m"it has been used already, or has expired"
       case Reason.Tool(tool) => m"it is an invitation to $tool"
       case Reason.Unwritable => m"the machine it invites to could not be recorded"
 

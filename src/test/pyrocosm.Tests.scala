@@ -1732,6 +1732,13 @@ machine mac-mini
             (joined.present, again.absent, reconnected, joined.let(_.token).let(Machine.secret(_)) != made.token)
         . assert(_ == (true, true, t"welcomed", true))
 
+        test(m"an invitation used already is refused as used"):
+          serving(worker(() => Unset)): port =>
+            val made = invitation().copy(port = port, hosts = List(t"127.0.0.1"))
+            joining(t"first", made, port)
+            capture[Invitation.Error](Peer.join(made, t"second", t"demo", t"1.0", codec)(_ => ())).reason
+        . assert(_ == Invitation.Error.Reason.Used)
+
         test(m"a joined machine is declared in the shared file, with all its hosts"):
           val shared: Optional[Tel] = Machine.shared
           shared.let(Machine.parse(_).filter(_.name == t"inviter").map(_.hosts))
