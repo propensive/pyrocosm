@@ -1025,6 +1025,10 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val repo: Text = java.nio.file.Files.createTempDirectory("pyrocosm-notes").nn.toString.tt
       given WorkingDirectory = () => repo
 
+      // `git` runs with this process's own environment, as it did before Soundness 0.71.0 made
+      // the environment a process inherits explicit.
+      import environments.javaBaseEnvironment
+
       def git(arguments: Text*): Text =
         val fixed = scala.collection.immutable.List(t"git", t"-C", repo)
         Command((fixed ++ arguments)*).exec[Text]().trim
