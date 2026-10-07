@@ -140,6 +140,11 @@ object settings:
   // The standard command line of every tool: the daemon (ethereal), subcommands, completions
   // and the manpage (exoskeleton), the configuration files (galilei, stratiform) and their XDG
   // locations (ambience), and the version a manpage carries (revolution).
+  // What a script's `Runtime` is made of: Stdio, Environment and WorkingDirectory, and Text.
+  def scriptDeps(soundness: String) = Seq(
+    "anticipation-text", "ambience-core", "turbulence-stdio", "vacuous-core")
+  . map(component(soundness))
+
   def cliDeps(soundness: String) = Seq(
     "exoskeleton-completions", "exoskeleton-manpage", "ethereal-core", "ambience-core",
     "galilei-jvm", "serpentine-core", "stratiform-core", "revolution-core", "parasite-core",
@@ -438,6 +443,13 @@ object pyrocosm extends Project:
   object cli extends Component(), Publishing:
     def mvnDeps = Task(settings.cliDeps(deps.soundness()))
 
+  // The contract a single-file script is compiled against: the `Runtime` a tool constructs for
+  // it (Fever for Scala; lira's fever.md §6a). Its own module, with no dependency on the rest of
+  // Pyrocosm, so a script compiles against this small, slowly-changing surface rather than a
+  // tool's release. `dev.propensive:pyrocosm-script`.
+  object script extends Component(), Publishing:
+    def mvnDeps = Task(settings.scriptDeps(deps.soundness()))
+
   // Reaching another machine's tool: `Machine` declarations, the TLS `Peer` identity and
   // handshake, the framed BinTEL `Channel`, and the content-addressed `Blobs` store, shared by
   // fume (remote test runs) and Fury. Depends on no other module here. `dev.propensive:pyrocosm-remote`.
@@ -485,7 +497,7 @@ object pyrocosm extends Project:
 object release extends Module:
   def modules: Seq[PublishModule] =
     Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.media, pyrocosm.terminal, pyrocosm.web,
-        pyrocosm.notes, pyrocosm.cli, pyrocosm.remote)
+        pyrocosm.notes, pyrocosm.cli, pyrocosm.remote, pyrocosm.script)
 
   private def withDescriptors(source: os.Path, target: os.Path, entries: Seq[(String, os.Path)])
   :   Unit =
