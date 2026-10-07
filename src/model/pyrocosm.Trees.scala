@@ -26,9 +26,7 @@ package pyrocosm
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Language as _, *}
 
-import breviloquence.*
 import contingency.strategies.throwUnsafely
-import dysasymptotics.linearAccess
 
 // The tree-shaped data formats — JSON, YAML, CBOR, XML and TEL — as trees of collapsible
 // nodes, one node per container or leaf, labelled as code in the format's own notation: a
@@ -182,19 +180,19 @@ object Trees:
   // ── XML ───────────────────────────────────────────────────────────────────────────────
 
   def xml(xml: Xml): Block = xml match
-    case xylophone.Fragment(nodes*) =>
-      val roots: List[xylophone.Node] = List.from(nodes)
-      Block.Tree(roots.filter(significant).map { (node: xylophone.Node) => xmlNode(node, 0) })
-    case node: xylophone.Node       => Block.Tree(List(xmlNode(node, 0)))
+    case Xml.Fragment(nodes*) =>
+      val roots: List[Xml.Node] = List.from(nodes)
+      Block.Tree(roots.filter(significant).map { (node: Xml.Node) => xmlNode(node, 0) })
+    case node: Xml.Node       => Block.Tree(List(xmlNode(node, 0)))
 
   // Whitespace between elements is layout, not content.
-  private def significant(node: xylophone.Node): Boolean = node match
-    case xylophone.TextNode(text) => text.trim.length > 0
+  private def significant(node: Xml.Node): Boolean = node match
+    case Xml.Text(text) => text.trim.length > 0
     case _                        => true
 
-  private def xmlNode(node0: xylophone.Node, depth: Int): Block.TreeNode = node0 match
-    case xylophone.Element(label, attributes, children0) =>
-      val pairs: List[(Text, Text)] = List.from(attributes.iterator)
+  private def xmlNode(node0: Xml.Node, depth: Int): Block.TreeNode = node0 match
+    case Xml.Element(label, attributes, children0) =>
+      val pairs: List[(Text, Text)] = attributes.to[List]
 
       val attributes2: List[Token] = pairs.bind: (pair: (Text, Text)) =>
         val (key, value) = pair
@@ -202,27 +200,27 @@ object Trees:
 
       val opening: List[Token] = List(symbol(t"<"), typal(label)) + attributes2
       val closing: List[Token] = List(symbol(t"</"), typal(label), symbol(t">"))
-      val children0b: List[xylophone.Node] = List.from(children0.readable)
-      val children: List[xylophone.Node] = children0b.filter(significant)
+      val children0b: List[Xml.Node] = List.from(children0.readable)
+      val children: List[Xml.Node] = children0b.filter(significant)
 
       children match
         case Nil => node(Language.Xml, opening + List(symbol(t"/>")), Nil, depth)
 
-        case xylophone.TextNode(text) :: Nil =>
+        case Xml.Text(text) :: Nil =>
           node(Language.Xml, opening + List(symbol(t">"), string(text.trim)) + closing, Nil, depth)
 
         case _ =>
-          node(Language.Xml, opening + List(symbol(t">")), children.map { (child: xylophone.Node) => xmlNode(child, depth + 1) }, depth)
+          node(Language.Xml, opening + List(symbol(t">")), children.map { (child: Xml.Node) => xmlNode(child, depth + 1) }, depth)
 
-    case xylophone.TextNode(text) => node(Language.Xml, List(string(text.trim)), Nil, depth)
-    case xylophone.Cdata(text)    => node(Language.Xml, List(symbol(t"<![CDATA["), string(text), symbol(t"]]>")), Nil, depth)
-    case xylophone.Comment(text)  => node(Language.Xml, List(plain(t"<!--$text-->")), Nil, depth, Tone.Muted)
-    case xylophone.Doctype(text)  => node(Language.Xml, List(keyword(t"<!DOCTYPE "), plain(text), keyword(t">")), Nil, depth, Tone.Muted)
+    case Xml.Text(text) => node(Language.Xml, List(string(text.trim)), Nil, depth)
+    case Xml.Cdata(text)    => node(Language.Xml, List(symbol(t"<![CDATA["), string(text), symbol(t"]]>")), Nil, depth)
+    case Xml.Comment(text)  => node(Language.Xml, List(plain(t"<!--$text-->")), Nil, depth, Tone.Muted)
+    case Xml.Doctype(text)  => node(Language.Xml, List(keyword(t"<!DOCTYPE "), plain(text), keyword(t">")), Nil, depth, Tone.Muted)
 
-    case xylophone.ProcessingInstruction(target, data) =>
+    case Xml.ProcessingInstruction(target, data) =>
       node(Language.Xml, List(symbol(t"<?"), term(target), plain(t" $data"), symbol(t"?>")), Nil, depth, Tone.Muted)
 
-    case header: xylophone.Header =>
+    case header: Xml.Header =>
       val encoding: Text = header.encoding.lay(t"") { (encoding: Text) => t" encoding=\"$encoding\"" }
       val declaration: Text = t" version=\"${header.version}\"$encoding"
       node(Language.Xml, List(symbol(t"<?xml"), plain(declaration), symbol(t"?>")), Nil, depth, Tone.Muted)
