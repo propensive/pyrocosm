@@ -18,10 +18,30 @@ object settings:
   // The Soundness version the components resolve at (from `~/.ivy2/local`) is pinned in
   // etc/refs and read by `deps`, below; every list here takes it as a parameter.
 
-  // The version Pyrocosm's own libraries are released under. Bump (and commit) per release;
-  // the release refuses to run when this pin disagrees with the tag. Snapshots override it through
-  // `publishVersion`, never here.
-  val pyrocosmVersion = "0.6.0"
+  // This build's version. A release's version is declared once, by its tag: the release
+  // (release.sh in propensive/.github) and a snapshot (snapshot.sh) both name it in
+  // `PYROCOSM_RELEASE_VERSION`. Any other build is the version after the latest release reachable
+  // from HEAD — its patch version plus one, which sorts after that release and before whichever
+  // follows it — or `0.0.1` where no release tag is reachable, as in CI's shallow checkout.
+  // Called from `Task.Input`s, so the environment and the tags are read on every invocation.
+  def version(env: Map[String, String]): String =
+    env.get("PYROCOSM_RELEASE_VERSION").filter(_.nonEmpty).getOrElse(nextVersion)
+
+  def nextVersion: String =
+    val root = mill.api.BuildCtx.workspaceRoot
+
+    val latest: Option[String] =
+      scala.util.Try:
+        os.proc("git", "describe", "--tags", "--abbrev=0", "--match", "[0-9]*.[0-9]*.[0-9]*")
+        . call(cwd = root, stderr = os.Pipe).out.text().trim
+      . toOption
+
+    def numeric(part: String): Boolean = part.nonEmpty && part.forall(_.isDigit)
+
+    latest.collect:
+      case s"$major.$minor.$patch" if Seq(major, minor, patch).forall(numeric) =>
+        s"$major.$minor.${patch.toInt + 1}"
+    . getOrElse("0.0.1")
 
   val scalaOptions = Seq(
     "-Zalias-captures",
@@ -145,11 +165,11 @@ object settings:
   // `META-INF/pyrocosm/<name>/version` for `pyrocosm-cli` to read (`<name> about`,
   // `<name> --version`): the version a release or snapshot is published as, when
   // `PYROCOSM_RELEASE_VERSION` names it (`make snapshot` and the release both set it);
-  // otherwise the pinned version with the filtered tree hash of HEAD — the identity
-  // `make snapshot` would give this commit — and `-dirty` if the working tree has changes
-  // that no commit records. Called from a `Task.Input`, so that HEAD is consulted on every
-  // invocation.
-  def buildVersion(env: Map[String, String], pinned: String): String =
+  // otherwise the next version (`nextVersion`) with the filtered tree hash of HEAD — the
+  // identity `make snapshot` would give this commit — and `-dirty` if the working tree has
+  // changes that no commit records. Called from a `Task.Input`, so that HEAD is consulted on
+  // every invocation.
+  def buildVersion(env: Map[String, String]): String =
     env.get("PYROCOSM_RELEASE_VERSION").filter(_.nonEmpty).getOrElse:
       val root = mill.api.BuildCtx.workspaceRoot
 
@@ -158,7 +178,7 @@ object settings:
           .getOrElse(os.proc("git", "rev-parse", "HEAD^{tree}").call(cwd = root).out.text().trim)
 
       val dirty: Boolean = os.proc("git", "status", "--porcelain").call(cwd = root).out.text().trim.nonEmpty
-      s"$pinned-${tree.take(12)}${if dirty then "-dirty" else ""}"
+      s"$nextVersion-${tree.take(12)}${if dirty then "-dirty" else ""}"
 
 // Exposes the fork compiler's `release/lib` jars (from a local build via `settings.scalaHome`, or
 // downloaded from the `settings.scalaRelease` GitHub release) as a Maven-layout repository,
@@ -356,13 +376,13 @@ trait Component(dependencies: PublishModule*) extends Toolchain:
   override def scalacPluginMvnDeps = Task(Seq(settings.component(deps.soundness())("beneficence-plugin")))
 
 trait Publishing extends Toolchain, SonatypeCentralPublishModule:
-  // A `Task.Input` reading `Task.env`, not a plain value: `PYROCOSM_RELEASE_VERSION` is how
-  // `make snapshot` (snapshot.sh in propensive/.github) drives the snapshot version through a
-  // Mill daemon that is already running — the daemon freezes `sys.env` at its own start, while
-  // `Task.env` is the environment of each `./mill` invocation. A release never sets it: the
-  // released version is `settings.pyrocosmVersion`, and the release script insists on it.
+  // A `Task.Input` reading `Task.env`, not a plain value: `PYROCOSM_RELEASE_VERSION` is how a
+  // release and `make snapshot` (release.sh and snapshot.sh in propensive/.github) drive the
+  // version through a Mill daemon that is already running — the daemon freezes `sys.env` at its
+  // own start, while `Task.env` is the environment of each `./mill` invocation. Without it, the
+  // version is `settings.nextVersion`.
   def publishVersion = Task.Input:
-    Task.env.get("PYROCOSM_RELEASE_VERSION").filter(_.nonEmpty).getOrElse(settings.pyrocosmVersion)
+    settings.version(Task.env)
   def artifactSuffix = Task("")
 
   def pomSettings = Task(PomSettings(
@@ -439,7 +459,7 @@ object pyrocosm extends Project:
     def finalMainClass = "pyrocosm.gallery"
 
     // The gallery's own version, as `gallery about` reports it: see `settings.buildVersion`.
-    def buildVersion = Task.Input(settings.buildVersion(Task.env, settings.pyrocosmVersion))
+    def buildVersion = Task.Input(settings.buildVersion(Task.env))
 
     override def resources = Task:
       val file = Task.dest / "META-INF" / "pyrocosm" / "gallery" / "version"
