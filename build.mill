@@ -11,8 +11,8 @@ import publish.*
 object settings:
   // The propensive/proscala fork toolchain, pinned exactly as in the flame and fume builds:
   // Soundness TASTy is produced by this compiler, so Pyrocosm must compile with it too.
-  val scalaVersion = sys.env.getOrElse("SOUNDNESS_SCALA_VERSION", "3.9.0-p16")
-  val scalaRelease = sys.env.getOrElse("SOUNDNESS_SCALA_RELEASE", "3.9.0-p16")
+  val scalaVersion = sys.env.getOrElse("SOUNDNESS_SCALA_VERSION", "3.9.1-dev-p17")
+  val scalaRelease = sys.env.getOrElse("SOUNDNESS_SCALA_RELEASE", "3.9.1-dev-p17")
   val scalaHome = sys.env.getOrElse("SOUNDNESS_SCALA_HOME", "")
 
   // The Soundness version the components resolve at (from `~/.ivy2/local`) is pinned in
