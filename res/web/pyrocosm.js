@@ -52,6 +52,29 @@
     });
   }
 
+  // A panel's collapsible tree nodes keep the open state the reader gave them across its
+  // repaints: each is named by its tree's ordinal within the panel and its path within the
+  // tree (both stable, since a transcript only grows), and a node the page already showed
+  // takes its recorded state in place of the server's default.
+  function keepNodes(root) {
+    var kept = {};
+    root.querySelectorAll(".pyro-tree").forEach(function (tree, ordinal) {
+      tree.querySelectorAll("details.pyro-node").forEach(function (node) {
+        kept[ordinal + ":" + node.getAttribute("data-node")] = node.open;
+      });
+    });
+    return kept;
+  }
+
+  function restoreNodes(root, kept) {
+    root.querySelectorAll(".pyro-tree").forEach(function (tree, ordinal) {
+      tree.querySelectorAll("details.pyro-node").forEach(function (node) {
+        var key = ordinal + ":" + node.getAttribute("data-node");
+        if (key in kept) node.open = kept[key];
+      });
+    });
+  }
+
   function parseSvg(html) {
     var scratch = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     scratch.innerHTML = html;
@@ -120,8 +143,10 @@
         if (element.classList.contains("pyro-drawing-holder")) { reviseDrawing(element, patch.html); break; }
         var follow = element.scrollHeight - element.scrollTop - element.clientHeight < 8;
         var drawings = keepDrawings(element);
+        var nodes = keepNodes(element);
         element.innerHTML = patch.html;
         restoreDrawings(element, drawings);
+        restoreNodes(element, nodes);
         if (follow) element.scrollTop = element.scrollHeight;
         wire(element);
         if (/-decoration$/.test(patch.id)) {

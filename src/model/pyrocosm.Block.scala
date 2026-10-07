@@ -93,11 +93,14 @@ object Block:
 
   case class Note(line: Int, start: Int, end: Int, style: Note.Style, caption: Optional[Text] = Unset)
 
+  // `open`, when present, makes a node with children collapsible, and says whether it starts
+  // open or closed; a frontend with no way to toggle (the terminal) shows every node.
   case class TreeNode
     ( label:    List[Inline],
-      children: List[TreeNode]   = Nil,
-      tone:     Optional[Tone]   = Unset,
-      action:   Optional[Action] = Unset )
+      children: List[TreeNode]    = Nil,
+      tone:     Optional[Tone]    = Unset,
+      action:   Optional[Action]  = Unset,
+      open:     Optional[Boolean] = Unset )
 
   // A node of a graph, identified by `id`, and an edge between two ids. A graph is stored as
   // its vertices and edges (which serialise plainly); `Graph.of` and `Graph#dag` convert to and

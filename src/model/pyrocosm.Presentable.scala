@@ -128,6 +128,19 @@ object Presentable extends Presentable2:
   given throwable: (resolver: StackTrace.Resolver) => Throwable is Presentable in Block =
     throwable => Block.Trace.of(StackTrace(throwable))
 
+  // The tree-shaped data formats, each as a `Block.Tree` of collapsible nodes (see `Trees`):
+  // the root and its children start open, anything deeper closed.
+  given json: Json is Presentable in Block = json => Trees.json(Json.unseal(json))
+  given jsonAst: Json.Ast is Presentable in Block = Trees.json(_)
+  given yaml: Yaml is Presentable in Block = yaml => Trees.yaml(yaml.root)
+  given yamlAst: Yaml.Ast is Presentable in Block = Trees.yaml(_)
+  given cbor: Cbor is Presentable in Block = cbor => Trees.cbor(Cbor.unseal(cbor))
+  given cborAst: Cbor.Ast is Presentable in Block = Trees.cbor(_)
+  given tel: Tel is Presentable in Block = Trees.tel(_)
+
+  // Any XML node, since `Self` is exact and a parsed document is typed by its node kind.
+  given xml: [xml <: Xml] => xml is Presentable in Block = Trees.xml(_)
+
   // A Markdown document, converted node for node. Both emphasis strengths become the model's
   // one emphasis; inline HTML is dropped; an inline image becomes a link to it.
   given markdown: (Markdown of Layout) is Presentable in Block = markdown =>
