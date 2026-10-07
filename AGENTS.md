@@ -42,9 +42,9 @@ version it declares for its next release. The build reads the file through the `
 ### Publishing a snapshot for fume, flame or flair
 
 `make snapshot` requires a clean working tree at a commit that is already on GitHub. It stages
-the seven library jars at `<pyrocosmVersion>-<hex>`, installs them into `~/.ivy2/local`, uploads
-them as the `snapshot-<hex>` pre-release (nothing is re-uploaded if that tree was snapshotted
-before), and prints the `etc/refs` line for the consumer. Old snapshots are deleted by
+the seven library jars at `<next version>-<hex>`, the next version being the patch after the
+latest release, installs them into `~/.ivy2/local`, uploads them as the `snapshot-<hex>`
+pre-release (nothing is re-uploaded if that tree was snapshotted before), and prints the `etc/refs` line for the consumer. Old snapshots are deleted by
 `make snapshot-prune`; a consumer whose pin was pruned rebuilds it from the pinned commit.
 
 ### Releasing
@@ -55,7 +55,8 @@ A release is cut by tagging, and by nothing else:
 git tag -s X.Y.Z && git push --tags
 ```
 
-Bump `pyrocosmVersion` in `build.mill` and merge that first; the tag then fires
+The tag is the only place the version is declared: tag a commit on `main` once CI has passed
+on it, and the tag fires
 `.github/workflows/release.yml`, which runs the shared `release.sh` in
 propensive/.github. Never publish by hand, and never create a release or
 upload an asset with `gh`: the script exists so that every release is made the same way.
