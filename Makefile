@@ -14,7 +14,7 @@ test:
 # run interactively in the terminal, or once, statically, at a width.
 gallery: xek-fetch
 	./mill pyrocosm.demo.assembly
-	dist/xek out/pyrocosm/demo/assembly.dest/out.jar gallery
+	dist/xek build --java-min 25 --java 25 out/pyrocosm/demo/assembly.dest/out.jar gallery
 
 # Fetch the pinned `xek` builder into dist/xek.
 xek-fetch:
