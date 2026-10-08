@@ -169,8 +169,15 @@ object Swarm:
         val pure: () -> List[Service] = scala.caps.unsafe.unsafeAssumePure(services)
         val swarm: Swarm = Swarm(tool, version, pure, capabilities, swarmPort)
         instances.putIfAbsent(tool, swarm) match
-          case Some(existing) => existing
-          case None           => swarm.start(); swarm
+          case Some(existing) =>
+            existing
+
+          case None =>
+            swarm.start()
+            // The process's frontends publish through its first node, which in a daemon is the
+            // only one.
+            if instances.size == 1 then Presences.start(swarm)
+            swarm
 
   def of(tool: Text): Optional[Swarm] = instances.get(tool).getOrElse(Unset)
 
@@ -303,7 +310,7 @@ extends Tether.Host:
 
   private val gateway0: Atomic[Int] = Atomic(0)
 
-  private def url(host: Text, port: Int): Text = t"http://:${port.show}/"
+  private def url(host: Text, port: Int): Text = t"http://$host:${port.show}/"
 
   // What this node says of itself now.
   def self: Advert =
@@ -316,7 +323,15 @@ extends Tether.Host:
       if service.name == t"serve" && service.url.absent then service.copy(url = url(host, service.port))
       else service
 
-    val offered: List[Service] = services().map(located(_))
+    // A web front-end started outside the tool's services (`gallery serve <port>`) says so
+    // through the shared presence.
+    val declared: List[Service] = services()
+
+    val web: List[Service] =
+      if declared.exists(_.name == t"serve") then Nil
+      else Presence.shared.web().lay(Nil: List[Service]) { port => List(Service(t"serve", port)) }
+
+    val offered: List[Service] = (declared + web).map(located(_))
 
     Advert
       ( node, offered, capabilities, machine.os, machine.arch, machine.cores, Swarm.load,
@@ -738,12 +753,16 @@ extends Tether.Host:
         case _ =>
           ()
 
-  // Repeats this node's advert every half minute, so that a node which joined since, or
-  // forgot it, learns of it.
+  // Says what this node is now: when something it offers has changed, and every half minute
+  // regardless, so that a node which joined since, or forgot it, learns of it.
+  def advertise()(using Monitor): Unit =
+    val advert: Advert = self
+    nodes.amend { all => advert :: all.filter(_.node.key != node.key) }
+    emit(Bus.Event.Advertised(advert))
+
   private def announce()(using Monitor, Probate): Unit =
     while !stopping() do
-      nodes.amend { all => self :: all.filter(_.node.key != node.key) }
-      emit(Bus.Event.Advertised(self))
+      advertise()
       snooze(Swarm.announcement)
 
   // Says goodbye, closes every link, and leaves the registry.

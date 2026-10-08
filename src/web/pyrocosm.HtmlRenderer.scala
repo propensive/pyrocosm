@@ -26,7 +26,7 @@ package pyrocosm
 // definitions, since a wildcard import beats a package member declared in another file. Excluded
 // too: `Em` (cataclysm), `Span` (denominative), so the name is the HTML element `htmlDoms`
 // supplies.
-import soundness.{Em as _, Span as _, *}
+import soundness.{Em as _, Origin as _, Span as _, *}
 
 import murmuration.zip
 import sortingAlgorithms.timsort
@@ -62,8 +62,12 @@ object HtmlRenderer:
   // its own, as the same action may belong to a navigation item already on the page.
   given actionId: ("data-action" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
+  // `data-local="true"` on a menu link to a tool of this machine, whose `localhost` the script
+  // replaces with the page's own host when the page is viewed from another.
+  given localLink: ("data-local" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
 class HtmlRenderer():
-  import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath, actionId}
+  import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath, actionId, localLink}
 
   def phrase(content: List[Inline]): Html of Phrasing = Html.Fragment(content.map(inline1)*)
 
@@ -415,24 +419,56 @@ class HtmlRenderer():
 
   // An activity is a card: its title, its gauge and its state, all of it the link to its view
   // when it has one. The card's own id keeps it from the action's, which a navigation item may
-  // carry too; its press sends the action named in `data-action`.
-  def activity(activity: Activity): Html of Flow =
-    val id: Text = t"pyro-activity-${activity.id}"
+  // carry too; its press sends the action named in `data-action`. Another node's activity
+  // carries its origin as a label, is prefixed by the origin's key, since two nodes may use the
+  // same id, and is never an action of this page: an internal destination from elsewhere is
+  // no link at all.
+  def activity(activity: Activity, origin: Optional[Origin] = Unset): Html of Flow =
+    val id: Text = origin.lay(t"pyro-activity-${activity.id}") { origin => t"pyro-activity-${origin.key}-${activity.id}" }
     val title: Html of Flow = Div(`class` = cls(t"pyro-activity-title"))(phrase(activity.title))
     val state: Html of Flow = Div(`class` = cls(t"pyro-activity-state"))(phrase(activity.state))
-    val body: Html of Flow = Html.Fragment(title, gauge(activity.status, Unset), state)
+
+    val label: Html of Flow = origin.lay(Html.Fragment[Flow]()): origin =>
+      Div(`class` = cls(t"pyro-activity-origin"))(originLabel(origin))
+
+    val body: Html of Flow = Html.Fragment(label, title, gauge(activity.status, Unset), state)
+    val remote: List[Name[CssClass]] = if origin.present then List(cls(t"pyro-activity-remote")) else Nil
+    val classes: List[Name[CssClass]] = cls(t"pyro-activity") :: remote
 
     activity.destination match
       case Inline.Destination.External(url) =>
-        A(href = url, id = id, `class` = cls(t"pyro-activity"))(body)
+        A(href = url, id = id, `class` = classes)(body)
 
-      case Inline.Destination.Internal(action) =>
-        A(href = t"#", id = id, `class` = List(cls(t"pyro-activity"), cls(t"pyro-action")), `data-action` = action.id)(body)
+      case Inline.Destination.Internal(action) if origin.absent =>
+        A(href = t"#", id = id, `class` = classes :+ cls(t"pyro-action"), `data-action` = action.id)(body)
 
       case _ =>
-        Div(id = id, `class` = cls(t"pyro-activity"))(body)
+        Div(id = id, `class` = classes)(body)
 
-  def activities(activities: List[Activity]): Html of Flow = Html.Fragment(activities.map(activity)*)
+  private def originLabel(origin: Origin): Text =
+    if origin.local then origin.tool else t"${origin.tool} · ${origin.machine}"
+
+  def activities(activities: List[Activity]): Html of Flow = Html.Fragment(activities.map(activity(_))*)
+
+  def remoteActivities(activities: List[(Origin, Activity)]): Html of Flow =
+    Html.Fragment(activities.map { (origin, activity) => this.activity(activity, origin) }*)
+
+  // The tools running, one item each: a link to its web front-end where it serves one, a
+  // muted name otherwise; this process's own marked as current. A link to a tool of this
+  // machine says so, for the script to re-address when the page is viewed from elsewhere.
+  def toolLinks(origins: List[Origin]): Html of Flow =
+    val items: List[Html of Flow] = origins.map(toolLink(_))
+    Html.Fragment[Flow](items*)
+
+  private def toolLink(origin: Origin): Html of Flow =
+    val current: List[Name[CssClass]] = if origin.self then List(cls(t"pyro-menubar-current")) else Nil
+
+    origin.url match
+      case url: Text =>
+        A(href = url, `class` = cls(t"pyro-menubar-tool") :: current, `data-local` = if origin.local then t"true" else t"false")(originLabel(origin))
+
+      case _ =>
+        Span(`class` = cls(t"pyro-menubar-tool") :: cls(t"pyro-menubar-unlinked") :: current)(originLabel(origin))
 
   private def standingGlyph(standing: Standing): Text = standing match
     case Standing.Pending   => t"·"

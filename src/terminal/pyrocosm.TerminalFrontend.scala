@@ -105,6 +105,7 @@ extends Frontend:
 
   def run(interface: Interface)(handle: Event => Unit): Unit =
     val renderer = TerminalRenderer(theme)
+    Presence.shared.attach(interface)
 
     val shortcuts: Map[Keypress, Action] =
       interface.shortcuts.map { (shortcut: Shortcut) => shortcut.keypress -> shortcut.action }.to[Map]
@@ -405,6 +406,7 @@ extends Frontend:
 
             cycle()
       finally
+        Presence.shared.detach(interface)
         interface.cells.each(_.unbindWakes())
         synchronized { spool = Unset }
 

@@ -141,6 +141,9 @@ object WebStyles:
         + css".pyro-menubar a { display: inline-flex; align-items: center; color: var(--pyro-on-menubar); text-decoration: none; font-family: var(--pyro-font-label); font-variation-settings: 'MONO' 0; font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 2px solid transparent }"
         + css".pyro-menubar a:hover { color: var(--pyro-on-menubar); border-bottom-color: var(--pyro-button) }"
         + css".pyro-wordmark { font-weight: 700 } .pyro-menubar-link { margin-left: auto }"
+        + css".pyro-menubar-tools { display: flex; align-items: stretch; gap: var(--pyro-space-4); overflow-x: auto }"
+        + css".pyro-menubar-tools span.pyro-menubar-tool { display: inline-flex; align-items: center; color: var(--pyro-on-menubar); opacity: 0.55; font-family: var(--pyro-font-label); font-variation-settings: 'MONO' 0; font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap }"
+        + css".pyro-menubar a.pyro-menubar-tool { white-space: nowrap } .pyro-menubar a.pyro-menubar-current { border-bottom-color: var(--pyro-button) }"
 
     // The masthead spans the page as a band; its rows are centred to the wide measure.
     val masthead: Css =
@@ -154,6 +157,8 @@ object WebStyles:
         + css"a.pyro-activity:hover { border-color: var(--pyro-tone-accent); color: var(--pyro-fg) }"
         + css".pyro-activity-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }"
         + css".pyro-activity-state { color: var(--pyro-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis } .pyro-activity-state:empty { display: none }"
+        + css".pyro-activity-remote { border-style: dashed }"
+        + css".pyro-activity-origin { font-family: var(--pyro-font-label); font-variation-settings: 'MONO' 0; font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }"
         + css".pyro-activity .pyro-gauge { margin: 0 } .pyro-activity .pyro-progress { width: 100% }"
         + css".pyro-activity .pyro-steps { display: flex; flex-wrap: wrap; gap: var(--pyro-space-1) var(--pyro-space-3); margin: 0; padding: 0 } .pyro-activity .pyro-steps li { padding: 0 }"
         + css".pyro-connection { display: inline-flex; align-items: center; gap: var(--pyro-space-2); margin-left: auto; padding: 0.3rem 0.75rem; border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); font-size: var(--pyro-text-small); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); background-color: var(--pyro-bg) }"
