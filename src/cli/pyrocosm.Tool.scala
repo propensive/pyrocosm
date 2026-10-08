@@ -402,8 +402,11 @@ object Tool:
 
     // The cached manifest, `$XDG_CACHE_HOME/<name>/upgrade.tsv`, so that a daemon restarted
     // within a day of the last check does not fetch again.
+    private def cacheDirectory(using Environment): Optional[Path on Linux] =
+      safely(Xdg.cacheHome[Path on Linux] / Name[Linux](tool.name))
+
     private def manifestCache(using Environment): Optional[Path on Linux] =
-      safely(Xdg.cacheHome[Path on Linux] / Name[Linux](tool.name) / Name[Linux](t"upgrade.tsv"))
+      tool.cacheDirectory.let { directory => safely(directory / Name[Linux](t"upgrade.tsv")) }
 
     // The newest release, from the cache if it is fresh enough and `force` is not set, and
     // otherwise fetched (and cached). Whatever is learned is remembered for `available`; `Unset`
@@ -421,8 +424,11 @@ object Tool:
       val release: Optional[Release] = cached.or:
         safely(Release.manifestUrl(tool.name).as[HttpUrl].fetch().receive[Text]).let: text =>
           Release.parse(text).also:
-            cache.let: file =>
-              safely(file.write(text))
+            // The directory may not exist yet, and a write into a missing directory fails.
+            tool.cacheDirectory.let: directory =>
+              safely:
+                if !directory.existent() then directory.create[Directory](CreateFlag.Parents)
+                (directory / Name[Linux](t"upgrade.tsv")).write(text)
 
       release.let: release =>
         Tool.releases.put(tool.name, release)
