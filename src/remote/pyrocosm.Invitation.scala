@@ -125,6 +125,9 @@ enum Admission:
   case Refused
 
 object Admissions:
+  // The tool whose grants admit to every tool.
+  val swarm: Text = t"pyrocosm"
+
   def apply()(using Environment): Admissions = new Admissions(Peer.directory)
 
   private[pyrocosm] def restrict(path: Path on Linux): Unit =
@@ -175,14 +178,18 @@ class Admissions(directory: Optional[Path on Linux]):
   // Decides what a caller presenting `presented`, hostname `hostname`, is to `tool` on a machine
   // whose own token is `own`. An invitation's token is consumed here, by deleting its record —
   // which only one caller can do, however many arrive at once, from however many tools — and a
-  // token is granted in its place.
+  // token is granted in its place. A token granted to the swarm (`pyrocosm`) admits its bearer
+  // to every tool: joining a machine's swarm is joining it for all of them.
   def admit(presented: Text, own: Text, tool: Text, hostname: Text): Admission =
     if presented == own then Admission.Owner else
       val peer: Optional[Tel] = file(granted, presented).let(read(_))
 
       peer match
         case peer: Tel =>
-          if field(peer, t"tool") == tool then Admission.Peer(field(peer, t"name").or(hostname))
+          val admitted: Optional[Text] = field(peer, t"tool")
+
+          if admitted == tool || admitted == Admissions.swarm
+          then Admission.Peer(field(peer, t"name").or(hostname))
           else Admission.Refused
 
         case _ =>
