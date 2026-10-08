@@ -79,8 +79,10 @@ import textSanitizers.skipSanitizer
 case class Tool
   ( name: Text, prose: Text, web: Optional[Tool.Web] = Unset, services: List[Tool.Service] = Nil ):
 
-  // Every daemon-lifetime service the tool offers: its web front-end, if any, and the rest.
-  def allServices: List[Tool.Service] = web.lay(services) { web => web :: services }
+  // Every daemon-lifetime service the tool offers: its web front-end, if any, the rest, and the
+  // swarm's own two, which every tool has.
+  def allServices: List[Tool.Service] =
+    web.lay(services) { web => web :: services } + Tool.swarmServices(this)
 
 object Tool:
   // A service the daemon runs for as long as it lives, once a configuration asks for it: a bare
@@ -110,6 +112,9 @@ object Tool:
   object InstallFailed extends Status(8, t"the tab-completions or manpage could not be installed")
   object NoUpgrade extends Status(9, t"no newer release is available")
   object UpgradeFailed extends Status(10, t"the newer release could not be downloaded or staged")
+  object UsageError extends Status(2, t"the command line was not understood")
+  object NoMachine extends Status(11, t"no machine of that name is configured")
+  object RemoteFailed extends Status(12, t"the connection to another machine could not be made")
 
   // The standard subcommands and flags, in an object so that `Install` does not shadow
   // `exoskeleton.Install`, the error type, for the rest of this one.
@@ -125,6 +130,41 @@ object Tool:
       Subcommand("upgrade", "replace this executable with the newest release", hidden = true)
     val Version = Flag[Unit]("version", false, List('v'), "show the version")
     val Force = Flag[Unit]("force", false, List('f'), "overwrite an installed manpage")
+
+    // The swarm every tool's daemon is a node of (`Swarm`), and the subcommands of `swarm`.
+    val Swarm = Subcommand("swarm", "see the other Pyrocosm tools running, here and on other machines")
+    val Invite = Subcommand("invite", "invite another machine to join this one's swarm, in one word")
+    val Join = Subcommand("join", "accept another machine's invitation, and stay linked to it")
+    val Listen = Subcommand("listen", "accept other machines, as this machine's gateway")
+    val Connect = Subcommand("connect", "keep a link to a configured machine open")
+    val Ping = Subcommand("ping", "send a message to a configured machine and await its answer")
+    val Identity = Subcommand("identity", "show this machine's identity, for another to declare")
+    val Peers = Subcommand("peers", "list the machines this one has admitted by invitation")
+    val Revoke = Subcommand("revoke", "refuse a machine this one admitted by invitation")
+    val Log = Subcommand("log", "show what this daemon's node has been doing")
+
+    val Disconnect =
+      Subcommand("disconnect", "stop keeping a link to a machine, or stop accepting other machines")
+
+    // How long an invitation may be accepted for: `--expires 30m`, `2h`, `1d`; an hour unless
+    // said otherwise.
+    val Expires =
+      Setting[Text](t"inviteExpiry", t"how long the invitation may be accepted for, as 30m, 2h or 1d")
+
+    val Follow =
+      Flag[Unit]("follow", false, proscenium.List('f'), "keep showing events until Ctrl+C")
+
+    // The least a logged event must matter for `swarm log` to show it.
+    val Threshold =
+      Setting[Text](t"logLevel", t"show only events at this level or above: fine, info, warn or fail")
+
+    // The port this machine accepts other machines on: `--port` or `-p` on the command line,
+    // and `swarm-port` in a config file, since plain `port` is the web front-end's.
+    val SwarmPort: Setting of Text =
+      val description: Text = t"the port on which to accept other machines"
+
+      new Setting(t"swarmPort", Flag[Text](t"port", false, List('p'), description), Unset):
+        type Topic = Text
 
   private case class Cached(modified: Long, size: Long, config: Optional[Tel])
 
@@ -195,6 +235,85 @@ object Tool:
   // declared union, true for every handle, so every flag would read as present. Nor named
   // `present`, which an inline body resolves to that same extension applied as a function.
   private def flagPresent(flag: Flag of Unit)(using Cli, Interpreter): Boolean = flag().present
+
+  // Reads (and so registers) a setting, for the same reason.
+  private def settingValue(setting: Setting of Text)(using Cli, Interpreter, Configurator)
+  :   Optional[Text] =
+    setting()
+
+  // The ports of the services launched in this daemon, by tool name and keyword, for the
+  // swarm to advertise.
+  private val ports: juc.ConcurrentHashMap[Text, Int] = juc.ConcurrentHashMap()
+
+  // What this daemon serves, as the swarm advertises it.
+  private def offered(tool: Tool): List[pyrocosm.Service] =
+    val prefix: Text = t"${tool.name}/"
+    val iterator = ports.entrySet.nn.iterator.nn
+    var found: scala.List[pyrocosm.Service] = scala.Nil
+
+    while iterator.hasNext do
+      val entry = iterator.next.nn
+      val key: Text = entry.getKey.nn
+      if key.starts(prefix) then found = pyrocosm.Service(key.skip(prefix.length), entry.getValue.nn) :: found
+
+    List(found.reverse*)
+
+  // The two services every tool's daemon offers through its node: being the machine's gateway
+  // (`swarm` in a config, on `swarm-port`, with `swarm-token` as the secret callers present),
+  // and keeping links to the machines a `connect` line names.
+  private def gatewayService(tool: Tool): Service = new Service:
+    def keyword: Text = t"swarm"
+    def portKeyword: Text = t"swarmPort"
+    def port: Int = Wire.port
+
+    @scala.caps.unsafe.untrackedCaptures
+    
+    private var stopped: Optional[Promise[Unit]] = Unset
+
+    def serve(number: Int, settings: Text => Optional[Text])(using Monitor, Probate): Unit =
+      val waiting: Promise[Unit] = Promise()
+      stopped = waiting
+      val token: Optional[Text] = settings(t"swarmToken").let(Machine.secret(_))
+      Swarm.of(tool.name).let(_.wantGateway(number, token))
+      safely(waiting.attend())
+
+    def stop(): Unit =
+      Swarm.of(tool.name).let(_.stopGateway())
+      stopped.let(_.offer(()))
+
+  private[pyrocosm] def swarmServices(tool: Tool): List[Service] =
+    List(gatewayService(tool), connectService(tool))
+
+  private def connectService(tool: Tool): Service = new Service:
+    def keyword: Text = t"connect"
+    def portKeyword: Text = t"connectPort"
+    def port: Int = 0
+
+    @scala.caps.unsafe.untrackedCaptures
+    
+    private var stopped: Optional[Promise[Unit]] = Unset
+
+    // A service has no invocation, and so no project: the machines are those the user's own
+    // configuration and the shared file declare.
+    def serve(number: Int, settings: Text => Optional[Text])(using Monitor, Probate): Unit =
+      import environments.javaBaseEnvironment
+      val known: List[Machine] = Machine.resolve(List(tool.userConfig, Machine.shared))
+      val names: List[Text] = settings(t"connect").lay(Nil: List[Text])(_.cut(t":"))
+      val waiting: Promise[Unit] = Promise()
+      stopped = waiting
+      Swarm.of(tool.name).let: swarm =>
+        known.filter { machine => names.has(machine.name) }.each: machine => swarm.connect(machine)
+      safely(waiting.attend())
+
+    def stop(): Unit =
+      Swarm.of(tool.name).let(_.disconnect())
+      stopped.let(_.offer(()))
+
+  // Offers the configured machines' names at the argument after a swarm subcommand.
+  private def suggestMachines(rest: List[Argument], known: List[Machine])(using Cli): Unit =
+    rest.prim.let: argument =>
+      val names: List[Suggestion] = known.map: machine => Suggestion(machine.name)
+      summon[Cli].suggest(argument, names, t"", t"")
 
   private def uptime(startTime: Long): Text =
     val seconds: Long = (java.lang.System.currentTimeMillis() - startTime).max(0L)/1000
@@ -319,6 +438,60 @@ object Tool:
             case Tool.ui.Quit() :: _ =>
               execute(tool.quit())
 
+            // The `swarm` subcommands: each arm reads what it needs through the non-inline
+            // helpers and hands the work to `Swarming`, so that the inlined dispatch stays small.
+            case Tool.ui.Swarm() :: Tool.ui.Invite() :: _ =>
+              val port: Int = Tool.settingValue(Tool.ui.SwarmPort).let { text => safely(text.as[Int]) }.or(Wire.port)
+              val token: Optional[Text] = configurator.read(t"swarmToken")
+              val expires: Optional[Text] = Tool.settingValue(Tool.ui.Expires)
+              execute(tool.swarmInvite(port, token, expires))
+
+            case Tool.ui.Swarm() :: Tool.ui.Join() :: rest =>
+              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              execute(tool.swarmJoin(words))
+
+            case Tool.ui.Swarm() :: Tool.ui.Listen() :: _ =>
+              val port: Int = Tool.settingValue(Tool.ui.SwarmPort).let { text => safely(text.as[Int]) }.or(Wire.port)
+              val token: Optional[Text] = configurator.read(t"swarmToken")
+              execute(tool.swarmListen(port, token))
+
+            case Tool.ui.Swarm() :: Tool.ui.Connect() :: rest =>
+              val known: List[Machine] = Swarming.machines(tool, directory)
+              Tool.suggestMachines(rest, known)
+              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              execute(tool.swarmConnect(words, known))
+
+            case Tool.ui.Swarm() :: Tool.ui.Disconnect() :: rest =>
+              val known: List[Machine] = Swarming.machines(tool, directory)
+              Tool.suggestMachines(rest, known)
+              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              execute(tool.swarmDisconnect(words))
+
+            case Tool.ui.Swarm() :: Tool.ui.Ping() :: rest =>
+              val known: List[Machine] = Swarming.machines(tool, directory)
+              Tool.suggestMachines(rest, known)
+              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              execute(tool.swarmPing(words, known))
+
+            case Tool.ui.Swarm() :: Tool.ui.Identity() :: _ =>
+              val port: Int = Tool.settingValue(Tool.ui.SwarmPort).let { text => safely(text.as[Int]) }.or(Wire.port)
+              execute(tool.swarmIdentity(port))
+
+            case Tool.ui.Swarm() :: Tool.ui.Peers() :: _ =>
+              execute(tool.swarmPeers())
+
+            case Tool.ui.Swarm() :: Tool.ui.Revoke() :: rest =>
+              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              execute(tool.swarmRevoke(words))
+
+            case Tool.ui.Swarm() :: Tool.ui.Log() :: _ =>
+              val follow: Boolean = Tool.flagPresent(Tool.ui.Follow)
+              val level: Level = Swarming.level(Tool.settingValue(Tool.ui.Threshold))
+              execute(tool.swarmLog(follow, level))
+
+            case Tool.ui.Swarm() :: _ =>
+              execute(tool.swarmStatus())
+
             case _ =>
               val upgrade: Subcommand = tool.upgradeCommand
 
@@ -355,6 +528,10 @@ object Tool:
         case _: Invocation =>
           tool.check()
 
+          // The daemon's node on the swarm, started with the first invocation: it advertises
+          // whatever services this daemon has launched.
+          Swarm.start(tool.name, tool.version, () => Tool.offered(tool))
+
           tool.allServices.each: (service: Service) =>
             val wanted: Boolean = configurator.read(service.keyword).present
             val key: Text = Text(s"${tool.name.s}/${service.keyword.s}")
@@ -366,6 +543,7 @@ object Tool:
                 . or(service.port)
 
               val settings: Text => Optional[Text] = configurator.read(_)
+              Tool.ports.put(key, port)
               async(service.serve(port, settings))
 
         case _ =>
@@ -381,7 +559,10 @@ object Tool:
       val settings: Text => Optional[Text] = configurator.read(_)
 
       if Tool.serving.putIfAbsent(key, service) == null then
-        try service.serve(port, settings) finally Tool.serving.remove(key)
+        Tool.ports.put(key, port)
+        try service.serve(port, settings) finally
+          Tool.serving.remove(key)
+          Tool.ports.remove(key)
 
     // Starts the daily check for a newer release, once per daemon, for a released build whose
     // configuration does not say `no-upgrade-check`. The task runs under the daemon's monitor,
@@ -596,16 +777,131 @@ object Tool:
 
           Exit.Ok
 
+    // The `swarm` subcommands, each a thin wrapper around `Swarming` with the invocation's
+    // standard streams in scope.
+    private def swarmInvite(port: Int, token: Optional[Text], expires: Optional[Text])
+       (using invocation: Invocation, monitor: Monitor, environment: Environment)
+    :   Swarming.Swarmed =
+
+      given Stdio = invocation.stdio
+      val lifetime: Optional[Duration] = expires.let(Swarming.lifetime(_))
+
+      if expires.present && lifetime.absent then
+        Out.println(t"an expiry is a whole number and a unit: 30m, 2h, 1d")
+        Tool.UsageError
+      else Swarming.invite(tool, port, token, lifetime.or(3600.0*Second))
+
+    private def swarmJoin(words: List[Text])
+       (using invocation: Invocation, monitor: Monitor, environment: Environment)
+    :   Swarming.Swarmed =
+
+      given Stdio = invocation.stdio
+
+      words match
+        case word :: name :: _ => Swarming.join(tool, word, name)
+        case word :: _         => Swarming.join(tool, word, Unset)
+        case _                 =>
+          Out.println(t"Usage: ${tool.name} swarm join <invitation> [name]")
+          Tool.UsageError
+
+    private def swarmListen(port: Int, token: Optional[Text])
+       (using invocation: Invocation, monitor: Monitor, environment: Environment)
+    :   Swarming.Swarmed =
+
+      given Stdio = invocation.stdio
+      Swarming.listen(tool, port, token)
+
+    private def swarmConnect(words: List[Text], known: List[Machine])
+       (using invocation: Invocation, monitor: Monitor)
+    :   Swarming.Connected =
+
+      given Stdio = invocation.stdio
+
+      words match
+        case name :: _ =>
+          known.seek(_.name == name) match
+            case machine: Machine => Swarming.connect(tool, machine)
+            case _                =>
+              Out.println(t"no machine named $name is configured")
+              Tool.NoMachine
+
+        case _ =>
+          Out.println(t"Usage: ${tool.name} swarm connect <machine>")
+          Tool.UsageError
+
+    private def swarmDisconnect(words: List[Text])(using invocation: Invocation)
+    :   Swarming.Connected =
+
+      given Stdio = invocation.stdio
+
+      words match
+        case name :: _ => Swarming.disconnect(tool, name)
+        case _         => Swarming.deafen(tool)
+
+    private def swarmPing(words: List[Text], known: List[Machine])
+       (using invocation: Invocation, monitor: Monitor)
+    :   Exit | Tool.RemoteFailed.type | Tool.NoMachine.type | Tool.UsageError.type =
+
+      given Stdio = invocation.stdio
+
+      words match
+        case name :: note =>
+          known.seek(_.name == name) match
+            case machine: Machine => Swarming.ping(tool, machine, note.join(t" "))
+            case _                =>
+              Out.println(t"no machine named $name is configured")
+              Tool.NoMachine
+
+        case _ =>
+          Out.println(t"Usage: ${tool.name} swarm ping <machine> [note]")
+          Tool.UsageError
+
+    private def swarmIdentity(port: Int)(using invocation: Invocation, environment: Environment)
+    :   Swarming.Pinged =
+
+      given Stdio = invocation.stdio
+      Swarming.identity(tool, port)
+
+    private def swarmPeers()(using invocation: Invocation, environment: Environment)
+    :   Swarming.Swarmed =
+
+      given Stdio = invocation.stdio
+      Swarming.peers(tool)
+
+    private def swarmRevoke(words: List[Text])(using invocation: Invocation, environment: Environment)
+    :   Swarming.Swarmed =
+
+      given Stdio = invocation.stdio
+
+      words match
+        case name :: _ => Swarming.revoke(tool, name)
+        case _         =>
+          Out.println(t"Usage: ${tool.name} swarm revoke <name>")
+          Tool.UsageError
+
+    private def swarmLog(follow: Boolean, level: Level)
+       (using invocation: Invocation, resident: Resident, monitor: Monitor)
+    :   Exit =
+
+      given Stdio = invocation.stdio
+      Swarming.log(follow, level)
+
+    private def swarmStatus()(using invocation: Invocation): Swarming.Connected =
+      given Stdio = invocation.stdio
+      Swarming.status(tool)
+
     // Stops the front-end this daemon serves, if any, then the daemon itself. The shutdown is
     // deferred until this invocation's exit status has been delivered, so the client returns
     // cleanly.
-    private def quit()(using invocation: Invocation, service: Resident): Exit =
+    private def quit()(using invocation: Invocation, service: Resident, monitor: Monitor): Exit =
       given Stdio = invocation.stdio
 
       tool.allServices.each: (service: Service) =>
         val key: Text = Text(s"${tool.name.s}/${service.keyword.s}")
         Optional(Tool.serving.remove(key)).let(_.stop())
+        Tool.ports.remove(key)
 
+      Swarm.stop(tool.name)
       Out.println(t"${tool.name}: stopping the daemon")
       service.shutdown()
       Exit.Ok
