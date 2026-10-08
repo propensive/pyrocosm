@@ -29,6 +29,18 @@ static: gallery
 serve: gallery
 	./gallery serve
 
+# Two gallery daemons on one machine, each the other's neighbour on the swarm: the second is
+# the same executable under another name, so that it has a daemon of its own. The first serves
+# in the background on 8081, the second in the foreground on 8082; `make serve-pair-stop`
+# ends both.
+serve-pair: gallery
+	cp gallery dist/gallery2
+	./gallery serve 8081 > /dev/null 2>&1 &
+	dist/gallery2 serve 8082
+
+serve-pair-stop:
+	./gallery quit; dist/gallery2 quit
+
 # Publish the libraries to the local ~/.ivy2, for fume/flame to build against a version that is
 # not yet released.
 publishLocal:

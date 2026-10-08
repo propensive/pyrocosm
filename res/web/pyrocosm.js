@@ -484,8 +484,17 @@
   }
 
   // Actionable elements (rows, items, links, buttons) press their id, or the action they name;
-  // fields edit and submit.
+  // fields edit and submit. A link to a tool of the server's machine names `localhost`, which
+  // is right only when the page is viewed there: elsewhere it takes the page's own host.
   function wire(root) {
+    root.querySelectorAll("a[data-local='true']").forEach(function (link) {
+      if (link.dataset.pyroWired) return;
+      try {
+        var url = new URL(link.getAttribute("href"), location.href);
+        if (url.hostname === "localhost" && location.hostname !== "localhost") { url.hostname = location.hostname; link.setAttribute("href", url.toString()); }
+      } catch (error) { console.error(error); }
+    });
+
     root.querySelectorAll(".pyro-action, button.pyro-button").forEach(function (element) {
       if (element.dataset.pyroWired) return;
       element.dataset.pyroWired = "1";
