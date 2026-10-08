@@ -28,14 +28,18 @@ import soundness.*
 // chords and leaves the rest to the browser, and so a help panel can list them.
 case class Shortcut(keypress: Keypress, action: Action, description: List[Inline] = Nil)
 
-// The whole of what an application shows: its panels, its global controls, its shortcuts. A
+// The whole of what an application shows: its panels, its global controls, its shortcuts, and
+// the activities — the concurrent work it keeps in view, which come and go while it runs. A
 // description, not a layout — see `Panel`.
 case class Interface
-  ( title:     List[Inline],
-    panels:    List[Panel],
-    controls:  List[Control]  = Nil,
-    shortcuts: List[Shortcut] = Nil,
-    hints:     Hints          = Hints.none ):
+  ( title:      List[Inline],
+    panels:     List[Panel],
+    controls:   List[Control]        = Nil,
+    shortcuts:  List[Shortcut]       = Nil,
+    hints:      Hints                = Hints.none ):
+
+  // The work in flight, which the application assigns as it starts and finishes.
+  val activities: Live[List[Activity]] = Live(Nil)
 
   // Every `Live` cell reachable from this interface, for a frontend to bind its wake to.
   def cells: List[Live[?]] =
@@ -46,4 +50,4 @@ case class Interface
       case Control.Toggle(_, _, state)            => List(state)
 
     panels.bind { (panel: Panel) => panel.content :: panel.controls.bind(ofControl) }
-    + controls.bind(ofControl)
+    + controls.bind(ofControl) + List(activities)

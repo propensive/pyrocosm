@@ -246,8 +246,9 @@ tags:
             controls = List(Control.Button(Inline.text(t"Run"), run)) )
 
       val verbose = Control.Toggle(Toggle(), Inline.text(t"Verbose"))
-      Interface(Inline.text(t"Gallery"), List(panel), List(verbose)).cells.size
-    . assert(_ == 3)
+      val interface = Interface(Inline.text(t"Gallery"), List(panel), List(verbose))
+      (interface.cells.size, interface.cells.has(interface.activities))
+    . assert(_ == (4, true))
 
     val tree: Node =
       Node.Branch(List(Node.Leaf(t"a"), Node.Branch(List(Node.Leaf(t"b"), Node.Leaf(t"c")))))
@@ -627,8 +628,7 @@ tags:
             ( panel(t"nav", Panel.Role.Navigation, Panel.Priority.Important),
               panel(t"main", Panel.Role.Primary, Panel.Priority.Essential),
               panel(t"detail", Panel.Role.Detail, Panel.Priority.Peripheral),
-              panel(t"log", Panel.Role.Log, Panel.Priority.Important),
-              panel(t"status", Panel.Role.Status, Panel.Priority.Essential) ) )
+              panel(t"log", Panel.Role.Log, Panel.Priority.Important) ) )
 
     test(m"a narrow terminal drops peripheral panels and keeps essential ones"):
       val plan = TerminalArrangement.plan(arranged, 60, 20)
@@ -694,8 +694,8 @@ tags:
 
     test(m"the web arrangement maps every role"):
       val plan = WebArrangement.plan(arranged)
-      (plan.navigation.map(_.id.label), plan.primary.map(_.id.label), plan.detail.map(_.id.label), plan.status.map(_.id.label))
-    . assert(_ == (List(t"nav"), List(t"main"), List(t"detail"), List(t"status")))
+      (plan.navigation.map(_.id.label), plan.primary.map(_.id.label), plan.detail.map(_.id.label), plan.log.map(_.id.label))
+    . assert(_ == (List(t"nav"), List(t"main"), List(t"detail"), List(t"log")))
 
     val page = PyrocosmPage(arranged, html, WebTheme.default).markup.show
 
@@ -733,6 +733,40 @@ tags:
     test(m"an interface without global controls has no toolbar"):
       page.contains(t"pyro-toolbar")
     . assert(_ == false)
+
+    test(m"a masthead without activities still holds their empty holder, before the main matter"):
+      val holder = page.s.indexOf("<div id=\"pyro-activities\" class=\"pyro-activities\"></div>")
+      (holder >= 0, holder < page.s.indexOf("<main"))
+    . assert(_ == (true, true))
+
+    val open = Action(t"run-a")
+
+    val active: Interface =
+      val interface = Interface(Inline.text(t"Test"), arranged.panels)
+      interface.activities() = List
+        ( Activity(t"a", Inline.text(t"alpha"), Status.Fraction(0.25), Inline.Destination.Internal(open), List(Inline.Toned(Tone.Success, Inline.text(t"green so far")))),
+          Activity(t"b", Inline.text(t"beta"), Status.Reckoning(3, 10), Inline.Destination.External(t"https://example.com/b")),
+          Activity(t"c", Inline.text(t"gamma"), Status.Indeterminate()) )
+      interface
+
+    val activePage = PyrocosmPage(active, html, WebTheme.default).markup.show
+
+    test(m"an activity with an action is a card which presses it, under an id of its own"):
+      ( activePage.contains(t"""<a href="#" id="pyro-activity-a" class="pyro-activity pyro-action" data-action="${open.id}">"""),
+        activePage.contains(t"""<div class="pyro-activity-title">alpha</div>"""),
+        activePage.contains(t"""<progress class="pyro-progress" value="250" max="1000">"""),
+        activePage.contains(t"""<div class="pyro-activity-state"><span class="pyro-tone-success">green so far</span></div>""") )
+    . assert(_ == (true, true, true, true))
+
+    test(m"an activity with a URL is a plain link, and one without a destination is no link"):
+      ( activePage.contains(t"""<a href="https://example.com/b" id="pyro-activity-b" class="pyro-activity">"""),
+        activePage.contains(t"""<div id="pyro-activity-c" class="pyro-activity">""") )
+    . assert(_ == (true, true))
+
+    test(m"the activities' cards are rendered as one fragment, which a patch replaces"):
+      val fragment = html.activities(active.activities()).show
+      (fragment.starts(t"""<a href="#" id="pyro-activity-a""""), fragment.contains(t"""id="pyro-activity-b""""), fragment.ends(t"</div>"))
+    . assert(_ == (true, true, true))
 
     test(m"global controls are a toolbar of commands in the masthead"):
       val append = Action(t"append")
@@ -938,6 +972,10 @@ tags:
 
     test(m"the stylesheet adapts to a narrow viewport"):
       stylesheet.contains(t"@media (max-width: 64rem)") && stylesheet.contains(t"@media (max-width: 40rem)")
+    . assert(_ == true)
+
+    test(m"the stylesheet lays out an activity's card and hides an empty holder"):
+      stylesheet.contains(t".pyro-activity-title") && stylesheet.contains(t".pyro-activities:empty")
     . assert(_ == true)
 
     test(m"the stylesheet declares a trace's colours and folds its source column on a narrow viewport"):

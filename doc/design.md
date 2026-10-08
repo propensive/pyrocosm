@@ -97,8 +97,10 @@ stack trace and its causes, as the model's own frames: `Block.Trace.of` converts
 
 ### Interface
 
-An `Interface` is a title, a list of `Panel`s, global `Control`s, declared `Shortcut`s and
-`Hints`. A `Panel` has a `Role` (Primary, Navigation, Detail, Inspector, Status, Log, Prompt), a
+An `Interface` is a title, a list of `Panel`s, global `Control`s, declared `Shortcut`s,
+`Hints`, and a `Live` list of `Activity`s: the work in flight (a test run, a build, a session),
+each a title, a `Status`, a toned state phrase and, when it has a view of its own, a
+`Destination`. A `Panel` has a `Role` (Primary, Navigation, Detail, Inspector, Log, Prompt), a
 `Priority` (Essential, Important, Peripheral: what gives way first), an optional `Relation`
 (`DetailOf(panel)`, `Grouped(group)`), `Live` content, its own controls and hints. Nothing says
 where a panel goes.
@@ -154,7 +156,8 @@ for trees and graphs, ultimatum gauges, harlequin's teletype for tokens, Ergo te
 The **arrangement solver** chooses from a small family of pane arrangements by role, priority,
 `Minimum` hints and the current columns and rows: `Navigation` to a verso menu strip, `Primary`
 to the main pane, `Detail`/`Inspector` to a recto strip when width allows (otherwise below,
-otherwise behind a key), `Status` to a one-row bar, `Log`/`Prompt` to the bottom. `Peripheral`
+otherwise behind a key), `Log`/`Prompt` to the bottom, and the interface's activities to a
+band of captioned gauges beneath them, which has no rows while there are none. `Peripheral`
 panels are dropped first as space shrinks, then `Important`; `Essential` always shows. Panels
 become `Pane.Widget`s whose `Fixture` re-renders their `Live` blocks; `Form.run` supplies the
 event loop, Tab focus ring, throttled repaint, and inline/fullscreen occupancy.
@@ -164,8 +167,8 @@ event loop, Tab focus ring, throttled repaint, and inline/fullscreen occupancy.
 `Block → Html of Flow` with semantic HTML and a checked stylesheet; web-native enrichment
 follows from semantics alone (sortable tables, hover precision on amounts, disclosure, toasts
 for live notices). The **arrangement solver** maps roles onto graffiti's page features:
-`title` + `Status` → `Masthead`; `Navigation` → `VersoPanel`; `Detail`/`Inspector` →
-`FoldableRectoPanel`; `Primary` → `Mainstay`, or `Dashboard` cards when there are several;
+`title` + the activities, as linked cards, → `Masthead`; `Navigation` → `VersoPanel`;
+`Detail`/`Inspector` → `FoldableRectoPanel`; `Primary` → `Mainstay`, or `Dashboard` cards when there are several;
 controls → a sticky toolbar; `Log` → a following card; `Prompt` → a docked bar. What the
 terminal *drops* at narrow widths the web *collapses*.
 
@@ -337,7 +340,7 @@ that commit — and `-dirty` if the working tree has uncommitted changes.
   per cent of a core, however long it runs.
 - **M3 Web renderer** (done, first cut): `HtmlRenderer` renders every node to semantic HTML
   carrying `pyro-*` classes and handle ids; `WebArrangement.plan` maps roles to page features
-  and `PyrocosmPage` is the graffiti page (masthead with title, status panels and a connection
+  and `PyrocosmPage` is the graffiti page (masthead with title, activity cards and a connection
   pill; global controls as the top menu; navigation verso; detail recto; primary, log and
   prompt as cards); `WebStyles` is the one stylesheet and `WebTheme` the palette; `WebFrontend`
   serves the page and script, binds every `Live` cell to a patch broadcast over one WebSocket
