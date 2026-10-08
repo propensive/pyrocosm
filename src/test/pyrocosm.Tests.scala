@@ -54,9 +54,9 @@ given benchRecordable: Bench is Recordable = Recordable[Bench](t"bench")
 
 // The shape of the model's `Inline` and `Block`: a sum whose variants recurse through a `List` of
 // the sum itself. Both codecs must derive it in place, with no hand-anchored instance.
-enum Node derives CanEqual:
+enum Twig derives CanEqual:
   case Leaf(text: Text)
-  case Branch(children: List[Node])
+  case Branch(children: List[Twig])
 
 enum Direct derives CanEqual:
   case Leaf
@@ -80,7 +80,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
     val tally = Tally()
     val out = java.lang.System.out.nn
 
-    val status = invoke(t"", event => event match
+    def handle(event: TestEvent): Unit = event match
       case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
         tally.record(outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass")
         out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}".s)
@@ -95,8 +95,9 @@ object Tests extends Suite(m"Pyrocosm tests"):
       case TestEvent.RunTerminated(error, _, _) =>
         out.println(t"suite threw: ${error.components.map(_.message).join(t"; ")}".s)
 
-      case _ => ())
+      case _ => ()
 
+    val status = scala.List(Tests.invoke(t"", handle), SwarmTests.invoke(t"", handle)).max
     out.println(t"${tally.passed} passed, ${tally.failed} failed".s)
     java.lang.System.exit(status)
 
@@ -250,19 +251,19 @@ tags:
       (interface.cells.size, interface.cells.has(interface.activities))
     . assert(_ == (4, true))
 
-    val tree: Node =
-      Node.Branch(List(Node.Leaf(t"a"), Node.Branch(List(Node.Leaf(t"b"), Node.Leaf(t"c")))))
+    val tree: Twig =
+      Twig.Branch(List(Twig.Leaf(t"a"), Twig.Branch(List(Twig.Leaf(t"b"), Twig.Leaf(t"c")))))
 
     test(m"a sum recursive through a list round-trips as JSON"):
-      tree.in[Json].show.read[Json].as[Node]
+      tree.in[Json].show.read[Json].as[Twig]
     . assert(_ == tree)
 
     test(m"a sum recursive through a list round-trips as TEL"):
-      tree.in[Tel].as[Node]
+      tree.in[Tel].as[Twig]
     . assert(_ == tree)
 
     test(m"a sum recursive through a list round-trips as TEL text"):
-      tree.in[Tel].show.read[Tel].as[Node]
+      tree.in[Tel].show.read[Tel].as[Twig]
     . assert(_ == tree)
 
     val emptyToken: Block = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"x"))), Block.Line(List(Token.plain(t"")))))
@@ -946,7 +947,7 @@ tags:
     . assert(_ == trace)
 
     test(m"a sum without a Showable exhibits as its toString, not a record"):
-      val exhibit: Inline | Block = (Node.Leaf(t"a"): Node).exhibit
+      val exhibit: Inline | Block = (Twig.Leaf(t"a"): Twig).exhibit
       exhibit == Inline.Textual(t"Leaf(a)")
     . assert(_ == true)
 
