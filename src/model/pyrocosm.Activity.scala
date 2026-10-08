@@ -22,59 +22,26 @@
                                                                                                   */
 package pyrocosm
 
-import java.lang as jl
-import scala.caps
-
 import soundness.*
 
-// The board a run shows while it works: a primary panel of the run's content, following the
-// newest of it, and its progress as the interface's one activity. Fume shows a test run on
-// one, flair a lint run; the shape is the same, so it lives here, and each application only
-// decides what the blocks are.
-//
-// A frontend paints the board; the run feeds it, either by `refresh` — rebuilding the content
-// and the progress from its own model, at most ten times a second, so a chatty run cannot
-// saturate the terminal — or by `append`, for a run whose content only grows. `aborted`
-// reports that the user left the board before the run finished, which a run treats as a
-// request to stop.
-final class Board(val title: Text, throttle: Long = 100L):
-  val content: Live[List[Block]] = Live(Nil)
+// One unit of concurrent work kept in view while it lasts: a test run, a build, a session.
+// Every frontend shows it as a small card — its title, a gauge of its progress and a short
+// phrase about how it is going ("green so far", "2 failures"), carrying its own tone — which
+// is a link to the work's own view when it has a destination. It is gone once it leaves
+// `Interface.activities`.
+object Activity:
+  // The activity as a block, for a frontend with no card of its own: a gauge captioned by the
+  // title and the state.
+  def block(activity: Activity): Block =
+    val caption: List[Inline] =
+      if activity.state.nil then activity.title
+      else activity.title + List(Inline.Textual(t" ")) + activity.state
 
-  @caps.unsafe.untrackedCaptures
-  @volatile
-  private var painted: Long = 0L
+    Block.Gauge(activity.status, caption)
 
-  @caps.unsafe.untrackedCaptures
-  @volatile
-  private var left: Boolean = false
-
-  def aborted: Boolean = left
-  private[pyrocosm] def leave(): Unit = left = true
-
-  // The content and the progress from the run's current state, unless the last repaint was too
-  // recent; `force` for the final state, which must always be shown.
-  def refresh(force: Boolean = false)(content: => List[Block], progress: => List[Activity]): Unit =
-    val now = jl.System.currentTimeMillis
-
-    if force || now - painted >= throttle then
-      painted = now
-      this.content() = content
-      interface.activities() = progress
-
-  // Content that only grows: the newest block joins the end, where the panel keeps its view.
-  def append(block: Block): Unit = content.append(block)
-
-  // The progress as one captioned gauge: the board's activity, which has no destination, as
-  // the board is the run's own view.
-  def gauge(status: Status, caption: Text): Unit =
-    interface.activities() = List(Activity(t"progress", Inline.text(caption), status))
-
-  // Fullscreen on the terminal, as a board of one panel would otherwise be inline, with no band
-  // for its activity.
-  val interface: Interface =
-    Interface
-      ( Inline.text(title),
-        List
-          ( Panel(Panel.Id(t"content"), Panel.Role.Primary, Unset, content, Panel.Priority.Essential,
-                hints = Hints(hints.Follow, hints.terminal.Border.None)) ),
-        hints = Hints(hints.terminal.Occupancy.Fullscreen) )
+case class Activity
+  ( id:          Text,
+    title:       List[Inline],
+    status:      Status,
+    destination: Optional[Inline.Destination] = Unset,
+    state:       List[Inline]                 = Nil )

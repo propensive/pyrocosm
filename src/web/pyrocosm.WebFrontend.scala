@@ -218,9 +218,13 @@ extends pyrocosm.Frontend:
         if figures.putIfAbsent(figure.id, figure) == null then
           figure.revision.bindWake { () => figure.revision().let { revision => broadcast(figurePatch(figure, revision)) } }
 
-    // What each cell repaints: a panel's content, or a control's holder. A panel's figures are
-    // bound after its content is sent, so a figure is on the page before its revisions reach it.
+    // What each cell repaints: the activities' holder, a panel's content, or a control's
+    // holder. A panel's figures are bound after its content is sent, so a figure is on the page
+    // before its revisions reach it.
     def bind(): Unit =
+      interface.activities.bindWake: () =>
+        broadcast(Patch(t"replace", t"pyro-activities", renderer.activities(interface.activities()).show))
+
       interface.panels.each: panel =>
         bindFigures(panel.content())
 

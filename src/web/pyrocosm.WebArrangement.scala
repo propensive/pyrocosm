@@ -42,8 +42,7 @@ object WebArrangement:
       primary:    List[Panel],
       detail:     List[Panel],
       log:        List[Panel],
-      prompt:     List[Panel],
-      status:     List[Panel] )
+      prompt:     List[Panel] )
 
   def plan(interface: Interface): Plan =
     def role(role: Panel.Role): List[Panel] = interface.panels.filter(_.role == role)
@@ -53,11 +52,10 @@ object WebArrangement:
         primary = role(Panel.Role.Primary) + role(Panel.Role.Transcript),
         detail = role(Panel.Role.Detail) + role(Panel.Role.Inspector),
         log = role(Panel.Role.Log),
-        prompt = role(Panel.Role.Prompt),
-        status = role(Panel.Role.Status) )
+        prompt = role(Panel.Role.Prompt) )
 
-// The page: a masthead holding the title, the status panels and the connection indicator, with
-// the global controls beneath it as a toolbar; navigation on the verso side; detail on the
+// The page: a masthead holding the title, the activities as linked cards and the connection
+// indicator, with the global controls beneath it as a toolbar; navigation on the verso side; detail on the
 // recto side; and the primary, log and prompt panels as the main matter. A side whose panels
 // are absent is not drawn, so a page without detail has no right-hand column. Each panel is a
 // card whose content element the frontend replaces by id when its `Live` cell changes.
@@ -215,14 +213,15 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     interface.controls.filter { (control0: Control) => !control0.isInstanceOf[Control.Field] }
     . map { (control0: Control) => Li(`class` = cls(t"pyro-control"))(control(control0)) }
 
-  // The brand row: the title, the status panels' content and the connection indicator; then,
-  // when the interface has any, the global controls as a `menu` of commands.
+  // The brand row: the title, the activities' cards (replaced as one by the frontend when the
+  // cell changes, so the holder is there even while there are none) and the connection
+  // indicator; then, when the interface has any, the global controls as a `menu` of commands.
   override def masthead: Html of Flow =
     val brand: Html of Flow =
       Div(`class` = cls(t"pyro-masthead"))
         ( Div(`class` = cls(t"pyro-brand"))
             ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
-              Fragment(plan.status.map { (panel: Panel) => Div(id = panelId(panel), `class` = cls(t"pyro-status"))(panelContent(panel)) }*) ),
+              Div(id = t"pyro-activities", `class` = cls(t"pyro-activities"))(renderer.activities(interface.activities())) ),
           Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
 
     val items = toolbarItems

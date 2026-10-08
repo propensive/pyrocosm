@@ -239,8 +239,8 @@ extends Focus, Refreshable:
     val bounded = panel.hints[hints.terminal.MaxRows].lay(rows) { hint => rows.min(hint.rows) }
 
     panel.role match
-      case Panel.Role.Status | Panel.Role.Prompt | Panel.Role.Navigation => (0, bounded)
-      case _                                                             => (0, bounded.min(4))
+      case Panel.Role.Prompt | Panel.Role.Navigation => (0, bounded)
+      case _                                         => (0, bounded.min(4))
 
   def render(canvas: Board^, focused: Boolean): Unit =
     session.focus(this, focused)
@@ -312,11 +312,11 @@ extends Focus, Refreshable:
     case _ =>
       ()
 
-// A panel painted from its live cell but never focused: a prompt's or a status bar's content,
-// whose keys belong elsewhere, and an inline transcript, which is `windowed`: it shows the
-// entries not yet committed to the scrollback (the session says how many are), or, while a
-// commit is being painted, exactly the entries being committed.
-class PassiveFixture(panel: Panel, renderer: TerminalRenderer, session: Session, windowed: Boolean)
+// Content painted from a live cell but never focused: a prompt's, whose keys belong to its
+// controls; the activities' band of gauges; and an inline transcript, which is `windowed`: it
+// shows the entries not yet committed to the scrollback (the session says how many are), or,
+// while a commit is being painted, exactly the entries being committed.
+class PassiveFixture(content: () => List[Block], renderer: TerminalRenderer, session: Session, windowed: Boolean)
 extends Refreshable:
 
   @caps.unsafe.untrackedCaptures
@@ -327,10 +327,10 @@ extends Refreshable:
   @caps.unsafe.untrackedCaptures
   private var rendering: Optional[Rendering] = Unset
 
-  override def pulse: Optional[Int] = if Actions.animated(panel.content()) then 80 else Unset
+  override def pulse: Optional[Int] = if Actions.animated(content()) then 80 else Unset
 
   private def lines(width: Int): List[Teletype] =
-    val content = panel.content()
+    val content = this.content()
     val from = if windowed then session.frozen else 0
     val until = if windowed && session.hiding then session.upto else content.size
     val frame: Long = if Actions.animated(content) then (java.lang.System.nanoTime - started)/80000000L else 0L

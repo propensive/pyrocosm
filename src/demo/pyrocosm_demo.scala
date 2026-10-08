@@ -56,6 +56,8 @@ object Samples:
   val append = Action(t"append")
   val clear = Action(t"clear")
   val link = Action(t"link")
+  val alpha = Action(t"alpha")
+  val beta = Action(t"beta")
   val prompt = Input(t"prompt")
   val filter = Input(t"filter")
   val note = Input(t"note")
@@ -429,7 +431,6 @@ object Samples:
   def interface
     ( navigation: Live[List[Block]],
       matter:     Live[List[Block]],
-      progress:   Live[List[Block]],
       log:        Live[List[Block]],
       detail:     Live[List[Block]],
       field:      Control.Field,
@@ -447,8 +448,7 @@ object Samples:
                 controls = List(Control.Button(Inline.text(t"Previous"), previous), Control.Button(Inline.text(t"Next"), next), Control.Button(Inline.text(t"Disabled"), disabled, Live(false)), choice) ),
             Panel(Panel.Id(t"detail"), Panel.Role.Detail, Inline.text(t"Detail"), detail, Panel.Priority.Peripheral),
             Panel(Panel.Id(t"log"), Panel.Role.Log, Inline.text(t"Log"), log, Panel.Priority.Important, controls = List(note), hints = Hints(hints.Follow, hints.terminal.MaxRows(8))),
-            Panel(Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]), Panel.Priority.Essential, controls = List(field)),
-            Panel(Panel.Id(t"status"), Panel.Role.Status, Unset, progress, Panel.Priority.Important, hints = Hints(hints.terminal.Border.None)) ),
+            Panel(Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]), Panel.Priority.Essential, controls = List(field)) ),
         List(Control.Button(Inline.text(t"Append"), append), Control.Button(Inline.text(t"Clear"), clear), Control.Toggle(verbose, Inline.text(t"Verbose"))),
         List(Shortcut(Keypress.Ctrl('L'), clear, Inline.text(t"clear the log"))) )
 
@@ -525,7 +525,6 @@ object Samples:
 // handler. Built once per run, and handed to whichever frontend the arguments choose, so the
 // terminal and the browser show the same interface driven by the same logic.
 class GallerySession():
-  val progress: Live[List[Block]] = Live(Nil)
   val log: Live[List[Block]] = Live(List(Block.paragraph(t"Started.")))
   val detail: Live[List[Block]] = Live(List(Block.paragraph(t"Nothing selected.")))
   val navigation: Live[List[Block]] = Live(Samples.navigation(0, t""))
@@ -544,7 +543,7 @@ class GallerySession():
     Control.Choice(Samples.section, Samples.sections.map { (section: Samples.Section) => Inline.text(section.name) })
 
   val interface: Interface =
-    Samples.interface(navigation, matter, progress, log, detail, field, filter, note, choice)
+    Samples.interface(navigation, matter, log, detail, field, filter, note, choice)
 
   private var fraction = 0.0
   private var count = 0
@@ -576,9 +575,16 @@ class GallerySession():
         Thread.sleep(150)
         ticks += 1
         fraction = if fraction >= 1.0 then 0.0 else fraction + 0.02
-        progress() = List
-          ( Block.Gauge(Status.Fraction(fraction), Inline.text(t"progress")),
-            Block.Gauge(Status.Steps(List(Step(Inline.text(t"resolve"), Standing.Succeeded), Step(Inline.text(t"compile"), Standing.Running), Step(Inline.text(t"test"), Standing.Pending)))) )
+
+        // Two activities in the masthead, each a link to a log entry: one always in flight, and
+        // one which finishes, and is gone, for part of every cycle.
+        val alpha = Activity(t"alpha", Inline.text(t"alpha tests"), Status.Fraction(fraction), Inline.Destination.Internal(Samples.alpha), List(Inline.Toned(Tone.Success, Inline.text(t"green so far"))))
+        val beta: List[Activity] =
+          if ticks % 200 < 120
+          then List(Activity(t"beta", Inline.text(t"beta build"), Status.Reckoning((ticks % 120).toLong, 120L), Inline.Destination.Internal(Samples.beta), List(Inline.Toned(Tone.Failure, Inline.text(t"2 failures")))))
+          else Nil
+
+        interface.activities() = alpha :: beta
 
         // Every few seconds the drawing's bars take new heights, which the page animates.
         if ticks % 20 == 0 then
@@ -595,6 +601,12 @@ class GallerySession():
 
     case Event.Pressed(Samples.clear) =>
       log() = Nil
+
+    case Event.Pressed(Samples.alpha) =>
+      log.append(Block.paragraph(t"Opened the alpha tests."))
+
+    case Event.Pressed(Samples.beta) =>
+      log.append(Block.paragraph(t"Opened the beta build."))
 
     case Event.Pressed(Samples.previous) =>
       show(current - 1)

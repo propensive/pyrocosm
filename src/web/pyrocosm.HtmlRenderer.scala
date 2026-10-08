@@ -54,8 +54,12 @@ object HtmlRenderer:
   given classes: List[Name[CssClass]] is Attributive to Whatwg.CssClassList =
     (key, value) => if value.nil then Unset else (key, value.join(t" "))
 
+  // `data-action="…"` on an activity's card: the action its press sends. The card has an id of
+  // its own, as the same action may belong to a navigation item already on the page.
+  given actionId: ("data-action" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
 class HtmlRenderer():
-  import HtmlRenderer.{toneClass, accentClass, cls, classes}
+  import HtmlRenderer.{toneClass, accentClass, cls, classes, actionId}
 
   def phrase(content: List[Inline]): Html of Phrasing = Fragment(content.map(inline1)*)
 
@@ -387,6 +391,27 @@ class HtmlRenderer():
 
     caption.lay(Figure(`class` = classes)(body)): caption =>
       Figure(`class` = classes)(Figcaption(phrase(caption)), body)
+
+  // An activity is a card: its title, its gauge and its state, all of it the link to its view
+  // when it has one. The card's own id keeps it from the action's, which a navigation item may
+  // carry too; its press sends the action named in `data-action`.
+  def activity(activity: Activity): Html of Flow =
+    val id: Text = t"pyro-activity-${activity.id}"
+    val title: Html of Flow = Div(`class` = cls(t"pyro-activity-title"))(phrase(activity.title))
+    val state: Html of Flow = Div(`class` = cls(t"pyro-activity-state"))(phrase(activity.state))
+    val body: Html of Flow = Fragment(title, gauge(activity.status, Unset), state)
+
+    activity.destination match
+      case Inline.Destination.External(url) =>
+        A(href = url, id = id, `class` = cls(t"pyro-activity"))(body)
+
+      case Inline.Destination.Internal(action) =>
+        A(href = t"#", id = id, `class` = List(cls(t"pyro-activity"), cls(t"pyro-action")), `data-action` = action.id)(body)
+
+      case _ =>
+        Div(id = id, `class` = cls(t"pyro-activity"))(body)
+
+  def activities(activities: List[Activity]): Html of Flow = Fragment(activities.map(activity)*)
 
   private def standingGlyph(standing: Standing): Text = standing match
     case Standing.Pending   => t"·"
