@@ -2,7 +2,7 @@
 // about the application. It connects a WebSocket (to the page's own session, when the page names
 // one), applies patches the server sends (replace an element's content, set a field's value,
 // enable or check a control), and reports what the user does by the id of the element they did
-// it to. Everything else is server-rendered HTML, including a code field's decoration: its
+// it to (or the action an activity's card names, whose id is its own). Everything else is server-rendered HTML, including a code field's decoration: its
 // tokens, note and completions arrive as HTML, and the script paints the editor from them.
 (function () {
   "use strict";
@@ -483,14 +483,15 @@
     }
   }
 
-  // Actionable elements (rows, items, links, buttons) press their id; fields edit and submit.
+  // Actionable elements (rows, items, links, buttons) press their id, or the action they name;
+  // fields edit and submit.
   function wire(root) {
     root.querySelectorAll(".pyro-action, button.pyro-button").forEach(function (element) {
       if (element.dataset.pyroWired) return;
       element.dataset.pyroWired = "1";
       element.addEventListener("click", function (event) {
         event.preventDefault();
-        send({ kind: "press", id: element.id, text: "", caret: 0, index: 0 });
+        send({ kind: "press", id: element.dataset.action || element.id, text: "", caret: 0, index: 0 });
       });
     });
 

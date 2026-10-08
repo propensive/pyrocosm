@@ -24,7 +24,6 @@ package pyrocosm
 
 import soundness.*
 
-import dysasymptotics.{linearAccess, linearSize}
 
 // The terminal's arrangement solver: from the interface's panels, their roles and priorities,
 // and the terminal's size, to an Ultimatum pane tree. A rule table rather than a constraint
@@ -38,7 +37,6 @@ object TerminalArrangement:
       recto:       List[Panel],
       log:         List[Panel],
       prompt:      List[Panel],
-      status:      List[Panel],
       dropped:     List[Panel],
       rectoBeside: Boolean )
 
@@ -66,21 +64,21 @@ object TerminalArrangement:
         recto = role(Panel.Role.Detail) + role(Panel.Role.Inspector),
         log = role(Panel.Role.Log),
         prompt = role(Panel.Role.Prompt),
-        status = role(Panel.Role.Status),
         dropped = dropped,
         rectoBeside = rectoBeside )
 
   // The pane tree for a plan. Every panel becomes a widget pane supplied by `widget`; the
-  // title and the controls become fixed rows.
+  // title and the controls become fixed rows, and the activities a band beneath the matter.
   // `hidden` says whether every fixture is painting nothing (an inline commit's last frame),
   // when a border must vanish with its content rather than stand as an empty box.
   def build
-    ( interface: Interface,
-      plan:      Plan,
-      title:     Optional[Pane],
-      toolbar:   Optional[Pane],
-      widget:    Panel => Pane,
-      hidden:    () -> Boolean = () => false )
+    ( interface:  Interface,
+      plan:       Plan,
+      title:      Optional[Pane],
+      toolbar:    Optional[Pane],
+      activities: Optional[Pane],
+      widget:     Panel => Pane,
+      hidden:     () -> Boolean = () => false )
   :   Pane =
 
     def framed(panel: Panel): Pane =
@@ -121,11 +119,9 @@ object TerminalArrangement:
     val body: Pane =
       strip((verso.lay(Nil: List[Pane])(List(_)) + List(middle) + recto.lay(Nil: List[Pane])(List(_)))*)
 
-    val status: Optional[Pane] = column(plan.status).let(_.weight(0.0))
-
     val rowsOf: List[Pane] =
       title.lay(Nil: List[Pane])(List(_)) + toolbar.lay(Nil: List[Pane])(List(_)) + List(body)
-        + status.lay(Nil: List[Pane])(List(_))
+        + activities.lay(Nil: List[Pane])(List(_))
 
     stack(rowsOf*)
 

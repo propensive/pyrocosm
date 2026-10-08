@@ -172,15 +172,15 @@ extends Frontend:
       def widget(panel: Panel): Pane =
         val maxRows: Optional[Int] = panel.hints[hints.terminal.MaxRows].let(_.rows)
 
-        // A prompt's or a status bar's content is never focused (its keys belong to its
-        // controls); an inline transcript is passive too, and windowed on what is committed.
+        // A prompt's content is never focused (its keys belong to its controls); an inline
+        // transcript is passive too, and windowed on what is committed.
         val passive: Boolean = panel.role match
-          case Panel.Role.Prompt | Panel.Role.Status => true
-          case Panel.Role.Transcript                 => inlined
-          case _                                     => false
+          case Panel.Role.Prompt     => true
+          case Panel.Role.Transcript => inlined
+          case _                     => false
 
         val fixture: Refreshable =
-          if passive then register(PassiveFixture(panel, renderer, session, inlined && panel.role == Panel.Role.Transcript), panel, panel.content)
+          if passive then register(PassiveFixture(() => panel.content(), renderer, session, inlined && panel.role == Panel.Role.Transcript), panel, panel.content)
           else register(PanelFixture(panel, renderer, dispatch, session), panel, panel.content)
 
         val content = Pane.Widget(Sizing(maxHeight = maxRows), fixture)
@@ -201,7 +201,15 @@ extends Frontend:
           val spacer = ultimatum.panel(0.0, minWidth = 1, maxWidth = 1) { () }
           strip(interface.controls.bind { (control0: Control) => List(control(control0), spacer) }*).weight(0.0)
 
-      val pane = TerminalArrangement.build(interface, plan, title, toolbar, widget, () => session.hiding)
+      // The activities as a band of gauges beneath the matter, in a fullscreen session only:
+      // zero rows while there are none. An inline block has no band, as a title has no row.
+      val activities: Optional[Pane] =
+        if inlined then Unset
+        else
+          val fixture = register(PassiveFixture(() => interface.activities().map(Activity.block), renderer, session, false), Unset, interface.activities)
+          Pane.Widget(Sizing(0.0), fixture).weight(0.0)
+
+      val pane = TerminalArrangement.build(interface, plan, title, toolbar, activities, widget, () => session.hiding)
 
       // Whether the current inline cycle is ending to commit transcript entries. The cycle is
       // ended by this sentinel on the spool, which the frontend's iterator stops at: stopping
