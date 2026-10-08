@@ -26,45 +26,53 @@ import scala.caps
 
 import soundness.*
 
-import dysasymptotics.linearSize
+// Where a running tool, or an activity of one, comes from, as a frontend needs it to label a
+// card and link a menu item — and nothing of the transport. `key` is unique per node and safe
+// in an HTML id; `url` is where a browser finds the tool's web front-end, absent when it
+// serves none; `local` says it runs on this machine, where its `url` names `localhost`.
+case class Origin
+  ( key:     Text,
+    tool:    Text,
+    machine: Text,
+    url:     Optional[Text],
+    self:    Boolean,
+    local:   Boolean )
 
-// A reactive cell: the one place where the model is mutable. An application assigns to it from
-// any thread — a benchmark reporter, a compile task, an event handler — and every frontend
-// currently showing it repaints. Modelled on ultimatum's `Reading`, and subject to the same
-// capture-checking seam: the wake callbacks genuinely capture a running frontend's event loop
-// and escape into this longer-lived cell, which capture checking cannot yet express, so they
-// are laundered with a single, localised `unsafeAssumePure`, exactly as `Reading.bindWake` is.
-// It is sound for the same reasons: a frontend re-binds on every run and unbinds when it
-// finishes, so a wake never references a finished loop.
-class Live[value](initial: value):
+// The seam between the frontends and the swarm, which neither depends on the other across: the
+// frontends attach the interfaces they show, so that every activity of this process is
+// published, and show what the swarm has heard — the other tools running, and their
+// activities — without knowing how it heard it. There is one per process, `shared`, as the
+// swarm has one node per process.
+object Presence:
+  val shared: Presence = Presence()
+
+class Presence():
+  // Every activity of every interface a frontend in this process is showing.
+  val local: Live[List[Activity]] = Live(Nil)
+
+  // Other nodes' activities, each with where it comes from; an activity's destination, if it
+  // has one, is a URL a browser anywhere can open.
+  val remote: Live[List[(Origin, Activity)]] = Live(Nil)
+
+  // Every node on the swarm, this one included, in the order a menu lists them.
+  val peers: Live[List[Origin]] = Live(Nil)
+
+  // The port this process's web front-end is serving on, while it is.
+  val web: Live[Optional[Int]] = Live(Unset)
+
   @caps.unsafe.untrackedCaptures
-  private var current: value = initial
+  private var attached: List[Interface] = Nil
 
-  @caps.unsafe.untrackedCaptures
-  private var wakes: List[() -> Unit] = Nil
+  // Follows `interface`'s activities, as long as it is attached.
+  def attach(interface: Interface): Unit =
+    synchronized { attached = interface :: attached }
+    interface.activities.bindWake(recompute)
+    recompute()
 
-  private[pyrocosm] def bindWake(wake: () => Unit): Unit = synchronized:
-    wakes = caps.unsafe.unsafeAssumePure(wake) :: wakes
+  def detach(interface: Interface): Unit =
+    synchronized { attached = attached.filter(_ ne interface) }
+    interface.activities.unbindWake(recompute)
+    recompute()
 
-  private[pyrocosm] def unbindWakes(): Unit = synchronized { wakes = Nil }
-
-  // Removes one wake, by reference: a process-wide cell is bound by every session showing it,
-  // and a session that ends must not silence the rest.
-  private[pyrocosm] def unbindWake(wake: () -> Unit): Unit = synchronized:
-    wakes = wakes.filter(_ ne wake)
-
-  def apply(): value = current
-
-  // Paired with `apply`, this gives assignment syntax: `progress() = Status.Fraction(0.42)`.
-  def update(value: value): Unit =
-    current = caps.unsafe.unsafeAssumePure(value)
-    val current0 = synchronized(wakes)
-    current0.each(_())
-
-  // Atomic: a frontend's thread and the application's may both amend.
-  def amend(lambda: value => value): Unit = synchronized(update(lambda(current)))
-
-object Live:
-  extension [element](live: Live[List[element]])
-    def append(element: element): Unit = live.amend(_ :+ element)
-    def prepend(element: element): Unit = live.amend(element :: _)
+  private val recompute: () -> Unit = caps.unsafe.unsafeAssumePure: () =>
+    local() = synchronized(attached).bind(_.activities())

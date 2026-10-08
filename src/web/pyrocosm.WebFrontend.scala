@@ -23,12 +23,13 @@
 package pyrocosm
 
 import java.util.concurrent as juc
+import scala.jdk.CollectionConverters.*
 import java.util.concurrent.atomic as juca
 import scala.caps
 
 // Excluded from the umbrella: `Control` (coaxial), which would outrank this package's own
 // definitions, since a wildcard import beats a package member declared in another file.
-import soundness.{Control as _, *}
+import soundness.{Control as _, Origin as _, *}
 
 import perihelion.{Channel, Message}
 
@@ -67,6 +68,14 @@ private[pyrocosm] class Published:
       true
 
 object WebFrontend:
+  // The action an activity of this id opens with, if it is among `activities` and opens a view
+  // of its own: what a link from another tool's card presses on arrival.
+  def locate(activities: List[Activity], id: Text): Optional[Action] =
+    activities.seek(_.id == id).let: activity =>
+      activity.destination match
+        case Inline.Destination.Internal(action) => action
+        case _                                   => Unset
+
   // The script, from the module's resources.
   lazy val script: Text =
     val stream = getClass.getResourceAsStream("/pyrocosm.js")
@@ -92,7 +101,8 @@ object WebFrontend:
 class WebFrontend
   ( port:     Int,
     theme:    WebTheme = WebTheme.default,
-    fallback: Http.Request => Optional[Http.Response] = _ => Unset )
+    fallback: Http.Request => Optional[Http.Response] = _ => Unset,
+    presence: Presence = Presence.shared )
   ( using monitor: Monitor, probate: Probate, errorPage: WebserverErrorPage )
 extends pyrocosm.Frontend:
 
@@ -139,7 +149,18 @@ extends pyrocosm.Frontend:
   // frontend's is: it lives exactly as long as the session.
   private class Session(val id: Text, val interface: Interface, handle: Event -> Unit):
     val renderer: HtmlRenderer = HtmlRenderer()
-    val page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id)
+    val page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id, presence)
+
+    // The wakes this session binds to the process-wide presence, to unbind — and no other
+    // session's — when it closes.
+    private val remoteWake: () -> Unit = caps.unsafe.unsafeAssumePure: () =>
+      broadcast(Patch(t"replace", t"pyro-activities-remote", renderer.remoteActivities(presence.remote()).show))
+
+    private val peersWake: () -> Unit = caps.unsafe.unsafeAssumePure: () =>
+      broadcast(Patch(t"replace", t"pyro-menubar-tools", renderer.toolLinks(presence.peers()).show))
+
+    // Presses an action of this interface, as a click on its element would.
+    def press(action: Action): Unit = handle(Event.Pressed(action))
     private val tabs: juc.ConcurrentHashMap[Int, Tab] = juc.ConcurrentHashMap()
     private val published: Published = Published()
 
@@ -224,6 +245,9 @@ extends pyrocosm.Frontend:
     def bind(): Unit =
       interface.activities.bindWake: () =>
         broadcast(Patch(t"replace", t"pyro-activities", renderer.activities(interface.activities()).show))
+
+      presence.remote.bindWake(remoteWake)
+      presence.peers.bindWake(peersWake)
 
       interface.panels.each: panel =>
         bindFigures(panel.content())
@@ -312,6 +336,9 @@ extends pyrocosm.Frontend:
       if !closed then
         closed = true
         sessions.remove(id)
+        presence.detach(interface)
+        presence.remote.unbindWake(remoteWake)
+        presence.peers.unbindWake(peersWake)
         interface.cells.each(_.unbindWakes())
         figures.values.nn.forEach { figure => figure.nn.revision.unbindWakes() }
         handle(Event.Closed)
@@ -322,6 +349,7 @@ extends pyrocosm.Frontend:
     val session: Session = caps.unsafe.unsafeAssumePure(new Session(Handles.fresh('s'), interface, handle))
     session.bind()
     sessions.put(session.id, session)
+    presence.attach(interface)
     session
 
   // One interface for every tab.
@@ -358,11 +386,34 @@ extends pyrocosm.Frontend:
           this.open(interface, handle)
         else Unset
 
+  // The activity of this id, among those a session of this frontend publishes, with the
+  // action its internal destination names: what `/open?activity=<id>` presses. Only an
+  // activity in view, and only its own action, is reachable this way.
+  private def locate(id: Text): Optional[(Session, Action)] =
+    val candidates: scala.List[Session] =
+      shared.lay(sessions.values.nn.iterator.nn.asScala.toList)(scala.List(_))
+
+    candidates.iterator.map { session => WebFrontend.locate(session.interface.activities(), id).let((session, _)) }
+    . collectFirst { case found: (Session, Action) @unchecked => found }.getOrElse(Unset)
+
   private def serving(): Unit =
+    presence.web() = port
+
     val service = SocketServer(port).handle:
       val path: Text = request.target.cut(t"?").at(Prim).or(t"/")
 
       path match
+        // A link from another tool's card: presses the activity's action here, and sends the
+        // browser to the page which shows it — the shared one, or the session's own.
+        case t"/open" =>
+          val query: Text = request.target.cut(t"?").at(Sec).or(t"")
+          val id: Optional[Text] = query.cut(t"&").seek(_.starts(t"activity=")).let(_.skip(t"activity=".length))
+
+          id.let(locate(_)).lay(Http.Response(Http.NotFound)(t"No such activity")): (session, action) =>
+            session.press(action)
+            val target: Text = if shared.present then t"/" else t"/?session=${session.id}"
+            Http.Response(Http.SeeOther, location = target)()
+
         case t"/" | t"/index.html" =>
           sessionFor(request.target, fresh = true).lay(Http.Response(Http.NotFound)(t"No session")): session =>
             val html: Text = t"<!DOCTYPE html>${session.page.markup.show}"
@@ -404,6 +455,7 @@ extends pyrocosm.Frontend:
     try stopped.await()
     finally
       service.cancel()
+      presence.web() = Unset
       sessions.values.nn.forEach { session => session.nn.close() }
       shared = Unset
       opener = null

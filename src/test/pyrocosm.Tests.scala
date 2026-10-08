@@ -26,7 +26,7 @@ package pyrocosm
 // `Language` (cosmopolite), `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which
 // would outrank this package's own definitions, since a wildcard import beats a package member
 // declared in another file.
-import soundness.{Control as _, Figure as _, Filter as _, Glyph as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
+import soundness.{Control as _, Figure as _, Filter as _, Glyph as _, Language as _, Origin as _, Standing as _, Status as _, Step as _, Token as _, *}
 
 import clavichord.Keypress
 import probably.TestEvent
@@ -734,6 +734,84 @@ tags:
     test(m"an interface without global controls has no toolbar"):
       page.contains(t"pyro-toolbar")
     . assert(_ == false)
+
+    test(m"a masthead without other nodes' activities holds their empty holder, after its own, before the matter"):
+      val own = page.s.indexOf("<div id=\"pyro-activities\" class=\"pyro-activities\"></div>")
+      val remote = page.s.indexOf("<div id=\"pyro-activities-remote\" class=\"pyro-activities pyro-activities-remote\"></div>")
+      (own >= 0, remote > own, remote < page.s.indexOf("<main"))
+    . assert(_ == (true, true, true))
+
+    test(m"the menu bar holds the running tools' holder between the wordmark and the configuration link"):
+      val wordmark = page.s.indexOf("pyro-wordmark")
+      val tools = page.s.indexOf("<div id=\"pyro-menubar-tools\" class=\"pyro-menubar-tools\"></div>")
+      (tools > wordmark, tools < page.s.indexOf("pyro-menubar-link"))
+    . assert(_ == (true, true))
+
+    val opener = Action(t"run-a")
+    val fume: Origin = Origin(t"fume-abcdef12-1", t"fume", t"linux-box", t"http://linux-box:8090/", false, false)
+    val here: Origin = Origin(t"gallery-abcdef12-2", t"gallery", t"this-box", t"http://localhost:8081/", true, true)
+    val fury: Origin = Origin(t"fury-abcdef12-3", t"fury", t"linux-box", Unset, false, false)
+
+    val presence: Presence =
+      val presence = Presence()
+      presence.remote() = List
+        ( (fume, Activity(t"r1", Inline.text(t"alpha"), Status.Fraction(0.25), Inline.Destination.External(t"http://linux-box:8090/open?activity=r1"), List(Inline.Toned(Tone.Success, Inline.text(t"green so far"))))),
+          (fury, Activity(t"b1", Inline.text(t"build"), Status.Indeterminate(), Inline.Destination.Internal(opener))) )
+      presence.peers() = List(fume, fury, here)
+      presence
+
+    val withPresence = PyrocosmPage(arranged, html, WebTheme.default, Unset, presence).markup.show
+
+    test(m"another node's activity is a card labelled with its origin, linking to its view there"):
+      ( withPresence.contains(t"""<a href="http://linux-box:8090/open?activity=r1" id="pyro-activity-fume-abcdef12-1-r1" class="pyro-activity pyro-activity-remote">"""),
+        withPresence.contains(t"""<div class="pyro-activity-origin">fume · linux-box</div>"""),
+        withPresence.contains(t"""<div class="pyro-activity-state"><span class="pyro-tone-success">green so far</span></div>""") )
+    . assert(_ == (true, true, true))
+
+    test(m"another node's internal destination is no link, and never an action of this page"):
+      val card = withPresence.s.indexOf("id=\"pyro-activity-fury-abcdef12-3-b1\"")
+      (card >= 0, withPresence.s.substring(card - 5, card).nn.trim.nn.endsWith("<div"), withPresence.contains(t"""data-action="${opener.id}""""))
+    . assert(_ == (true, true, false))
+
+    test(m"the running tools are linked, the local one by localhost, the current one marked, the webless one unlinked"):
+      ( withPresence.contains(t"""<a href="http://linux-box:8090/" class="pyro-menubar-tool" data-local="false">fume · linux-box</a>"""),
+        withPresence.contains(t"""<a href="http://localhost:8081/" class="pyro-menubar-tool pyro-menubar-current" data-local="true">gallery</a>"""),
+        withPresence.contains(t"""<span class="pyro-menubar-tool pyro-menubar-unlinked">fury · linux-box</span>""") )
+    . assert(_ == (true, true, true))
+
+    test(m"a presence follows the activities of every interface attached to it, until detached"):
+      val presence = Presence()
+      val first = Interface(Inline.text(t"one"), Nil)
+      val second = Interface(Inline.text(t"two"), Nil)
+      presence.attach(first)
+      presence.attach(second)
+      first.activities() = List(Activity(t"a", Inline.text(t"a"), Status.Indeterminate()))
+      second.activities() = List(Activity(t"b", Inline.text(t"b"), Status.Indeterminate()))
+      val both = presence.local().map(_.id)
+      presence.detach(first)
+      (both.stdlib.map(_.s).sorted, presence.local().map(_.id))
+    . assert(_ == (scala.List("a", "b"), List(t"b")))
+
+    test(m"unbinding one wake leaves the others bound"):
+      val live = Live(0)
+      var first = 0
+      var second = 0
+      val wakeFirst = () => first += 1
+      val wakeSecond = () => second += 1
+      live.bindWake(wakeFirst)
+      live.bindWake(wakeSecond)
+      live() = 1
+      live.unbindWake(wakeFirst)
+      live() = 2
+      (first, second)
+    . assert(_ == (1, 2))
+
+    test(m"a link from another tool's card finds the activity's own action, and nothing else"):
+      val activities = List
+        ( Activity(t"r1", Inline.text(t"r1"), Status.Indeterminate(), Inline.Destination.Internal(opener)),
+          Activity(t"r2", Inline.text(t"r2"), Status.Indeterminate(), Inline.Destination.External(t"http://elsewhere/")) )
+      (WebFrontend.locate(activities, t"r1"), WebFrontend.locate(activities, t"r2"), WebFrontend.locate(activities, t"r3"))
+    . assert(_ == (opener, Unset, Unset))
 
     test(m"a masthead without activities still holds their empty holder, before the main matter"):
       val holder = page.s.indexOf("<div id=\"pyro-activities\" class=\"pyro-activities\"></div>")
@@ -1749,7 +1827,22 @@ machine mac-mini
           supervise:
             val port: Int = Port[Tcp]().number
             val task = async(listener.serve(port))
-            Thread.sleep(300)
+
+            // Until the listener has bound its port: a fixed pause races the bind on a loaded
+            // machine, and a caller arriving first is told `unreachable`, not `refused`.
+            def bound(attempts: Int): Unit =
+              val accepted: Boolean =
+                try
+                  val socket = java.net.Socket("127.0.0.1", port)
+                  socket.close()
+                  true
+                catch case _: Exception => false
+
+              if !accepted && attempts > 0 then
+                Thread.sleep(100)
+                bound(attempts - 1)
+
+            bound(50)
 
             try block(port) finally
               listener.stop()

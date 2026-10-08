@@ -245,6 +245,19 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
         Adverts.writeAdvertV2(later, Adverts.current.acceptance).let(Adverts.readAdvert(_))
       . assert(_ == advert)
 
+    suite(m"Activities on the bus"):
+      test(m"an activity of every status survives the bus"):
+        val statuses: List[Status] =
+          List
+            ( Status.Fraction(0.5), Status.Indeterminate(), Status.Reckoning(3, 10), Status.Reckoning(3, Unset),
+              Status.Standing(Standing.Running), Status.Elapsed(1.5), Status.Remaining(2.5),
+              Status.Steps(List(Step(Inline.text(t"compile"), Standing.Succeeded, Inline.text(t"done")))) )
+
+        statuses.map { status => Bus.decode(Bus.encode(activity.copy(status = status))).let(_.status) }
+      . assert(_ == List(Status.Fraction(0.5), Status.Indeterminate(), Status.Reckoning(3, 10), Status.Reckoning(3, Unset),
+              Status.Standing(Standing.Running), Status.Elapsed(1.5), Status.Remaining(2.5),
+              Status.Steps(List(Step(Inline.text(t"compile"), Standing.Succeeded, Inline.text(t"done"))))))
+
     suite(m"Payloads"):
       test(m"a tool's own event round-trips"):
         Bus.parse[Greeting](Bus.payload(Greeting(t"fume", 3)))

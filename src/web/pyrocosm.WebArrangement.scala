@@ -25,7 +25,7 @@ package pyrocosm
 // Excluded from the umbrella: `Control` (coaxial), which would outrank this package's own
 // definitions, since a wildcard import beats a package member declared in another file. Excluded
 // too: `Span` (denominative), so the name is the HTML element `htmlDoms` supplies.
-import soundness.{Control as _, Span as _, *}
+import soundness.{Control as _, Origin as _, Span as _, *}
 
 import dysasymptotics.{linearAccess, linearSize}
 import attributives.textAttributive
@@ -74,7 +74,7 @@ object PyrocosmPage:
   // attribute a value to it.
   given crossorigin: Crossorigin is Attributive to Whatwg.Crossorigin = (key, value) => (key, value.show)
 
-class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset)
+class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset, presence: Presence = Presence.shared)
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
   import HtmlRenderer.{cls, panelId, classes}
   import PyrocosmPage.{history, crossorigin}
@@ -201,11 +201,13 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   private def cards(panels: List[Panel]): Html of Flow = Html.Fragment(panels.map(card)*)
 
   // The menu bar: a full-width band whose contents are centred to the wide measure, holding
-  // the wordmark, which is the way home, and the link to the configuration page.
+  // the wordmark, which is the way home, the tools running on the swarm (replaced as one by
+  // the frontend as they come and go) and the link to the configuration page.
   protected override def menu: Html of "nav" =
     Nav(`class` = List(TopMenu.menuClass, cls(t"pyro-menubar")))
       ( Div(`class` = cls(t"pyro-menubar-inner"))
           ( A(href = t"/", `class` = cls(t"pyro-wordmark"))(t"Pyrocosm"),
+            Div(id = t"pyro-menubar-tools", `class` = cls(t"pyro-menubar-tools"))(renderer.toolLinks(presence.peers())),
             A(href = t"/config", `class` = cls(t"pyro-menubar-link"))(t"Configuration") ) )
 
   // The global controls other than a field, each an item of the masthead's toolbar.
@@ -213,15 +215,17 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     interface.controls.filter { (control0: Control) => !control0.isInstanceOf[Control.Field] }
     . map { (control0: Control) => Li(`class` = cls(t"pyro-control"))(control(control0)) }
 
-  // The brand row: the title, the activities' cards (replaced as one by the frontend when the
-  // cell changes, so the holder is there even while there are none) and the connection
-  // indicator; then, when the interface has any, the global controls as a `menu` of commands.
+  // The brand row: the title, the activities' cards — this interface's, then other nodes', each
+  // holder replaced as one by the frontend when its cell changes, so both are there even while
+  // empty — and the connection indicator; then, when the interface has any, the global
+  // controls as a `menu` of commands.
   override def masthead: Html of Flow =
     val brand: Html of Flow =
       Div(`class` = cls(t"pyro-masthead"))
         ( Div(`class` = cls(t"pyro-brand"))
             ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
-              Div(id = t"pyro-activities", `class` = cls(t"pyro-activities"))(renderer.activities(interface.activities())) ),
+              Div(id = t"pyro-activities", `class` = cls(t"pyro-activities"))(renderer.activities(interface.activities())),
+              Div(id = t"pyro-activities-remote", `class` = List(cls(t"pyro-activities"), cls(t"pyro-activities-remote")))(renderer.remoteActivities(presence.remote())) ),
           Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
 
     val items = toolbarItems
