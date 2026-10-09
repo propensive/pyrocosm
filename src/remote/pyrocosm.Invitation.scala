@@ -30,35 +30,14 @@ import alphabets.hexLowerCase
 import codepages.utf8Codepage
 import filesystemBackends.javaBaseFilesystem
 import logging.silentLogging
-import stratiform.{Base256, TelSchematic}
-import systems.javaBaseSystem
-import textSanitizers.skipSanitizer
+import stratiform.Base256
 
 object Invitation:
-  // An instant is written as the milliseconds since the Unix epoch, and a fingerprint as hex.
-  given instantSchematic: (Instant over Unix) is TelSchematic over Tels.Type =
-    () => Tels.Scalar(Array.empty)
+  // An instant is written as the milliseconds since the Unix epoch, and a fingerprint as hex
+  // (`Scalars`).
+  import Scalars.given
 
-  given dataSchematic: Data is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
-
-  given instantEncodable: (Instant over Unix) is Tel.Encodable =
-    Tel.Encodable(() => Morphology.Whole, Tel.Nature.Scalar): instant =>
-      Tel.scalar(instant.long.show)
-
-  given instantDecodable: Tactic[Tel.Error] => (Instant over Unix) is Tel.Decodable =
-    Tel.Decodable(() => Morphology.Whole, Tel.Nature.Scalar): tel =>
-      Instant.of[Unix](summon[Long is Tel.Decodable].decoded(tel))
-
-  given dataEncodable: Data is Tel.Encodable =
-    Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar): data => Tel.scalar(data.serialize[Hex])
-
-  given dataDecodable: Tactic[Tel.Error] => Data is Tel.Decodable =
-    Tel.Decodable(() => Morphology.Str, Tel.Nature.Scalar): tel =>
-      unsafely(summon[Text is Tel.Decodable].decoded(tel).deserialize[Hex])
-
-  private lazy val schema: Tels =
-    import Channel.derivation.throwing
-    Tels.tels[Invitation](t"pyrocosm-invitation")
+  private lazy val schema: Tels = Tels.tels[Invitation](t"pyrocosm-invitation")
 
   // The invitation as one word, its BinTEL form in BASE-256.
   def encode(invitation: Invitation): Text = Base256.encode(Channel.encode(invitation, schema))

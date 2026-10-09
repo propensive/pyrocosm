@@ -107,9 +107,10 @@ given figureTelDecodable: Figure is Tel.Decodable =
         Figure.restore(Codecs.snapshotDecodable.decoded(tel))
 
 // Every enum of singleton cases reachable from a derived codec has a scalar codec here, keyed by
-// its kebab-cased case name (`arrow-right`), for two reasons: it is better TEL than a nested
-// select, and deriving a decoder for a sum with a singleton case fails under capture checking
-// in an order-sensitive way (the same Soundness issue as `Inline.Break`).
+// its kebab-cased case name (`arrow-right`): a bare word is better TEL than the nested select a
+// derived codec would write, and it is the form the bus's schema declares for them too. (A
+// derived decoder for such an enum once failed under capture checking — Soundness #2152 fixed
+// that — but the form is the reason these remain.)
 private def scalar[value](encode: value -> Text): value is Tel.Encodable =
   Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar) { value => Tel.scalar(encode(value)) }
 

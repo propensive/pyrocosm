@@ -38,7 +38,7 @@ import threading.platformThreading
 // `bus`; each derivation in an object of its own, as together they exceed what one class may
 // hold.
 object Later:
-  import pyrocosm.Wire.given
+  import Scalars.given
 
   enum Wire:
     case Beat(sent: Instant over Unix, load: Optional[Double])
@@ -65,7 +65,7 @@ object Later:
     try accepting.read(data) catch case _: Exception => Unset
 
 object Adverts:
-  import pyrocosm.Wire.given
+  import Scalars.given
 
   case class Advert
     ( node:         Node,

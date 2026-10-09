@@ -144,13 +144,8 @@ case class Envelope
     event:    Bus.Event )
 
 object Wire:
-  // An instant is written as the milliseconds since the Unix epoch, an identifier as its text,
-  // and bytes as hex.
-  given instantSchematic: (Instant over Unix) is TelSchematic over Tels.Type =
-    () => Tels.Scalar(Array.empty)
-
-  given uuidSchematic: Uuid is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
-  given dataSchematic: Data is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
+  // An instant, bytes and an identifier are scalars, as the remote module writes them.
+  import Scalars.given
 
   // The model's leaf types with scalar codecs of their own (`pyrocosm_codecs.scala`), which the
   // schema must know as scalars too.
