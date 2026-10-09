@@ -154,6 +154,13 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       handedOver:  Boolean,
       vanished:    Boolean )
 
+  // What three machines showed.
+  private case class Relayed
+    ( seen:      (Int, Int, Int, Int),
+      distinct:  Boolean,
+      hops:      (List[Int], List[Int], List[Int]),
+      forgotten: (Int, Int) )
+
   // What the invitation showed.
   private case class Invited
     ( words:      Int,
@@ -415,6 +422,99 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       test(m"one node is the gateway, and the other takes over when it goes"):
         (meshed.gateway, meshed.handedOver, meshed.vanished)
       . assert(_ == ((true, false), true, true))
+
+    suite(m"Three machines"):
+      // Three machines in this JVM, each with an identity of its own — `Peer.identity` makes a
+      // certificate under whichever state home a node's environment names — and a registry of
+      // its own, so that none finds the others as a neighbour. Machine A has two nodes, one its
+      // gateway; machines B and C each keep a link to that gateway, which relays between its
+      // own machine and each of them, and between the two of them, as the hub of its spokes.
+      val relayed: Relayed =
+        supervise:
+          def temporary(name: String): Text = java.nio.file.Files.createTempDirectory(name).nn.toString.tt
+          val config: Text = temporary("pyrocosm-relay-config")
+
+          def environment(state: Text, runtime: Text): Environment = name =>
+            if name == t"XDG_STATE_HOME" then state
+            else if name == t"XDG_RUNTIME_DIR" then runtime
+            else if name == t"XDG_CONFIG_HOME" then config
+            else Optional(java.lang.System.getenv(name.s)).let(_.tt)
+
+          val envA: Environment = environment(temporary("pyrocosm-a-state"), temporary("pyrocosm-a-runtime"))
+          val envB: Environment = environment(temporary("pyrocosm-b-state"), temporary("pyrocosm-b-runtime"))
+          val envC: Environment = environment(temporary("pyrocosm-c-state"), temporary("pyrocosm-c-runtime"))
+
+          val port: Int = Port[Tcp]().number
+          val alpha: Swarm = Swarm.start(t"alpha3", t"0.1.0", () => Nil, Nil, port)(using summon[Monitor], summon[Probate], envA)
+          val beta: Swarm = Swarm.start(t"beta3", t"0.1.0", () => Nil, Nil, port)(using summon[Monitor], summon[Probate], envA)
+          val gamma: Swarm = Swarm.start(t"gamma3", t"0.1.0", () => Nil, Nil, port)(using summon[Monitor], summon[Probate], envB)
+          val delta: Swarm = Swarm.start(t"delta3", t"0.1.0", () => Nil, Nil, port)(using summon[Monitor], summon[Probate], envC)
+
+          await(50)(alpha.nodes().size == 2 && beta.nodes().size == 2)
+          alpha.wantGateway(port, Unset)
+          await(25)(alpha.listening.present)
+
+          // The token every machine shares here, and A's fingerprint, make the declaration B
+          // and C link by.
+          val token: Text = Peer.token(using envA).or(t"")
+          val fingerprint: Optional[Data] = Peer.parseFingerprint(alpha.node.identity)
+          val a: Machine = Machine(t"a", List(t"127.0.0.1"), port, fingerprint, token, Nil)
+
+          gamma.connect(a)
+          await(50)(gamma.connected(t"a"))
+          delta.connect(a)
+          await(50)(delta.connected(t"a"))
+
+          await(50)(gamma.nodes().size == 4 && delta.nodes().size == 4 && beta.nodes().size == 4)
+          val seen: (Int, Int, Int, Int) = (alpha.nodes().size, beta.nodes().size, gamma.nodes().size, delta.nodes().size)
+          val distinct: Boolean = Set(alpha.node.identity, gamma.node.identity, delta.node.identity).size == 3
+
+          // An event of A's gateway reaches B over their link, relayed by nobody; one of B's
+          // reaches A's other node and C relayed once, by the gateway — each once.
+          val atGamma = java.util.concurrent.ConcurrentLinkedQueue[Int]()
+          val atBeta = java.util.concurrent.ConcurrentLinkedQueue[Int]()
+          val atDelta = java.util.concurrent.ConcurrentLinkedQueue[Int]()
+          def hopsOf(queue: java.util.concurrent.ConcurrentLinkedQueue[Int]): List[Int] =
+            var found: scala.List[Int] = scala.Nil
+            val iterator = queue.iterator.nn
+            while iterator.hasNext do found = iterator.next.nn :: found
+            List(found.reverse*)
+
+          val subscriptions = List
+            ( gamma.subscribe(Swarm.Filter(kinds = Set[Text](t"from-a"))) { (_, envelope) => atGamma.add(envelope.hops) },
+              beta.subscribe(Swarm.Filter(kinds = Set[Text](t"from-b"))) { (_, envelope) => atBeta.add(envelope.hops) },
+              delta.subscribe(Swarm.Filter(kinds = Set[Text](t"from-b"))) { (_, envelope) => atDelta.add(envelope.hops) } )
+
+          alpha.publish(t"from-a", Bus.payload(Greeting(t"alpha", 1)))
+          gamma.publish(t"from-b", Bus.payload(Greeting(t"gamma", 2)))
+          await(25)(!atGamma.isEmpty && !atBeta.isEmpty && !atDelta.isEmpty)
+          snooze(1.0*Second)
+          val hops: (List[Int], List[Int], List[Int]) = (hopsOf(atGamma), hopsOf(atBeta), hopsOf(atDelta))
+          subscriptions.each(_.cancel())
+
+          // B hangs up: A's nodes, and C, forget it.
+          gamma.disconnect(t"a")
+          await(50)(beta.nodes().size == 3 && delta.nodes().size == 3)
+          val forgotten: (Int, Int) = (beta.nodes().size, delta.nodes().size)
+
+          Swarm.stop(t"delta3")
+          Swarm.stop(t"gamma3")
+          Swarm.stop(t"beta3")
+          Swarm.stop(t"alpha3")
+
+          Relayed(seen, distinct, hops, forgotten)
+
+      test(m"every node of three machines sees every other, through one gateway"):
+        (relayed.seen, relayed.distinct)
+      . assert(_ == ((4, 4, 4, 4), true))
+
+      test(m"an event crosses to a linked machine unrelayed, and on to the next relayed once, once each"):
+        relayed.hops
+      . assert(_ == (List(0), List(1), List(1)))
+
+      test(m"a machine which hangs up is forgotten on every other"):
+        relayed.forgotten
+      . assert(_ == (3, 3))
 
     suite(m"Invitations"):
       // A gateway in this JVM invites, and this JVM joins: the invitation is accepted once, the
