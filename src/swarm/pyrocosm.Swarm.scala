@@ -370,7 +370,7 @@ extends Tether.Host:
 
   // Publishes an event of this tool's own, as a self-contained document (`Bus.payload`); false
   // if it is larger than the bus allows, or the tool has published too many this second.
-  def publish(kind: Text, payload: Data)(using Monitor): Boolean =
+  def publish(kind: Text, payload: Data): Boolean =
     if payload.length > Bus.limit then
       Journal.log(Event.Oversized(tool, kind, payload.length))
       false
@@ -391,24 +391,21 @@ extends Tether.Host:
     spent.incrementAndGet() <= Swarm.budget
 
   // Numbers an event of this node's own, acts on it here, and sends it down every link.
-  private def emit(event: Bus.Event)(using Monitor): Unit =
+  private def emit(event: Bus.Event): Unit =
     val envelope: Envelope = Envelope(node.key, sequence.incrementAndGet(), now(), 0, event)
     seen(node.key) = envelope.sequence
     notify(node, envelope)
     broadcast(envelope, Unset)
 
-  // Sends an envelope down every lasting link but the one it arrived by: the links of this
-  // machine, and — from this machine's side only, or from another machine's to every other —
-  // those to other machines.
+  // Sends an envelope down every link but the one it arrived by, and the one to its origin: a
+  // link counts once the other end's snapshot has arrived, which is before its first beat.
   private def broadcast(envelope: Envelope, from: Optional[Tether]): Unit =
     val carry: Wire = Wire.carry(envelope)
-    val fromRemote: Boolean = from.lay(false)(_.side == Tether.Side.Remote)
 
     mutex(tethers).each: tether =>
       val notSource: Boolean = from.lay(true)(_ ne tether)
       val notOrigin: Boolean = tether.node.lay(true)(_.key != envelope.origin)
-      if tether.lasting && notSource && notOrigin && tether.side != Tether.Side.Unknown
-      then tether.send(carry)
+      if notSource && notOrigin && tether.side != Tether.Side.Unknown then tether.send(carry)
 
   // Acts on an event arriving by a link: once, by its origin's numbering; then passes it on,
   // if it has not travelled too far.
@@ -427,8 +424,10 @@ extends Tether.Host:
       then broadcast(envelope.copy(hops = envelope.hops + 1), tether)
 
   // What a snapshot says: the other end's advert, and the adverts it holds of nodes this one
-  // may not know. A snapshot is link-local, so nothing of it is passed on; the nodes it names
-  // will advertise themselves in time, and their adverts travel.
+  // may not know. A snapshot is link-local, so nothing of it is passed on: the nodes it names
+  // will advertise themselves in time, and their adverts travel. The link is now known on
+  // this side, so this node says what it is again, as an event, for the nodes beyond the other
+  // end which the snapshot did not reach.
   def snapshotted(tether: Tether, advert: Advert, known: List[Advert]): Unit =
     heard(advert.node.key) = java.lang.System.currentTimeMillis
     apply(Bus.Event.Advertised(advert))
@@ -437,6 +436,8 @@ extends Tether.Host:
       if other.node.key != node.key && this.known(other.node.key).absent then
         heard(other.node.key) = java.lang.System.currentTimeMillis
         apply(Bus.Event.Advertised(other))
+
+    advertise()
 
   // Updates what this node knows from one event; the node the event is about, if known.
   private def apply(event: Bus.Event): Optional[Node] = event match
@@ -755,7 +756,7 @@ extends Tether.Host:
 
   // Says what this node is now: when something it offers has changed, and every half minute
   // regardless, so that a node which joined since, or forgot it, learns of it.
-  def advertise()(using Monitor): Unit =
+  def advertise(): Unit =
     val advert: Advert = self
     nodes.amend { all => advert :: all.filter(_.node.key != node.key) }
     emit(Bus.Event.Advertised(advert))

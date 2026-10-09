@@ -277,6 +277,9 @@ through to the tool's `arguments match` otherwise:
   installed manpage). The manpage is generated from the same help tree the completions
   register, so it lists the standard subcommands too.
 - `<name> quit` stops any web front-end the daemon serves, then the daemon itself.
+- `<name> swarm` shows the other Pyrocosm tools running, here and on other machines, and its
+  subcommands — `invite`, `join`, `listen`, `connect`, `disconnect`, `ping`, `identity`,
+  `peers`, `revoke`, `log` — join machines together (below).
 
 Matching a `Subcommand` also suggests it, so the standard subcommands are tab-completed
 alongside the tool's own. `--version` is read only when the first argument is a flag, so it is
@@ -299,6 +302,65 @@ version` resource the tool's build writes: the version a release or snapshot is 
 when `<NAME>_RELEASE_VERSION` names it (the release and snapshot scripts both set it), else the
 pinned version with the filtered tree hash of HEAD — the identity `make snapshot` would give
 that commit — and `-dirty` if the working tree has uncommitted changes.
+
+## The swarm (`src/bus`, `src/swarm`)
+
+Every tool's daemon is a NODE of one swarm, so that each tool knows what the others are doing
+— a build in flight in Fury appears as a card in fume's masthead, linking to Fury's page —
+with no configuration on one machine, and one invitation between machines. The swarm began as
+Fury's: links kept honest by a heartbeat, invitations advertised over mDNS, a protocol versioned
+by BinTEL acceptances. It moved here, generalised, once it was clear that every tool needed it.
+
+**On one machine**, a node registers itself in a small file under
+`$XDG_RUNTIME_DIR/pyrocosm/swarm/nodes/` (its tool, pid, start, the port of its listener, the
+machine's certificate fingerprint), written whole and moved into place, so no lock is needed;
+each node reads the directory every couple of seconds, deletes any file whose process is gone,
+and links over loopback (TLS to the machine's own certificate, the machine's own token) to each
+node older than itself, so every pair links once. A machine is thus a full mesh of its own
+nodes, and every tool knows every other within seconds of starting.
+
+**Between machines**, whichever node takes the machine's swarm port — 8093 by default; `swarm`,
+`swarm-port` and `swarm-token` in any tool's config, or `<tool> swarm listen` — is its GATEWAY:
+it accepts other machines, and relays what it hears on one side to the other. The port is the
+lock: a node which wants it polls, and takes it when its holder quits. Another machine joins by
+an invitation (`<tool> swarm invite`, one word, good for one machine until it expires, during
+which the inviter advertises itself on the local network so the joiner finds it by name) or by a
+`machine` declaration and `connect`. An invitation is issued for the tool `pyrocosm`, and the
+token it grants admits its bearer to every tool's listener — fume's worker among them — so
+joining a machine's swarm is joining it for all of them. A joiner links to the inviter; the
+inviter relays between its joiners, as the hub of its spokes. Nothing in the API names the
+topology, so it can become a mesh later.
+
+**The bus.** Every link carries BinTEL documents under `Wire`'s schema, each written to the
+acceptance the other end sent when the link was made (BinTEL §8.4), so two builds whose
+protocols differ still say what both can read: a field added later is `Optional`, which either
+reads; a message added later is a form of its own, which the newer build must downgrade from.
+Each node advertises itself as it joins and every half-minute after (`Advertised`: its node,
+services and ports, capabilities, load, whether it is the gateway), says when it leaves
+(`Left`), publishes each change of its activities (`Updated`, coalesced to one per activity per
+quarter-second; `Ended` at once) and may publish events of its own (`Tool`, a BinTEL payload of
+at most 16 KiB, at most fifty a second). Every event carries its origin and the origin's
+sequence, by which a node acts on it once however many links bring it, and a hop count which
+bounds how far a gateway relays it. The API is `Swarm.start`/`of`, `nodes`, `activities`,
+`expose`, `publish` and `subscribe(Filter)`; `<tool> swarm log` shows the journal.
+
+Two limits of stratiform's resolver shaped the wire: a record holding a sum does not resolve,
+so each kind of event is a `Wire` message of its own rather than an envelope holding an event;
+and a scalar field named like a record definition does not either. An activity travels as its
+TEL text, under the model's own codecs for `Inline` and `Status`, which evolve with the model.
+
+**In the front-ends.** `Presence` (in the model) is the seam: a frontend attaches the
+interfaces it shows, so every activity of the process goes out on the bus, and shows what came
+in without knowing how. The web masthead carries a second row of cards for other nodes'
+activities, each labelled with its tool and machine and linking to the view which shows it
+there — an internal destination travels as `/open?activity=<id>`, which the originating
+front-end answers by pressing the activity's own action and sending the browser to its page —
+and the menu bar lists the tools running, as they come and go. The terminal publishes too, and
+shows only its own activities: it is one run's view, not a dashboard.
+
+**Later**: one HTTP server serving every tool's front-end under one origin (every link is
+root-absolute now, so that is a prefix on the page and `Origin.url` becoming `/<tool>/`), and
+one MCP endpoint aggregating every tool's.
 
 ## Roadmap
 
