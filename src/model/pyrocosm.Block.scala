@@ -24,7 +24,7 @@ package pyrocosm
 
 // Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
 // definitions, since a wildcard import beats a package member declared in another file.
-import soundness.{Language as _, *}
+import soundness.{Codecs as _, Language as _, *}
 
 // Flow content: the things which occur one after another down a page or a pane. Comparable to
 // Markdown's block nodes, and richer: tables with layout semantics, records, notices, trees,
@@ -115,18 +115,17 @@ object Block:
 
   object Graph:
     def of(dag: Dag[Vertex]): Graph =
-      val edges: List[Edge] = List.from(dag.edges.map { (edge: (Vertex, Vertex)) => Edge(edge(0).id, edge(1).id) })
-      Graph(List.from(dag.keys), edges)
+      val edges: List[Edge] = dag.edges.map { (edge: (Vertex, Vertex)) => Edge(edge(0).id, edge(1).id) }.to[List]
+      Graph(dag.nodes.to[List], edges)
 
     extension (graph: Graph)
-      def dag: Dag[Vertex] =
+      // A `Dag` is acyclic by construction, so a graph whose edges close a cycle raises.
+      def dag: Dag[Vertex] raises Dag.Error =
         val byId: Map[Text, Vertex] = graph.vertices.map { (vertex: Vertex) => vertex.id -> vertex }.to[Map]
 
-        // Acyclicity's graphs are still keyed by the stdlib's sets, so the prelude's are handed
-        // over at its boundary.
-        Dag(graph.vertices.to[Set].stdlib): (vertex: Vertex) =>
+        Dag(graph.vertices.to[Set]): (vertex: Vertex) =>
           graph.edges.filter(_.from == vertex.id).map { (edge: Edge) => byId(edge.to) }.sweep { case vertex: Vertex => vertex }
-          . to[Set].stdlib
+          . to[Set]
 
   object Chart:
     enum Kind:

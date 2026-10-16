@@ -31,7 +31,7 @@ import errorDiagnostics.emptyDiagnostics
 import probates.cancelProbate
 import proscenium.List
 import strategies.throwUnsafely
-import threading.platformThreading
+import threads.platformThreads
 
 // A later build's wire, for the acceptance tests: the same messages and one more, and an advert
 // with one more, optional, field. Derived here, in the unchecked test module, as `Wire` is in

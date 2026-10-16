@@ -29,7 +29,6 @@ import soundness.{Standing as _, Step as _, Token as _, *}
 
 import dysasymptotics.{linearAccess, linearSize}
 
-import murmuration.zip
 import sortingAlgorithms.timsort
 import columnAttenuation.ignoreAttenuation
 import laneDagStyles.boxDrawingLaneDagStyle
@@ -62,7 +61,7 @@ object TerminalRenderer:
       ( using Text is Measurable, Hyphenation )
     :   Sequence[text] =
 
-      val all: List[text] = List.from(lines.readable)
+      val all: List[text] = lines.to[List]
       all.bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
 
   object Rigid extends Columnar:
@@ -74,7 +73,7 @@ object TerminalRenderer:
       ( using Text is Measurable, Hyphenation )
     :   Sequence[text] =
 
-      val all: List[text] = List.from(lines.readable)
+      val all: List[text] = lines.to[List]
       all.bind { (line: text) => Flow.wrap(line, width) }.to[Sequence]
 
   def glyph(glyph: Glyph)(using glyphs: Gaugeable.Glyphs): Text =

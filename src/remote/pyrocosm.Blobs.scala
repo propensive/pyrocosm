@@ -65,7 +65,7 @@ object Blobs:
           unsafely(name.cut(t"/").stdlib.foldLeft(% : Path on Zip) { (path, segment) => path / Name[Zip](segment) })
         Zip.Entry(ref, file.read[Data])
 
-    Zipfile(entries).serialize.memoize
+    unsafely(Zipfile(entries).serialize).memoize
 
   // The entry and the bytes for a classpath path: a jar is read as it is, a directory bundled.
   def prepare(path: Path on Linux, name: Text): (Entry, Data) raises Io.Error =

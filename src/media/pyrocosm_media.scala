@@ -27,7 +27,6 @@ package pyrocosm
 // declared in another file.
 import soundness.{Figure as _, *}
 
-import scala.compiletime
 
 import monotonous.alphabets.base64Standard
 
@@ -46,7 +45,7 @@ import monotonous.alphabets.base64Standard
 // encodes as PNG, which is lossless and carries alpha. A lambda rather than an anonymous
 // class, as `Presentable.quantity` is, since this is inline.
 inline given rasterPresentable: [raster <: Raster] => raster is Presentable in Block =
-  compiletime.summonFrom:
+  scala.compiletime.summonFrom:
     case given (`raster` <:< (Raster in Jpeg)) => Presentable.flow[raster] { raster => Media.image(raster, Jpeg()) }
     case given (`raster` <:< (Raster in Gif))  => Presentable.flow[raster] { raster => Media.image(raster, Gif()) }
     case given (`raster` <:< (Raster in Webp)) => Presentable.flow[raster] { raster => Media.image(raster, Webp()) }

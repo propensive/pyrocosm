@@ -24,7 +24,7 @@ package pyrocosm
 
 // Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
 // definitions, since a wildcard import beats a package member declared in another file.
-import soundness.{Language as _, *}
+import soundness.{Codecs as _, Language as _, *}
 
 import dysasymptotics.linearSize
 

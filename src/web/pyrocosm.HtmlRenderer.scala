@@ -28,7 +28,6 @@ package pyrocosm
 // supplies.
 import soundness.{Em as _, Origin as _, Span as _, *}
 
-import murmuration.zip
 import sortingAlgorithms.timsort
 import dysasymptotics.{linearAccess, linearSize}
 import attributives.textAttributive

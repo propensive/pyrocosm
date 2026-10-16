@@ -23,17 +23,15 @@
 package pyrocosm
 
 import java.io as ji
-import java.util.concurrent as juc
 import java.util.concurrent.atomic as juca
 import java.util.concurrent.locks as jucl
 import scala.caps
 
 import soundness.*
 
-import clavichord.Keypress
 
 import gigantism.Every
-import dysasymptotics.{linearAccess, linearSize}
+import dysasymptotics.linearSize
 
 // An input stream over the console's own, which profanity's `interactive` closes when a session
 // ends. Under an Ethereal daemon the console's stdin is the client's socket, so closing it would
@@ -95,12 +93,12 @@ extends Frontend:
   @caps.unsafe.untrackedCaptures
   private var spool: Optional[Relay[Terminal.Event]] = Unset
 
-  @volatile
-  @caps.unsafe.untrackedCaptures
-  private var stopped: Boolean = false
+  // An atomic cell rather than a `var`: a task spawned by `run` consults it, and a task may
+  // retain a plain value where it may not retain the frontend itself.
+  private val stopped: juca.AtomicBoolean = juca.AtomicBoolean(false)
 
   def stop(): Unit = synchronized:
-    stopped = true
+    stopped.set(true)
     spool.let(_.stop())
 
   def run(interface: Interface)(handle: Event => Unit): Unit =
@@ -152,10 +150,10 @@ extends Frontend:
       override def trap(handler: PartialFunction[profanity.Signal, SignalResponse]): Unit =
         console.trap(handler)
 
-    if stopped then handle(Event.Closed) else interactive: terminal ?=>
+    if stopped.get then handle(Event.Closed) else interactive: terminal ?=>
       synchronized:
         spool = terminal.events
-        if stopped then terminal.events.stop()
+        if stopped.get then terminal.events.stop()
 
       val columns = terminal.columns.or(80)
       val rows = terminal.rows.or(24)
@@ -283,17 +281,24 @@ extends Frontend:
       // keystroke in the meantime draws cleanly from the top; the form never sees the event.
       val resizes: juca.AtomicInteger = juca.AtomicInteger(0)
 
-      @volatile var inlineRoot: InlineRoot | Null = null
+      // The running cycle's root, for a resize to reset. Typed exclusively, since `reset` is an
+      // update; null between cycles (cast, as a `var` of a capability type is written throughout
+      // Soundness, since `Null` cannot be united with a tracked type); and each cycle's root is
+      // vouched pure as it is stored, since a capability made in `cycle` may not flow out to
+      // here. The resize that resets it runs on the cycle's own thread, from `events()`.
+      @volatile var inlineRoot: InlineRoot^ = null.asInstanceOf[InlineRoot^]
+
+      // The flag as a local: the resize task below may retain the cell, but not the frontend.
+      val halted: juca.AtomicBoolean = stopped
 
       def resized(): Unit =
         terminal.stdio.print(t"\u001b[2J\u001b[H")
-        val root = inlineRoot
-        if root != null then root.reset()
+        if inlineRoot != null then inlineRoot.reset()
         val current = resizes.incrementAndGet()
 
         async:
           snooze(150.0*Milli(Second))
-          if resizes.get == current && !stopped && committing.compareAndSet(false, true) then
+          if resizes.get == current && !halted.get && committing.compareAndSet(false, true) then
             session.replaying = true
             terminal.events.put(sentinel)
 
@@ -312,7 +317,7 @@ extends Frontend:
           private var ended: Boolean = false
 
           def hasNext: Boolean =
-            if ended || stopped then false else
+            if ended || stopped.get then false else
               if peeked.absent then
                 if underlying.hasNext then peeked = underlying.next() else ended = true
                 // The redraw is being taken: the next assignment may queue another.
@@ -370,11 +375,12 @@ extends Frontend:
             // coalesces resizes), so the commit's redraw, queued just before the form's end,
             // is painted rather than deferred past it.
             def cycle(): Unit =
-              val root = InlineRoot(terminal)(using anchoring, growth, shrink)
-              inlineRoot = caps.unsafe.unsafeAssumePure(root)
-              Form(root, mode, pane, formWake, 0, 0, scheduleWake).run(events())
+              inlineRoot =
+                caps.unsafe.unsafeAssumePure(InlineRoot(terminal)(using anchoring, growth, shrink))
 
-              if committing.get && !stopped then
+              Form(inlineRoot, mode, pane, formWake, 0, 0, scheduleWake).run(events())
+
+              if committing.get && !stopped.get then
                 generation.incrementAndGet()
 
                 if session.replaying then

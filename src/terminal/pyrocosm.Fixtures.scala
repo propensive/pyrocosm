@@ -28,7 +28,6 @@ import scala.caps
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Token as _, *}
 
-import clavichord.Keypress
 
 import dysasymptotics.{linearAccess, linearSize}
 

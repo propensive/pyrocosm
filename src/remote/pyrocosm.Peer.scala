@@ -439,7 +439,7 @@ object Peer:
   // kept; any other that completes after it is closed. A host whose certificate is not the one
   // pinned fails its TLS handshake, so a different machine at a reused address never wins.
   private def nearest(hosts: List[Text], port: Int)(using Tls): Optional[(Text, Duplex)] =
-    import threading.platformThreading
+    import threads.platformThreads
     import probates.cancelProbate
 
     val connectable: SecureEndpoint is Connectable = summon[SecureEndpoint is Connectable]
