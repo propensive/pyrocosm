@@ -104,5 +104,5 @@ final class Figure private[pyrocosm] (val id: Text, val alt: List[Inline], svg0:
     case figure: Figure => figure.id == id && figure.alt == alt && figure.svg == current
     case _              => false
 
-  override def hashCode: Int = id.hashCode
+  override def hashCode: Int = id.##
   override def toString: String = s"Figure($id)"

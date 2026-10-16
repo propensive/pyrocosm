@@ -44,7 +44,7 @@ extension (token: harlequin.Token)
 
 extension (code: SourceCode)
   def modelLines: List[Block.Line] =
-    List.from(code.lines.readable.map { (line: List[harlequin.Token]) => Block.Line(line.map(_.model)) })
+    code.lines.to[List].map { (line: List[harlequin.Token]) => Block.Line(line.map(_.model)) }
 
   // The model's language for the language that highlighted the source.
   def modelLanguage: Language = code.language match

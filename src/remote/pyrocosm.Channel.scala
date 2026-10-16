@@ -136,7 +136,7 @@ object Channel:
     given throwing: [error <: Hazard] => Tactic[error] =
       scala.caps.unsafe.unsafeAssumePure[Tactic[error]](ThrowTactic[error, Any]())
 
-  def same(left: Data, right: Data): Boolean = left.readable.sameElements(right.readable)
+  def same(left: Data, right: Data): Boolean = Array.same(left, right)
 
   private def join(parts: List[Data]): Data =
     val total: Int = parts.fold(0)(_ + _.length)
@@ -225,7 +225,7 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
     else Unset
 
   private def readInt(data: Data): Int =
-    def byte(index: Int): Int = data.readable(index) & 0xff
+    def byte(index: Int): Int = data.readUnchecked(index) & 0xff
     (byte(0) << 24) | (byte(1) << 16) | (byte(2) << 8) | byte(3)
 
   def receive(): Channel.Frame[message] =
@@ -234,7 +234,7 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
 
       if length < 1 then Channel.Frame.Closed else
         take(length).lay(Channel.Frame.Closed): body =>
-          val tag: Byte = body.readable(0)
+          val tag: Byte = body.readUnchecked(0)
           val payload: Data = Channel.slice(body, 1, body.length)
 
           tag match

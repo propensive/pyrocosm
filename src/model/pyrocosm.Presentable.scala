@@ -22,7 +22,6 @@
                                                                                                   */
 package pyrocosm
 
-import scala.compiletime
 
 // Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
 // definitions, since a wildcard import beats a package member declared in another file.
@@ -61,7 +60,7 @@ object Presentable extends Presentable2:
           Block.Entry(Inline.text(label), blocks(contextual.exhibit(field)))
 
         val title: Optional[List[Inline]] = if tuple then Unset else Inline.text(typeName)
-        Block.Record(List.from(entries.readable), title)
+        Block.Record(entries.to[List], title)
 
     inline def disjunction[derivation: SumReflection]: derivation is Presentable in Block =
       value =>
@@ -82,10 +81,10 @@ object Presentable extends Presentable2:
         case _                          => false
 
     inline def tabulate[element <: Product: ProductReflection](list: List[element]): Block =
-      val titles: List[Text] = List.from(contexts[element]() { [field] => context => label }.readable)
+      val titles: List[Text] = contexts[element]() { [field] => context => label }.to[List]
 
       val rows: List[List[List[Inline]]] = list.map: (element: element) =>
-        List.from(fields(element) { [field] => field => cell(contextual.exhibit(field)) }.readable)
+        fields(element) { [field] => field => cell(contextual.exhibit(field)) }.to[List]
 
       val columns: List[Block.Column] = titles.indexed.map: (title, index) =>
         val column = rows.map { (row: List[List[Inline]]) => row.at(index).or(Nil) }
@@ -196,7 +195,7 @@ trait Presentable3:
   // `derives Presentable`. `Inspectable` comes last because it always resolves: spectacular
   // derives one for any type, ending in a `toString` in curly quotes, so it is this fallback's
   // `toString` too.
-  inline given derived: [value] => value is Presentable = compiletime.summonFrom:
+  inline given derived: [value] => value is Presentable = scala.compiletime.summonFrom:
     case given (`value` is Showable)       => Presentable.phrase[value] { value => Inline.Textual(value.show) }
     case given ProductReflection[`value`]  => Presentable.Derivation.derived[value]
     case given (`value` is Inspectable)    => Presentable.phrase[value] { value => Inline.Textual(value.inspect) }

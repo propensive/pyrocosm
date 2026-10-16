@@ -542,7 +542,12 @@ object Tool:
                 configurator.read(service.portKeyword).let { text => safely(text.as[Int]) }
                 . or(service.port)
 
-              val settings: Text => Optional[Text] = configurator.read(_)
+              // The task outlives the invocation whose configurator this reads through, and a
+              // task may retain only what is durable, so the reader is vouched pure here: a
+              // setting is read from the daemon's configuration, which outlives every client.
+              val settings: Text -> Optional[Text] =
+                scala.caps.unsafe.unsafeAssumePure((name: Text) => configurator.read(name))
+
               Tool.ports.put(key, port)
               async(service.serve(port, settings))
 
@@ -746,7 +751,7 @@ object Tool:
     // can set itself up before being installed as a command.
     private def install(force: Boolean)
        (using invocation: Invocation, service: Resident)
-       (using erased Effectful)
+       (using erased permit: Effectful)
     :   Tool.InstallFailed.type | Exit =
 
       given Stdio = invocation.stdio

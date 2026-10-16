@@ -172,7 +172,7 @@ object Trees:
   // RFC 8949 diagnostic notation, `h'…'`, cut short after sixteen bytes.
   private def hex(bytes: Array[Byte]^{}): Text =
     val shown: List[Text] = indices(bytes.length.min(16)).map: (index: Int) =>
-      val digits = java.lang.Integer.toHexString(bytes.readable(index) & 0xff).nn.tt
+      val digits = java.lang.Integer.toHexString(bytes.readUnchecked(index) & 0xff).nn.tt
       if digits.length == 1 then t"0$digits" else digits
 
     t"h'${shown.join}${if bytes.length > 16 then t"…" else t""}'"
@@ -200,7 +200,7 @@ object Trees:
 
       val opening: List[Token] = List(symbol(t"<"), typal(label)) + attributes2
       val closing: List[Token] = List(symbol(t"</"), typal(label), symbol(t">"))
-      val children0b: List[Xml.Node] = List.from(children0.readable)
+      val children0b: List[Xml.Node] = children0.to[List]
       val children: List[Xml.Node] = children0b.filter(significant)
 
       children match
@@ -230,20 +230,20 @@ object Trees:
   // A document's top-level compounds are the roots; a compound's label is its keyword and
   // atoms, its remark kept faint; a comment is a muted leaf before what it comments on.
   def tel(tel: Tel): Block =
-    val roots: List[Tel.Compound] = List.from(tel.childCompounds.readable)
+    val roots: List[Tel.Compound] = tel.childCompounds.to[List]
     Block.Tree(roots.map { (compound: Tel.Compound) => telCompound(compound, 0) })
 
   private def telCompound(compound: Tel.Compound, depth: Int): Block.TreeNode =
-    val atoms0: List[Tel.Atom] = List.from(compound.atoms.readable)
+    val atoms0: List[Tel.Atom] = compound.atoms.to[List]
     val atoms: List[Token] = atoms0.bind { (atom: Tel.Atom) => List(plain(t" "), telAtom(atom)) }
     val remark: List[Token] = compound.remark.lay(Nil: List[Token]) { (remark: Text) => List(plain(t"  # $remark")) }
-    val blocks: List[Tel.Block] = List.from(compound.children.readable)
+    val blocks: List[Tel.Block] = compound.children.to[List]
     val children: List[Block.TreeNode] = blocks.bind { (block: Tel.Block) => telBlock(block, depth + 1) }
     node(Language.Tel, List(term(compound.keyword)) + atoms + remark, children, depth)
 
   private def telBlock(block: Tel.Block, depth: Int): List[Block.TreeNode] =
-    val comments0: List[Tel.Comment] = List.from(block.comments.readable)
-    val compounds: List[Tel.Compound] = List.from(block.compounds.readable)
+    val comments0: List[Tel.Comment] = block.comments.to[List]
+    val compounds: List[Tel.Compound] = block.compounds.to[List]
     val comments: List[Block.TreeNode] = comments0.map { (comment: Tel.Comment) => node(Language.Tel, List(plain(t"# ${comment.text}")), Nil, depth, Tone.Muted) }
     comments + compounds.map { (compound: Tel.Compound) => telCompound(compound, depth) }
 

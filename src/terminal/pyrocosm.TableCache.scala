@@ -123,7 +123,7 @@ class TableCache(renderer: TerminalRenderer, columns: List[Block.Column], captio
     rows0.each: row =>
       val found: Int =
         if index < rows.length && (rows(index) eq row) then index
-        else Optional(previous.get(row)).let(_.intValue).or(-1)
+        else Optional(previous.get(row)).or(-1)
 
       if found >= 0 then
         rows1 += row

@@ -209,8 +209,8 @@ extends pyrocosm.Frontend:
       val now = System.currentTimeMillis()
 
       tabs.forEach: (connection, tab) =>
-        if !except.lay(false)(_ == connection.nn.intValue) then
-          if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text) then detach(connection.nn.intValue)
+        if !except.lay(false)(_ == connection.nn) then
+          if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text) then detach(connection.nn)
 
     // A value a tab has typed, or cleared on submitting: it is on that tab's page already, so
     // it is recorded as published before the cell is assigned — the wake then sends nothing —
@@ -325,10 +325,14 @@ extends pyrocosm.Frontend:
       val tab = tabs.remove(connection)
       if tab != null then tab.nn.stop()
 
+      // A task may retain only what is durable, which the session is not: the check it runs
+      // after the grace period is vouched pure, as the wakes above are.
       if tabs.isEmpty && shared.absent then
+        val closeIfEmpty: () -> Unit = caps.unsafe.unsafeAssumePure(() => if tabs.isEmpty then close())
+
         async:
           snooze(WebFrontend.grace)
-          if tabs.isEmpty then close()
+          closeIfEmpty()
 
         ()
 

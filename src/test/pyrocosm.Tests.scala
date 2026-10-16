@@ -28,7 +28,6 @@ package pyrocosm
 // declared in another file.
 import soundness.{Control as _, Figure as _, Filter as _, Glyph as _, Language as _, Origin as _, Standing as _, Status as _, Step as _, Token as _, *}
 
-import clavichord.Keypress
 import probably.TestEvent
 
 import dysasymptotics.{linearAccess, linearSize}
@@ -77,12 +76,13 @@ object Tests extends Suite(m"Pyrocosm tests"):
   // exits with the suite's status (0 = every test passed, 1 = failures, 2 = the suite threw).
   // `fume run -c <test jar>` remains the full experience, with the rendered report.
   def main(args: Array[String]): Unit =
-    val tally = Tally()
+    val passed: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(0)
+    val failed: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(0)
     val out = java.lang.System.out.nn
 
     def handle(event: TestEvent): Unit = event match
       case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
-        tally.record(outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass")
+        (if outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass" then passed else failed).incrementAndGet()
         out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}".s)
 
       case TestEvent.DetailMessage(_, message) =>
@@ -98,7 +98,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       case _ => ()
 
     val status = scala.List(Tests.invoke(t"", handle), SwarmTests.invoke(t"", handle)).max
-    out.println(t"${tally.passed} passed, ${tally.failed} failed".s)
+    out.println(t"${passed.get} passed, ${failed.get} failed".s)
     java.lang.System.exit(status)
 
   def run(): Unit =
@@ -1822,7 +1822,7 @@ machine mac-mini
           Machine(t"worker", List(t"127.0.0.1"), port, fingerprint, secret, Nil)
 
         def serving[result](listener: Peer.Listener[Ping])(block: Int => result): result =
-          import threading.platformThreading
+          import threads.platformThreads
 
           supervise:
             val port: Int = Port[Tcp]().number
