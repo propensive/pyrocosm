@@ -16,10 +16,12 @@ object settings:
   // TASTy is produced by this compiler, so Pyrocosm must compile with it too. A Proscala release
   // from 1.0.0 (`SOUNDNESS_SCALA_RELEASE`) is built for several upstream Scala versions, each
   // shipped as `proscala-<scala version>.tar.gz` and versioned `<scala version>-pro-<release>`:
-  // `SOUNDNESS_SCALA_BASE` selects the Scala version, so the default is `3.10.0-pro-1.0.1`.
+  // `SOUNDNESS_SCALA_BASE` selects the Scala version, so the default is `3.10.0-pro-1.0.2`
+  // (1.0.1's capture checker overflows its stack on some consumers, flame among them:
+  // Proscala's `boxcycle`).
   // `SOUNDNESS_SCALA_VERSION` overrides the composed version; a release from before 1.0.0 (such
   // as `3.9.1-dev-p20`) is a single build, named by its tag, and is still accepted.
-  val scalaRelease = sys.env.getOrElse("SOUNDNESS_SCALA_RELEASE", "1.0.1")
+  val scalaRelease = sys.env.getOrElse("SOUNDNESS_SCALA_RELEASE", "1.0.2")
   val scalaBase = sys.env.getOrElse("SOUNDNESS_SCALA_BASE", "3.10.0")
   val scalaVersion = sys.env.getOrElse("SOUNDNESS_SCALA_VERSION",
     if scalaRelease.matches("[0-9]+\\.[0-9]+\\.[0-9]+") then s"$scalaBase-pro-$scalaRelease"
