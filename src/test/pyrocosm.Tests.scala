@@ -698,7 +698,8 @@ tags:
       (plan.navigation.map(_.id.label), plan.primary.map(_.id.label), plan.detail.map(_.id.label), plan.log.map(_.id.label))
     . assert(_ == (List(t"nav"), List(t"main"), List(t"detail"), List(t"log")))
 
-    val page = PyrocosmPage(arranged, html, WebTheme.default).markup.show
+    // With a presence of its own: the shared one may hold nodes another suite's swarm started.
+    val page = PyrocosmPage(arranged, html, WebTheme.default, Unset, Presence()).markup.show
 
     test(m"the page has a content element for each panel"):
       arranged.panels.map { (panel: Panel) => page.contains(t"""id="${HtmlRenderer.panelId(panel)}-content"""") }
@@ -896,6 +897,12 @@ tags:
 
       val decoration = PyrocosmPage(repl, html, WebTheme.default).decoration(prompt).show
       List(t"""<span class="pyro-tokens" hidden="">""", t"pyro-note", t"pyro-completions", t"println", t"reads as code", t"""<li class="pyro-replacement">""", t"pyro-note-erroneous").all(decoration.contains(_))
+    . assert(_ == true)
+
+    test(m"a decoration's state carries the version it is for and its verdict"):
+      prompt.decoration() = Control.Field.Decoration(incomplete = true, version = 7)
+      val decoration = PyrocosmPage(repl, html, WebTheme.default).decoration(prompt).show
+      List(t"pyro-state", t"""data-version="7"""", t"""data-incomplete="true"""").all(decoration.contains(_))
     . assert(_ == true)
 
     test(m"a value a tab published is not sent back to it"):
@@ -1196,6 +1203,104 @@ tags:
       (grid.line(0), rows, grid.caret)
 
     . assert(_ == (t"ab", 1, (0, 1)))
+
+    // ── Versioned text ────────────────────────────────────────────────────────────────────
+
+    def term(text: Text): Token = Token(text, Token.Accent.Term)
+    def sym(text: Text): Token = Token(text, Token.Accent.Symbol)
+    def spelt(tokens: List[Token]): Text = tokens.map(_.text).join
+
+    test(m"a splice is the edit between the common prefix and suffix"):
+      ( Token.splice(t"print", t"printl"), Token.splice(t"printl", t"print"),
+        Token.splice(t"a + b", t"a - b"), Token.splice(t"same", t"same") )
+    . assert(_ == ( Control.Field.Splice(5, 0, t"l"), Control.Field.Splice(5, 1, t""),
+                    Control.Field.Splice(2, 1, t"-"), Control.Field.Splice(4, 0, t"") ))
+
+    test(m"an identifier character typed at the end of a term extends it"):
+      Token.rebase(List(term(t"pri")), Control.Field.Splice(3, 0, t"n"))
+    . assert(_ == List(term(t"prin")))
+
+    test(m"a symbol typed after a term stands as plain text of its own"):
+      Token.rebase(List(term(t"println")), Control.Field.Splice(7, 0, t"("))
+    . assert(_ == List(term(t"println"), Token.plain(t"(")))
+
+    test(m"anything typed inside a string belongs to it"):
+      Token.rebase(List(Token(t"\"ab\"", Token.Accent.String)), Control.Field.Splice(2, 0, t" + "))
+    . assert(_ == List(Token(t"\"a + b\"", Token.Accent.String)))
+
+    test(m"a symbol typed inside a term splits it"):
+      Token.rebase(List(term(t"ab")), Control.Field.Splice(1, 0, t"."))
+    . assert(_ == List(term(t"a"), Token.plain(t"."), term(t"b")))
+
+    test(m"a removal spanning two tokens cuts both, and a token wholly removed goes"):
+      Token.rebase(List(term(t"abc"), sym(t"+"), term(t"def")), Control.Field.Splice(2, 3, t""))
+    . assert(_ == List(term(t"ab"), term(t"ef")))
+
+    test(m"a newline typed at the end of a line is plain text"):
+      Token.rebase(List(term(t"abc")), Control.Field.Splice(3, 0, t"\n"))
+    . assert(_ == List(term(t"abc"), Token.plain(t"\n")))
+
+    test(m"a rebased token run always spells out the edited text"):
+      val tokens: List[Token] =
+        List(Token(t"val", Token.Accent.Keyword), Token.plain(t" "), term(t"x"), Token.plain(t" "), sym(t"="), Token.plain(t" "), Token(t"12", Token.Accent.Number))
+
+      val edits: List[Control.Field.Splice] =
+        List
+          ( Control.Field.Splice(9, 0, t"3"), Control.Field.Splice(4, 1, t"xs"), Control.Field.Splice(0, 3, t"def"),
+            Control.Field.Splice(11, 0, t"\n  "), Control.Field.Splice(2, 5, t""), Control.Field.Splice(0, 0, t"  ") )
+
+      var text: Text = spelt(tokens)
+      var current: List[Token] = tokens
+
+      edits.all: (splice: Control.Field.Splice) =>
+        text = t"${text.keep(splice.start)}${splice.inserted}${text.skip(splice.start + splice.removed)}"
+        current = Token.rebase(current, splice)
+        spelt(current) == text
+
+    . assert(_ == true)
+
+    def versionedField(value: Text): (Control.Field, CodeField, () => List[Event]) =
+      var events: List[Event] = Nil
+
+      val field: Control.Field =
+        Control.Field(Input(t"code"), Control.Field.Kind.Line, value = Live(value), notification = Control.Field.Notify.Keystrokes)
+
+      val fixture = CodeField(field, renderer, (event: Event) => events = event :: events, pyrocosm.Session())
+      (field, fixture, () => events.reverse)
+
+    def edited(events: List[Event]): List[(Text, Int)] =
+      events.map { case Event.Edited(_, text, _, version) => (text, version); case _ => (t"?", -1) }
+
+    test(m"each keystroke reports the text with a new version"):
+      val (_, fixture, events) = versionedField(t"")
+      fixture.handle(Keypress.CharKey('a'))
+      fixture.handle(Keypress.CharKey('b'))
+      edited(events())
+    . assert(_ == List((t"a", 1), (t"ab", 2)))
+
+    test(m"a revision based on the current version is adopted, and reported as an edit"):
+      val (field, fixture, events) = versionedField(t"")
+      fixture.handle(Keypress.CharKey('p'))
+      field.revise(1, t"println", 7)
+      fixture.measure(20)
+      (field.value(), field.revision(), edited(events()))
+    . assert(_ == (t"println", Unset, List((t"p", 1), (t"println", 2))))
+
+    test(m"a revision based on an older version is dropped"):
+      val (field, fixture, events) = versionedField(t"")
+      fixture.handle(Keypress.CharKey('p'))
+      fixture.handle(Keypress.CharKey('r'))
+      field.revise(1, t"println", 7)
+      fixture.measure(20)
+      (field.value(), field.revision(), edited(events()))
+    . assert(_ == (t"pr", Unset, List((t"p", 1), (t"pr", 2))))
+
+    test(m"submitting clears the field as a versioned edit before the submission"):
+      val (_, fixture, events) = versionedField(t"")
+      fixture.handle(Keypress.CharKey('a'))
+      fixture.handle(Keypress.Enter)
+      events().map { case Event.Edited(_, text, _, version) => t"$text@$version"; case Event.Submitted(_, text) => t"submit:$text"; case _ => t"?" }
+    . assert(_ == List(t"a@1", t"@2", t"submit:a"))
 
     // ── Git notes ─────────────────────────────────────────────────────────────────────────
 

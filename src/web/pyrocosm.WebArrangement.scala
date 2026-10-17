@@ -70,6 +70,11 @@ object PyrocosmPage:
   // `data-history="…"` on a field: the application's history, seeded for the script.
   given history: ("data-history" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
+  // `data-version="…"` and `data-incomplete="…"` on a decoration's state: the version of the
+  // text it describes, and whether that text is an incomplete prefix, for the script.
+  given dataVersion: ("data-version" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+  given dataIncomplete: ("data-incomplete" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
   // A `crossorigin` value on a `link`, as honeycomb declares the attribute but no way to
   // attribute a value to it.
   given crossorigin: Crossorigin is Attributive to Whatwg.Crossorigin = (key, value) => (key, value.show)
@@ -77,7 +82,7 @@ object PyrocosmPage:
 class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset, presence: Presence = Presence.shared)
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
   import HtmlRenderer.{cls, panelId, classes}
-  import PyrocosmPage.{history, crossorigin}
+  import PyrocosmPage.{history, crossorigin, dataVersion, dataIncomplete}
 
   private val plan: WebArrangement.Plan = WebArrangement.plan(interface)
 
@@ -150,11 +155,18 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
           ( Textarea(id = field.input.id, `class` = cls(t"pyro-field") :: state, rows = rows, placeholder = field.placeholder.or(t""))(field.value()),
             decorated )
 
-  // What the script reads to decorate a field: the highlighting tokens (hidden; the script
-  // paints an editor with them when they cover its text), the note, and the
+  // What the script reads to decorate a field: its state (the version of the text it is for,
+  // and whether that is incomplete), the highlighting tokens (hidden; the script paints an
+  // editor with them, rebased through any edits since that version), the note, and the
   // completions, which the script also turns into suggestion text.
   def decoration(field: Control.Field): Html of Flow =
     val decoration0 = field.decoration()
+
+    val state: Html of Flow =
+      Span
+        ( `class` = cls(t"pyro-state"), hidden = t"", `data-version` = decoration0.version.toString.tt,
+          `data-incomplete` = (if decoration0.incomplete then t"true" else t"false") )
+        ()
 
     // The tokens as code lines, so the decoration's marks lay over them as a code block's notes.
     val tokens: Html of Flow =
@@ -180,7 +192,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
         val classes: List[Name[CssClass]] = if completion.whole then List(cls(t"pyro-replacement")) else Nil
         Li(`class` = classes)(Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature)) }*)
 
-    Html.Fragment(tokens, detail, list)
+    Html.Fragment(state, tokens, detail, list)
 
   def panelContent(panel: Panel): Html of Flow =
     Div(id = t"${panelId(panel)}-content", `class` = cls(t"pyro-panel-content"))(renderer.blocks(panel.content()))

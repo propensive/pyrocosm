@@ -41,9 +41,15 @@ import logging.silentLogging
 
 // The messages the frontend and its script exchange as JSON. Flat case classes, so the shape is
 // plain for the script: a patch replaces the inner HTML of an element by id; an incoming message
-// names a handle by id.
-case class Patch(kind: Text, id: Text, html: Text = t"")
-case class Incoming(kind: Text, id: Text = t"", text: Text = t"", caret: Int = 0, index: Int = 0)
+// names a handle by id. A field's text is versioned by the script that edits it (see
+// `Control.Field`): an `edit`, `submit` or `enter` says which version it is of, and a `value`
+// passed on to another tab carries the version with it, so every tab numbers the text alike.
+case class Patch(kind: Text, id: Text, html: Text = t"", version: Int = 0)
+case class Incoming(kind: Text, id: Text = t"", text: Text = t"", caret: Int = 0, index: Int = 0, version: Int = 0)
+
+// The answer to an `enter`: whether the text is incomplete, and the version of the text the
+// decoration which says so was given for.
+private[pyrocosm] case class Verdict(version: Int, incomplete: Boolean)
 
 // The value each field's tabs are showing, by input id: the web's form of the terminal
 // fixture's `published` watermark (see `CodeField`). A tab that types sends its text with
@@ -212,13 +218,18 @@ extends pyrocosm.Frontend:
         if !except.lay(false)(_ == connection.nn) then
           if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text) then detach(connection.nn)
 
+    // A patch to one tab alone: the answer to something it asked.
+    def tell(connection: Int, patch: Patch): Unit =
+      val tab = tabs.get(connection)
+      if tab != null && !tab.nn.offer(patch.in[Json].show) then detach(connection)
+
     // A value a tab has typed, or cleared on submitting: it is on that tab's page already, so
     // it is recorded as published before the cell is assigned — the wake then sends nothing —
-    // and goes to the other tabs alone, which show the same session.
-    private def publish(connection: Int, field: Control.Field, text: Text): Unit =
+    // and goes to the other tabs alone, which show the same session, with its version.
+    private def publish(connection: Int, field: Control.Field, text: Text, version: Int): Unit =
       published.publish(field.input.id, text)
       field.value() = text
-      broadcast(Patch(t"value", field.input.id, text), except = connection)
+      broadcast(Patch(t"value", field.input.id, text, version), except = connection)
 
     // The figures the content has shown, each bound once: a figure appears whenever content
     // changes, and from then on repaints in place — one part, or the whole drawing — rather
@@ -258,12 +269,18 @@ extends pyrocosm.Frontend:
           bindFigures(content)
 
       (interface.controls + interface.panels.bind(_.controls)).each:
-        case Control.Field(input, _, value, decoration, _, _, history) =>
+        case Control.Field(input, _, value, decoration, _, _, history, revision) =>
           decoration.bindWake { () =>
             interface.fields.seek(_.input == input).let: field =>
               broadcast(Patch(t"replace", t"${input.id}-decoration", page.decoration(field).show))
-              broadcast(Patch(if field.decoration().incomplete then t"class" else t"unclass", input.id, t"pyro-incomplete")) }
+
+              // A code field's script sets its own incomplete class, from the decoration's
+              // state, for the version it is at; a textarea has it set here.
+              field.kind match
+                case Control.Field.Kind.Code(_) => ()
+                case _ => broadcast(Patch(if field.decoration().incomplete then t"class" else t"unclass", input.id, t"pyro-incomplete")) }
           value.bindWake { () => if published.fresh(input.id, value()) then broadcast(Patch(t"value", input.id, value())) }
+          revision.bindWake { () => revision().let { proposal => broadcast(Patch(t"revise", input.id, proposal.in[Json].show)) } }
           history.bindWake { () => broadcast(Patch(t"history", input.id, history().in[Json].show)) }
 
         case Control.Button(_, action, enabled) =>
@@ -288,14 +305,26 @@ extends pyrocosm.Frontend:
 
           case t"edit" =>
             interface.fields.seek(_.input.id == incoming.id).let: field =>
-              publish(connection, field, incoming.text)
+              publish(connection, field, incoming.text, incoming.version)
               if field.notification == Control.Field.Notify.Keystrokes
-              then handle(Event.Edited(field.input, incoming.text, incoming.caret))
+              then handle(Event.Edited(field.input, incoming.text, incoming.caret, incoming.version))
 
+          // The clearing of the field is an edit like any other, heard before the submission,
+          // so whatever the application still had in flight for the text is overtaken.
           case t"submit" =>
             interface.fields.seek(_.input.id == incoming.id).let: field =>
-              publish(connection, field, t"")
+              publish(connection, field, t"", incoming.version)
+              if field.notification == Control.Field.Notify.Keystrokes
+              then handle(Event.Edited(field.input, t"", 0, incoming.version))
               handle(Event.Submitted(field.input, incoming.text))
+
+          // Enter pressed before the decoration of the latest edit reached the tab: the edit
+          // itself was handled before this, on this connection, so the decoration is of the
+          // text as the tab has it, and its verdict goes back to that tab alone.
+          case t"enter" =>
+            interface.fields.seek(_.input.id == incoming.id).let: field =>
+              val decoration = field.decoration()
+              tell(connection, Patch(t"verdict", field.input.id, Verdict(decoration.version, decoration.incomplete).in[Json].show))
 
           case t"toggle" =>
             interface.toggles.seek(_.toggle.id == incoming.id).let: toggle =>

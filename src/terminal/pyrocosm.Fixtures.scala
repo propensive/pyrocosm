@@ -488,6 +488,21 @@ extends Focus, Refreshable:
   @caps.unsafe.untrackedCaptures
   private var published: Text = field.value()
 
+  // The text's version, advanced by every edit made here and reported with `Edited`; and the
+  // recent edits, newest first, by the version each produced, through which a decoration of
+  // an older version is rebased (see `Token.rebase`).
+  @caps.unsafe.untrackedCaptures
+  private var version: Int = 0
+
+  @caps.unsafe.untrackedCaptures
+  private var log: List[(Int, Control.Field.Splice)] = Nil
+
+  private val logged: Int = 64
+
+  // Enter's last verdict from a decoration of the text as it stood.
+  @caps.unsafe.untrackedCaptures
+  private var verdict: Boolean = false
+
   // Where in the field's history (oldest first) recall stands: past the end is the draft.
   @caps.unsafe.untrackedCaptures
   private var recall: Int = field.history().size
@@ -525,19 +540,42 @@ extends Focus, Refreshable:
   // The columns left for the text beside the prompt.
   private def inner(width: Int): Int = (width - indent(width)).max(1)
 
-  // The application may replace the value (clearing it after a submission, say); adopt it.
+  // The application's proposed replacement of the text (a completion accepted, say) is taken
+  // if it was based on the text as it stands, and dropped if a keystroke has overtaken it:
+  // the application hears that keystroke's `Edited`, and may propose again. An application
+  // which writes the value cell directly, as before there were revisions, is still followed.
   private def sync(): Unit =
+    field.revision().let: revision =>
+      field.revision() = Unset
+
+      if revision.base == version then
+        val caret: Int = revision.caret.max(0).min(revision.text.length)
+        editor = LineEditor(revision.text, caret, LineEditor.Mode.Multiline(_ => false))
+        completion = 0
+        selected = false
+        publish()
+
     if field.value() != published then
       editor = LineEditor(field.value(), mode = LineEditor.Mode.Multiline(_ => false))
       published = field.value()
 
   private def publish(): Unit =
+    val splice: Control.Field.Splice = Token.splice(published, editor.value)
+    version += 1
+    log = ((version, splice) :: log).keep(logged)
     published = editor.value
     field.value() = editor.value
 
     field.notification match
-      case Control.Field.Notify.Keystrokes => dispatch(Event.Edited(field.input, editor.value, editor.position))
+      case Control.Field.Notify.Keystrokes => dispatch(Event.Edited(field.input, editor.value, editor.position, version))
       case _                               => ()
+
+  // Enter's verdict: the decoration's, when it describes the text as it stands (the
+  // application decorates each `Edited` before the next key arrives, so it does); else the
+  // last such verdict, rather than one given for other text.
+  private def incomplete: Boolean =
+    if decoration.version == 0 || decoration.version == version then verdict = decoration.incomplete
+    verdict
 
   private def isIdentifier(char: Char): Boolean = char.isLetterOrDigit || char == '_'
 
@@ -591,9 +629,20 @@ extends Focus, Refreshable:
 
   override def claimsEscape: Boolean = !completions.nil
 
+  // The decoration's tokens, as they stand after the edits made since the decoration was
+  // given: those of the current version as they are; those of an older one rebased through
+  // the logged edits newer than it, oldest first; unversioned ones as they are, used only
+  // while they spell out the text.
+  private def tokens: List[Token] =
+    val given0: List[Token] = decoration.tokens
+    if decoration.version == 0 || decoration.version >= version then given0
+    else
+      log.filter(_(0) > decoration.version).reverse.fold(given0): (tokens, entry) =>
+        Token.rebase(tokens, entry(1))
+
   private def valueLines: List[Teletype] =
     val value = editor.value
-    val tokens = decoration.tokens
+    val tokens = this.tokens
     val covered = !tokens.nil && tokens.map(_.text).join == value
 
     if !covered then value.cut(t"\n").map(Teletype(_)) else
@@ -732,7 +781,7 @@ extends Focus, Refreshable:
     event match
       case Keypress.Enter =>
         if selected && ghost.present then accept()
-        else if decoration.incomplete then newline()
+        else if incomplete then newline()
         else submit()
 
       case Keypress.Shift(Keypress.Enter) =>
