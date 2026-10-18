@@ -37,6 +37,8 @@ import dysasymptotics.linearSize
 // It is sound for the same reasons: a frontend re-binds on every run and unbinds when it
 // finishes, so a wake never references a finished loop.
 class Live[value](initial: value):
+  // Volatile: a frontend reads the cell on its own thread, and must see the writer's value.
+  @volatile
   @caps.unsafe.untrackedCaptures
   private var current: value = initial
 

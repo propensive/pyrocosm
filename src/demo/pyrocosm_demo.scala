@@ -638,11 +638,11 @@ class GallerySession():
     case Event.Chosen(Samples.section, index) =>
       show(index)
 
-    case Event.Edited(Samples.filter, text, _) =>
+    case Event.Edited(Samples.filter, text, _, _) =>
       filtered = text
       navigation() = Samples.navigation(current, filtered)
 
-    case Event.Edited(_, text, caret) =>
+    case Event.Edited(_, text, caret, _) =>
       field.decoration() = Samples.decorate(text, caret)
 
     case Event.Submitted(Samples.note, text) =>
@@ -681,7 +681,7 @@ object Repl:
     var count = 0
 
     def handle(event: Event): Unit = event match
-      case Event.Edited(_, text, caret) =>
+      case Event.Edited(_, text, caret, _) =>
         field.decoration() = Samples.decorate(text, caret)
 
       case Event.Submitted(_, text) =>

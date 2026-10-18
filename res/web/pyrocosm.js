@@ -154,10 +154,28 @@
           if (editor && editor.classList.contains("pyro-editor")) decorate(editor, element);
         }
         break;
+      // Another tab's text, or the application's: adopted whole, with its version.
       case "value":
         if (element.classList.contains("pyro-editor")) {
-          if (editorText(element) !== patch.html) { clearSuggestion(element); element.textContent = patch.html; placeCaret(element, patch.html.length); emptiness(element); }
+          if (editorText(element) !== patch.html) { clearSuggestion(element); element.textContent = patch.html; trailingBreak(element); placeCaret(element, patch.html.length); emptiness(element); }
+          adopt(element, patch.html, patch.version || 0);
         } else if (element.value !== patch.html) element.value = patch.html;
+        break;
+      // The application's proposed replacement of the text, taken only if the text is still
+      // at the version it was based on; a keystroke since has overtaken it.
+      case "revise":
+        if (element.classList.contains("pyro-editor")) {
+          try { var proposal = JSON.parse(patch.html); } catch (error) { console.error(error); break; }
+          if (proposal.base === versionOf(element)) setText(element, proposal.text, proposal.caret);
+        }
+        break;
+      // The server's answer to an Enter it was asked about.
+      case "verdict":
+        if (element.classList.contains("pyro-editor") && pendingEnter[element.id]) {
+          try { var verdict = JSON.parse(patch.html); } catch (error) { console.error(error); break; }
+          var trusted = verdict.version === versionOf(element) || verdict.version === 0;
+          resolveEnter(element, trusted ? verdict.incomplete : looksIncomplete(editorText(element)));
+        }
         break;
       // One part of a figure's drawing. When the new markup has the same shape as the old (the
       // same elements in the same order), the attributes are updated in place, so the elements
@@ -195,6 +213,142 @@
     socket.onmessage = function (event) {
       try { apply(JSON.parse(event.data)); } catch (error) { console.error(error); }
     };
+  }
+
+  // ── The versioned text ───────────────────────────────────────────────────────────────────
+  // The editor owns its text and numbers its versions: every local edit — a keystroke, a paste,
+  // a recall, a completion taken, the clearing on submit — advances the version, which goes to
+  // the server with the edit. What comes back (tokens, the Enter verdict, completions) says
+  // which version it describes. A decoration of the current version is painted as it is; one
+  // of an older version has the edits made since replayed over its tokens (the rule the model
+  // calls `Token.rebase`), so the line is never shown plain while highlighting is awaited, nor
+  // with another text's colours; and a verdict is trusted only for the version it was given for.
+  var versions = {}, lastTexts = {}, logs = {}, verdicts = {}, composing = {};
+  var LOGGED = 64;
+
+  function versionOf(editor) {
+    if (!(editor.id in versions)) { versions[editor.id] = 0; lastTexts[editor.id] = editorText(editor); logs[editor.id] = []; }
+    return versions[editor.id];
+  }
+
+  // The one edit turning `before` into `after`: the common prefix and suffix are kept, and
+  // what lies between them is the splice.
+  function spliceOf(before, after) {
+    var shortest = Math.min(before.length, after.length), prefix = 0, suffix = 0;
+    while (prefix < shortest && before.charAt(prefix) === after.charAt(prefix)) prefix++;
+    while (suffix < shortest - prefix && before.charAt(before.length - 1 - suffix) === after.charAt(after.length - 1 - suffix)) suffix++;
+    return { start: prefix, removed: before.length - prefix - suffix, inserted: after.slice(prefix, after.length - suffix) };
+  }
+
+  // The text has changed here: a new version, with the edit logged under it.
+  function record(editor) {
+    versionOf(editor);
+    var id = editor.id, text = editorText(editor);
+    var splice = spliceOf(lastTexts[id], text);
+    versions[id]++;
+    logs[id].push({ version: versions[id], splice: splice });
+    if (logs[id].length > LOGGED) logs[id].shift();
+    lastTexts[id] = text;
+    return versions[id];
+  }
+
+  // A text adopted whole from elsewhere, with its version when it has one, so every tab
+  // numbers the text alike.
+  function adopt(editor, text, version) {
+    versionOf(editor);
+    lastTexts[editor.id] = text;
+    if (version > 0) { versions[editor.id] = version; logs[editor.id] = []; }
+  }
+
+  function isWord(text) { return /^[A-Za-z0-9_]+$/.test(text); }
+
+  // A token as the script holds it: its text, and the element it was rendered in, which
+  // carries its accent class (none for plain text, such as the newline between lines).
+  function accentOf(item) {
+    var match = item.template && /pyro-accent-([a-z]+)/.exec(item.template.className);
+    return match ? match[1] : "unparsed";
+  }
+
+  // Which tokens grow when identifier characters are typed inside or at the end of them, and
+  // which take anything typed inside them at all: the inside of a string, and unparsed text.
+  function extendable(accent) { return accent === "term" || accent === "typal" || accent === "number" || accent === "keyword" || accent === "unparsed"; }
+  function absorbent(accent) { return accent === "string" || accent === "unparsed" || accent === "error"; }
+
+  function itemsOf(tokens) {
+    var items = [], walker = document.createTreeWalker(tokens, NodeFilter.SHOW_TEXT, null), node;
+    while ((node = walker.nextNode())) {
+      var parent = node.parentNode;
+      var accented = parent && parent.classList && /pyro-accent-/.test(parent.className);
+      items.push({ text: node.textContent, template: accented ? parent : null });
+    }
+    return items;
+  }
+
+  // The tokens as they stand after one edit: the removed range cut from the tokens it covers,
+  // and the inserted text joining the token it lands in or ends, or standing as plain text of
+  // its own until the highlighting of the edited text arrives.
+  function rebaseItems(items, splice) {
+    var start = splice.start, end = start + splice.removed, offset = 0, cut = [];
+    items.forEach(function (item) {
+      var a = offset, b = a + item.text.length;
+      offset = b;
+      if (b <= start || a >= end) { cut.push(item); return; }
+      var kept = item.text.slice(0, Math.max(0, start - a)) + item.text.slice(Math.min(item.text.length, end - a));
+      if (kept !== "") cut.push({ text: kept, template: item.template });
+    });
+    var inserted = splice.inserted;
+    if (inserted === "") return cut;
+    var word = isWord(inserted);
+    function grows(item) { return word && extendable(accentOf(item)) && item.text !== "" && isWord(item.text.charAt(item.text.length - 1)); }
+    function precedes(item) { return word && extendable(accentOf(item)) && item.text !== "" && isWord(item.text.charAt(0)); }
+    function within(item) { return absorbent(accentOf(item)) || (word && extendable(accentOf(item))); }
+    var plain = { text: inserted, template: null };
+    var result = [], placed = false;
+    offset = 0;
+    for (var i = 0; i < cut.length; i++) {
+      var item = cut[i], a = offset, b = a + item.text.length;
+      offset = b;
+      if (placed) { result.push(item); continue; }
+      if (start === a) {
+        var last = result.length ? result[result.length - 1] : null;
+        if (last && grows(last)) { result[result.length - 1] = { text: last.text + inserted, template: last.template }; result.push(item); }
+        else if (precedes(item)) result.push({ text: inserted + item.text, template: item.template });
+        else { result.push(plain); result.push(item); }
+        placed = true;
+      } else if (start < b) {
+        var head = item.text.slice(0, start - a), tail = item.text.slice(start - a);
+        if (within(item)) result.push({ text: head + inserted + tail, template: item.template });
+        else { result.push({ text: head, template: item.template }); result.push(plain); result.push({ text: tail, template: item.template }); }
+        placed = true;
+      } else result.push(item);
+    }
+    if (!placed) {
+      var final = result.length ? result[result.length - 1] : null;
+      if (final && grows(final)) result[result.length - 1] = { text: final.text + inserted, template: final.template };
+      else result.push(plain);
+    }
+    return result;
+  }
+
+  // The items painted into the editor, as lines, in the markup the server's tokens use.
+  function paintItems(editor, items) {
+    editor.innerHTML = "";
+    var line = document.createElement("span");
+    line.className = "pyro-line";
+    items.forEach(function (item) {
+      item.text.split("\n").forEach(function (part, index) {
+        if (index > 0) {
+          line.appendChild(document.createTextNode("\n"));
+          editor.appendChild(line);
+          line = document.createElement("span");
+          line.className = "pyro-line";
+        }
+        if (part === "") return;
+        if (item.template) { var span = item.template.cloneNode(false); span.textContent = part; line.appendChild(span); }
+        else line.appendChild(document.createTextNode(part));
+      });
+    });
+    editor.appendChild(line);
   }
 
   // ── The code editor ──────────────────────────────────────────────────────────────────────
@@ -336,17 +490,35 @@
     else clearSuggestion(editor);
   }
 
-  // Paint the editor with the decoration's tokens, if they describe the text as it stands
-  // (a newer keystroke has a fresh decoration in flight; stale tokens are dropped).
+  // Paint the editor with the decoration's tokens: as they are when they are of the text as it
+  // stands, rebased through the edits since when they are of an older version, and only if
+  // they then spell out the text exactly. Its state gives the Enter verdict for that version,
+  // which sets the field's class when the version is the current one. Nothing is repainted
+  // in the middle of an IME composition, which a repaint would break off.
   function decorate(editor, decoration) {
+    var state = decoration.querySelector(".pyro-state");
+    var given = state ? parseInt(state.getAttribute("data-version"), 10) || 0 : 0;
+    var current = versionOf(editor);
     var tokens = decoration.querySelector(".pyro-tokens");
-    if (tokens && tokens.textContent === editorText(editor)) {
-      var caret = caretOf(editor);
-      clearSuggestion(editor);
-      editor.innerHTML = "";
-      Array.prototype.forEach.call(tokens.childNodes, function (node) { editor.appendChild(node.cloneNode(true)); });
-      trailingBreak(editor);
-      placeCaret(editor, caret);
+    if (tokens && !composing[editor.id]) {
+      var items = itemsOf(tokens);
+      if (given > 0 && given < current) {
+        var since = logs[editor.id].filter(function (entry) { return entry.version > given; });
+        if (since.length !== current - given) items = null;
+        else since.forEach(function (entry) { items = rebaseItems(items, entry.splice); });
+      }
+      if (items && items.map(function (item) { return item.text; }).join("") === editorText(editor)) {
+        var caret = caretOf(editor);
+        clearSuggestion(editor);
+        paintItems(editor, items);
+        trailingBreak(editor);
+        placeCaret(editor, caret);
+      }
+    }
+    if (state) {
+      var incomplete = state.getAttribute("data-incomplete") === "true";
+      verdicts[editor.id] = { version: given, incomplete: incomplete };
+      if (given === 0 || given === current) editor.classList.toggle("pyro-incomplete", incomplete);
     }
     var items = completionsOf(editor);
     items.forEach(function (item) {
@@ -361,7 +533,8 @@
     clearSuggestion(editor);
     trailingBreak(editor);
     emptiness(editor);
-    send({ kind: "edit", id: editor.id, text: editorText(editor), caret: caretOf(editor), index: 0 });
+    var version = record(editor);
+    send({ kind: "edit", id: editor.id, text: editorText(editor), caret: caretOf(editor), index: 0, version: version });
   }
 
   function setText(editor, text, caret) {
@@ -412,8 +585,48 @@
     }
   }
 
-  function incomplete(editor) {
-    return editor.classList.contains("pyro-incomplete");
+  // Enter: continue the line or submit it. The verdict is the server's, for the text as it
+  // stands; when the latest edit's verdict has yet to arrive (a key pressed within a round
+  // trip of the last), the server is asked, and keys pressed meanwhile wait their turn, so the
+  // line is continued or submitted once, and never corrected afterwards.
+  var pendingEnter = {}, queued = {};
+
+  // For a verdict that never comes: open brackets, or a continued line whose last line is
+  // not blank, read as unfinished.
+  function looksIncomplete(text) {
+    var depth = 0;
+    for (var i = 0; i < text.length; i++) {
+      var character = text.charAt(i);
+      if ("([{".indexOf(character) >= 0) depth++; else if (")]}".indexOf(character) >= 0) depth--;
+    }
+    if (depth > 0) return true;
+    var last = text.lastIndexOf("\n");
+    return last >= 0 && text.slice(last + 1).trim() !== "";
+  }
+
+  function settle(editor, incomplete) { if (incomplete) newline(editor); else submit(editor); }
+
+  function enter(editor) {
+    var current = versionOf(editor), verdict = verdicts[editor.id];
+    if (verdict && verdict.version === current) { settle(editor, verdict.incomplete); return; }
+    queued[editor.id] = [];
+    pendingEnter[editor.id] = setTimeout(function () { resolveEnter(editor, looksIncomplete(editorText(editor))); }, 500);
+    send({ kind: "enter", id: editor.id, text: editorText(editor), caret: caretOf(editor), index: 0, version: current });
+  }
+
+  function resolveEnter(editor, incomplete) {
+    if (!pendingEnter[editor.id]) return;
+    clearTimeout(pendingEnter[editor.id]);
+    delete pendingEnter[editor.id];
+    settle(editor, incomplete);
+    var replay = queued[editor.id] || [];
+    queued[editor.id] = [];
+    replay.forEach(function (key) {
+      var text = editorText(editor), caret = caretOf(editor);
+      if (key.key.length === 1) setText(editor, text.slice(0, caret) + key.key + text.slice(caret), caret + 1);
+      else if (key.key === "Backspace") { if (caret > 0) setText(editor, text.slice(0, caret - 1) + text.slice(caret), caret - 1); }
+      else editorKey(editor, { key: key.key, shiftKey: key.shiftKey, ctrlKey: false, altKey: false, metaKey: false, preventDefault: function () {} });
+    });
   }
 
   // A newline, indented as the line being left when the caret ends it.
@@ -441,18 +654,29 @@
     return histories[editor.id];
   }
 
+  // The clearing is an edit, versioned like any other, so the submission says which version
+  // the empty field is at, and anything still in flight for the text is overtaken.
   function submit(editor) {
     var text = editorText(editor);
     recalls[editor.id] = historyOf(editor).length + (text === "" ? 0 : 1);
-    send({ kind: "submit", id: editor.id, text: text, caret: 0, index: 0 });
     clearSuggestion(editor);
     editor.textContent = "";
     emptiness(editor);
+    var version = record(editor);
+    send({ kind: "submit", id: editor.id, text: text, caret: 0, index: 0, version: version });
   }
 
   function editorKey(editor, event) {
     var items = completionsOf(editor);
     var multiline = editorText(editor).indexOf("\n") >= 0;
+
+    // An Enter awaits its verdict: what is typed meanwhile is replayed after it.
+    if (pendingEnter[editor.id]) {
+      event.preventDefault();
+      var plain = event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey;
+      if (plain || event.key === "Enter" || event.key === "Backspace" || event.key === "Tab") queued[editor.id].push({ key: event.key, shiftKey: event.shiftKey });
+      return;
+    }
 
     if (event.key === "Tab") {
       event.preventDefault();
@@ -463,8 +687,7 @@
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (selectedCompletion(editor) && hasSuggestion(editor)) accept(editor, selectedCompletion(editor));
-      else if (incomplete(editor)) newline(editor);
-      else submit(editor);
+      else enter(editor);
     } else if (event.key === "Escape" && items.length) {
       event.preventDefault(); dismiss(editor);
     } else if (event.key === "ArrowDown" && items.length) {
@@ -508,7 +731,10 @@
       if (editor.dataset.pyroWired) return;
       editor.dataset.pyroWired = "1";
       emptiness(editor);
-      editor.addEventListener("input", function () { edited(editor); });
+      verdicts[editor.id] = { version: 0, incomplete: editor.classList.contains("pyro-incomplete") };
+      editor.addEventListener("input", function (event) { if (!event.isComposing) edited(editor); });
+      editor.addEventListener("compositionstart", function () { composing[editor.id] = true; });
+      editor.addEventListener("compositionend", function () { composing[editor.id] = false; edited(editor); });
       editor.addEventListener("keydown", function (event) { editorKey(editor, event); });
       editor.addEventListener("keyup", function (event) {
         if (event.key === "ArrowLeft" || event.key === "Home" || event.key === "End") suggest(editor);

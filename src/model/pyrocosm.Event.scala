@@ -29,7 +29,7 @@ import soundness.*
 // node.
 enum Event:
   case Pressed(action: Action)                          // a button, a selectable row or item, an internal link
-  case Edited(input: Input, text: Text, caret: Int)     // per keystroke, for fields that ask for it
+  case Edited(input: Input, text: Text, caret: Int, version: Int = 0) // per keystroke, for fields that ask for it; `version` numbers the text
   case Submitted(input: Input, text: Text)
   case Chosen(choice: Choice, index: Int)
   case Toggled(toggle: Toggle, state: Boolean)

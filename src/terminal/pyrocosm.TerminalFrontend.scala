@@ -140,7 +140,7 @@ extends Frontend:
         Pane.Widget(Sizing(), register(ChoiceFocus(choice, renderer, dispatch, session), Unset, choice.current))
 
       case field: Control.Field =>
-        Pane.Widget(Sizing(), register(CodeField(field, renderer, dispatch, session), Unset, field.value, field.decoration))
+        Pane.Widget(Sizing(), register(CodeField(field, renderer, dispatch, session), Unset, field.value, field.decoration, field.revision))
 
     // The session reads the console through a detachable stdin (see `Detachable`).
     val stdio0: Stdio = Stdio(console.stdio.out, console.stdio.err, Detachable(console.stdio.in), console.stdio.termcap)
