@@ -288,10 +288,10 @@ object Samples:
 
     val notes =
       List
-        ( Block.Note(0, 4, 9, Block.Note.Style.Highlight, t"a highlighted span"),
-          Block.Note(0, 10, 14, Block.Note.Style.Param, t"a parameter"),
-          Block.Note(2, 6, 10, Block.Note.Style.Erroneous, t"Not found: oops"),
-          Block.Note(3, 7, 13, Block.Note.Style.Caution, t"legacy is deprecated") )
+        ( Block.Note(0, 4, 9, Block.Note.Style.Highlight, Inline.text(t"a highlighted span")),
+          Block.Note(0, 10, 14, Block.Note.Style.Param, Inline.text(t"a parameter")),
+          Block.Note(2, 6, 10, Block.Note.Style.Erroneous, Inline.text(t"Not found: oops")),
+          Block.Note(3, 7, 13, Block.Note.Style.Caution, Inline.text(t"legacy is deprecated")) )
 
     val accents: List[List[Inline]] =
       List
@@ -311,6 +311,19 @@ object Samples:
         Block.paragraph(t"A code block sits on the page colour behind a hairline, each token accented by its kind. Notes mark spans of a line: a highlight, a parameter, an error and a caution; hover one for its caption."),
         Block.Code(Language.Scala, List(greet, count, call, imported), notes),
         Block.Paragraph(Inline.Textual(t"Inline code takes the same accents: ") :: punctuated(accents)),
+        Block.Heading(2, Inline.text(t"Diagnostics")),
+        Block.paragraph(t"A diagnostic names its place and its severity, says what is wrong, and shows the lines concerned, numbered from where they came in their file, with the place marked: a segment is underlined, a position is pointed at, and a caption follows the mark."),
+        Block.Diagnostic
+          ( Tone.Failure,
+            Block.Location(t"src/greet.scala", 3, 7),
+            List(Block.Paragraph(List(Inline.Textual(t"Not found: "), inlineCode(t"oops", Token.Accent.Term)))),
+            List(Block.Code(Language.Scala, List(greet, count, call), List(Block.Note(2, 6, 10, Block.Note.Style.Erroneous)), 1)) ),
+        Block.Diagnostic
+          ( Tone.Warning,
+            Block.Location(t"src/greet.scala", 4, 8),
+            List(Block.Paragraph(List(inlineCode(t"legacy", Token.Accent.Term), Inline.Textual(t" is deprecated: import "), inlineCode(t"modern", Token.Accent.Term), Inline.Textual(t" instead, which has the same members and none of the surprises.")))),
+            List(Block.Code(Language.Scala, List(call, imported), List(Block.Note(1, 7, 7, Block.Note.Style.Caution, Inline.text(t"deprecated since 2.0"))), 3)),
+            List(Block.paragraph(t"Deprecations become errors in the next release.")) ),
         Block.Heading(2, Inline.text(t"Captured output")),
         Block.paragraph(t"A program's output is shown verbatim behind a gutter naming its stream: info for standard output, failure for standard error."),
         Block.Output(t"compiling 3 sources\ndone in 1.2 s\n"),
@@ -691,7 +704,7 @@ object Repl:
           field.history.append(text)
           val marks = Samples.decorate(text, text.length).marks
           val code = Samples.code(text) match
-            case Block.Code(language, lines, _) => Block.Code(language, lines, marks)
+            case Block.Code(language, lines, _, _) => Block.Code(language, lines, marks)
             case other                          => other
 
           val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))))
@@ -740,8 +753,8 @@ object GalleryWeb extends Tool.Web:
   def stop(): Unit = frontend.let(_.stop())
 
 // `gallery` or `gallery terminal` runs the interface in the terminal; `gallery serve [port]`
-// serves it as a web page; `gallery static [columns]` prints the overview once, for a look
-// without a terminal session. The standard subcommands are handled first, by `Tool`.
+// serves it as a web page; `gallery static [columns] [section]` prints the overview, or one
+// section of the tour, once, for a look without a terminal session. The standard subcommands are handled first, by `Tool`.
 // The gallery's entry point: an object with a plain `main`, rather than a `@main` method, so
 // that it can declare its use of the global `Watcher` the daemon watches its state files with
 // (a top-level definition can carry no `uses` clause). The work of an invocation is a method
@@ -775,9 +788,13 @@ object gallery uses surveillance.Watcher:
     def number(default: Int): Int = words.at(Sec).let { (word: Text) => safely(word.as[Int]) }.or(default)
 
     words.at(Prim) match
+      // `gallery static [columns] [section]`: the overview, or the named section of the tour.
       case t"static" =>
         val renderer = TerminalRenderer()
-        renderer.blocks(Samples.overview, number(100)).each { (line: Teletype) => Out.println(line) }
+        val name: Optional[Text] = words.at(Ter)
+        val section: Optional[Samples.Section] = name.let { (name: Text) => Samples.sections.seek(_.name.lower == name.lower) }
+        val blocks: List[Block] = section.lay(Samples.overview)(_.content)
+        renderer.blocks(blocks, number(100)).each { (line: Teletype) => Out.println(line) }
         Exit.Ok
 
       // `gallery repl`: the REPL in the terminal.

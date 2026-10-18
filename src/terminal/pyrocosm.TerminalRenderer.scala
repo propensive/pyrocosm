@@ -255,10 +255,8 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
           case Block.Side.Between => if ascii then t"-" else t"─"
         List(faint(Teletype(rule*width)))
 
-      // A code line longer than the width is wrapped hard, as captured output is: code is not
-      // prose, so a line is broken exactly at the width rather than clipped or reflowed.
-      case Block.Code(_, lines, notes) =>
-        lines.indexed.bind { (line, index) => hardWrap(codeLine(line, notes.filter(_.line == index.n0)), width) }
+      case Block.Code(_, lines, notes, start) =>
+        code(lines, notes, start, width)
 
       case Block.Table(columns, rows, caption) =>
         table(columns, rows, caption, width, selected)
@@ -278,6 +276,20 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
         val bar = toned(tone)(Teletype(if glyphs == Gaugeable.Glyphs.Ascii then t"| " else t"▌ "))
         val heading = title.lay(Nil: List[Teletype]) { title => List(bar.append(bold(toned(tone)(phrase(title))))) }
         heading + blocks(content, width - 2, tick, selected).map { (line: Teletype) => bar.append(line) }
+
+      // A diagnostic stands behind a bar in its tone, as a notice does: a headline naming the
+      // place and the severity, in the convention of a compiler's own report, then its
+      // message, the excerpt and whatever follows, each at the width that remains.
+      case Block.Diagnostic(tone, location, message, excerpt, detail) =>
+        val bar = toned(tone)(Teletype(if glyphs == Gaugeable.Glyphs.Ascii then t"| " else t"▌ "))
+        val mark = toned(tone)(Teletype(glyph(severityGlyph(tone))))
+        val word = toned(tone)(Teletype(severity(tone)))
+
+        val headline: Teletype =
+          location.lay(e"$bar$mark $word"): (location: Block.Location) =>
+            e"$bar$mark ${bold(tint(theme.reference)(Teletype(location.text)))}${faint(Teletype(t":"))} $word"
+
+        headline :: blocks(message + excerpt + detail, width - 2, tick, selected).map { (line: Teletype) => bar.append(line) }
 
       case Block.Disclosure(summary, content, open) =>
         val marker =
@@ -340,7 +352,6 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
     val label = vertex.tone.lay(phrase(vertex.label))(toned(_)(phrase(vertex.label)))
     if vertex.action.present && vertex.action == selected then e"$Reverse($label)" else label
 
-  // One line of code: each token coloured by its accent, then the note ranges laid over it.
   // A styled line cut into rows of at most `width` columns, with an empty line kept as one row.
   def hardWrap(line: Teletype, width: Int): List[Teletype] =
     val columns = width.max(1)
@@ -351,22 +362,111 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
 
     recur(line, Nil)
 
-  def codeLine(line: Block.Line, notes: List[Block.Note]): Teletype =
+  // The word and the glyph a diagnostic's tone reads as.
+  private def severity(tone: Tone): Text = tone match
+    case Tone.Failure => t"error"
+    case Tone.Warning => t"warning"
+    case Tone.Success => t"ok"
+    case Tone.Info    => t"info"
+    case _            => t"note"
+
+  private def severityGlyph(tone: Tone): Glyph = tone match
+    case Tone.Failure => Glyph.Cross
+    case Tone.Warning => Glyph.Warning
+    case Tone.Success => Glyph.Check
+    case _            => Glyph.Bullet
+
+  // The tone a note's marks and caption take.
+  private def noteTone(style: Block.Note.Style): Tone = style match
+    case Block.Note.Style.Erroneous => Tone.Failure
+    case Block.Note.Style.Caution   => Tone.Warning
+    case Block.Note.Style.Highlight => Tone.Accent
+    case Block.Note.Style.Param     => Tone.Info
+
+  // A code block's rows. Each line is wrapped hard to the width, as captured output is: code
+  // is not prose, so a line is broken exactly at the width rather than clipped or reflowed.
+  // When `start` says which line of its source the first is, every line is numbered in a
+  // margin, and a wrapped line's later rows and the rows beneath it keep the margin blank.
+  // Beneath a line, a row for each caret or captioned note that ends on it: `╱╲` beneath a
+  // caret's position, or `‾` under each column a note of width marks, with the caption after
+  // it, wrapped to the room that remains and continued beneath its own first word.
+  private def code(lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int], width: Int)
+  :   List[Teletype] =
+
+    val ascii: Boolean = glyphs == Gaugeable.Glyphs.Ascii
+    val digits: Int = start.lay(0) { (first: Int) => (first + lines.size - 1).show.length }
+    val margin: Int = if start.present then digits + 2 else 0
+    val inner: Int = (width - margin).max(1)
+    val divider: Text = if ascii then t"|" else t"│"
+
+    def gutter(number: Optional[Int]): Teletype =
+      if start.absent then blank
+      else faint(Teletype(number.lay(t" "*digits) { (number: Int) => number.show.pad(digits, Rtl) }+divider+t" "))
+
+    def marker(note: Block.Note, index: Int, length: Int): List[Teletype] =
+      val range: (Int, Int) = note.range(index, length).or((0, 0))
+      val tone: Tone = noteTone(note.style)
+
+      // A caret's two strokes meet beneath the column it points at, so it starts one to the
+      // left; the marks of a segment lie beneath the segment.
+      val pad: Int = if note.caret then (range(0) - 1).max(0) else range(0)
+
+      val marks: Text =
+        if note.caret then (if ascii then t"/\\" else t"╱╲")
+        else (if ascii then t"^" else t"‾")*(range(1) - range(0)).max(1)
+
+      val head: Teletype = Teletype(t" "*pad).append(toned(tone)(Teletype(marks)))
+
+      if note.caption.nil then List(gutter(Unset).append(head)) else
+        val lead: Int = pad + marks.length + 1
+        val room: Int = (inner - lead).max(8)
+        val caption: List[Teletype] = Flow.wrap(phrase(note.caption), room).to[List].map(toned(tone))
+
+        caption.indexed.map: (row: Teletype, index: Ordinal) =>
+          gutter(Unset).append(if index.n0 == 0 then e"$head $row" else Teletype(t" "*lead).append(row))
+
+    lines.indexed.bind: (line: Block.Line, index: Ordinal) =>
+      val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
+      val rows: List[Teletype] = hardWrap(codeLine(line, notes, index.n0), inner)
+
+      val numbered: List[Teletype] =
+        rows.indexed.map: (row: Teletype, position: Ordinal) =>
+          gutter(if position.n0 == 0 then start.let(_ + index.n0) else Unset).append(row)
+
+      val markers: List[Teletype] =
+        notes.filter { (note: Block.Note) => note.lastLine == index.n0 && (note.caret || !note.caption.nil) }
+        . bind { (note: Block.Note) => marker(note, index.n0, length) }
+
+      numbered + markers
+
+  // One line of code, the `index`th of its block: each token coloured by its accent, then the
+  // segments of the notes which touch the line laid over it. A caret marks no segment; it is
+  // drawn beneath the line, by `code`.
+  def codeLine(line: Block.Line, notes: List[Block.Note], index: Int = 0): Teletype =
+    val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
+
+    val ranges: List[(Int, Int, Block.Note.Style)] =
+      notes.bind: (note: Block.Note) =>
+        note.range(index, length).lay(Nil) { (range: (Int, Int)) => List((range(0), range(1), note.style)) }
+
     // Each token, cut at the boundaries where the styling may change within it (the ends of
-    // the notes that fall inside it), with a running offset into the line.
+    // the segments that fall inside it), with a running offset into the line.
     var offset: Int = 0
     var pieces: List[Teletype] = Nil
 
     line.tokens.each: (token: Token) =>
       val end = offset + token.text.length
-      val ends: List[Int] = notes.bind { (note: Block.Note) => List(note.start, note.end) }
+      val ends: List[Int] = ranges.bind { (range: (Int, Int, Block.Note.Style)) => List(range(0), range(1)) }
       val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
       cuts.zip(cuts.tail).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
 
-        val styled = notes.seek { (note: Block.Note) => note.start <= from && note.end >= to }.let(_.style) match
+        val style: Optional[Block.Note.Style] =
+          ranges.seek { (range: (Int, Int, Block.Note.Style)) => range(0) <= from && range(1) >= to && range(0) < range(1) }.let(_(2))
+
+        val styled = style match
           case Block.Note.Style.Erroneous => e"$Underline(${toned(Tone.Failure)(base)})"
           case Block.Note.Style.Caution   => e"$Underline(${toned(Tone.Warning)(base)})"
           case Block.Note.Style.Highlight => e"${Bg(theme.selection)}($base)"

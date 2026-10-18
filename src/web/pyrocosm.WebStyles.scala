@@ -63,6 +63,8 @@ object WebStyles:
       List
         ( t".$name { color: $variable }",
           t".pyro-notice.$name { color: var(--pyro-fg); border-left-color: $variable; background-color: color-mix(in srgb, $variable 8%, var(--pyro-surface)) }",
+          t".pyro-diagnostic.$name { color: var(--pyro-fg); border-left-color: $variable }",
+          t".pyro-diagnostic.$name > header .pyro-glyph, .pyro-diagnostic.$name > header .pyro-severity { color: $variable }",
           t"tr.$name > td { background-color: color-mix(in srgb, $variable 10%, transparent) }" )
       . join(t" ")
       . read[Css]
@@ -195,6 +197,23 @@ object WebStyles:
         + css".pyro-codeblock .pyro-note-highlight { background-color: color-mix(in srgb, var(--pyro-code-fg) 22%, transparent) }"
         + css".pyro-codeblock .pyro-note-erroneous { text-decoration-color: var(--pyro-code-accent-error) }"
         + css".pyro-note-param { font-style: italic }"
+        // A numbered block's margin: the numbers are not part of the code, so a selection
+        // leaves them out; a marker row beneath a line keeps the line's columns and wraps
+        // its caption.
+        + css".pyro-lineno { display: inline-block; user-select: none; color: var(--pyro-muted); border-right: 1px solid color-mix(in srgb, var(--pyro-code-fg) 25%, transparent); padding-right: 0.75ch; margin-right: 1ch; text-align: right }"
+        + css".pyro-marker { white-space: pre-wrap } .pyro-marker .pyro-marks { letter-spacing: 0 }"
+        + css".pyro-marker-erroneous { color: var(--pyro-code-accent-error) } .pyro-marker-caution { color: var(--pyro-tone-warning) }"
+        + css".pyro-marker-highlight { color: var(--pyro-tone-accent) } .pyro-marker-param { color: var(--pyro-muted); font-style: italic }"
+        // A diagnostic is framed as a notice is, its edge in its tone; its header is set in
+        // the code face, the place bold; its excerpt sits within the frame rather than
+        // reaching beyond it as a code block among prose does.
+        + css".pyro-diagnostic { border: 1px solid var(--pyro-border); border-left: 4px solid var(--pyro-border); padding: var(--pyro-space-3) var(--pyro-space-4); margin: 0 0 var(--pyro-space-4) 0; background-color: var(--pyro-surface); border-radius: var(--pyro-radius) }"
+        + css".pyro-diagnostic:last-child { margin-bottom: 0 }"
+        + css".pyro-diagnostic > header { display: flex; flex-wrap: wrap; gap: 0 var(--pyro-space-2); align-items: baseline; margin-bottom: var(--pyro-space-2); font-family: var(--pyro-font-mono); font-variation-settings: 'MONO' 1; font-size: var(--pyro-text-mono) }"
+        + css".pyro-diagnostic > header .pyro-location { font-size: 1em; font-weight: 700 }"
+        + css".pyro-diagnostic .pyro-message p { hyphens: auto; overflow-wrap: break-word }"
+        + css".pyro-diagnostic .pyro-codeblock { margin-left: 0; margin-right: 0 }"
+        + css".pyro-diagnostic .pyro-detail { margin-top: var(--pyro-space-2); color: var(--pyro-muted) }"
         // A table is followed by clear space, even when it ends its panel.
         + css".pyro-table { border-collapse: collapse; margin: 0 0 var(--pyro-space-6) 0; width: 100%; border-top: 2px solid var(--pyro-fg); border-bottom: 2px solid var(--pyro-fg) }"
         + css".pyro-table th, .pyro-table td { padding: var(--pyro-space-1) var(--pyro-space-3); border: 0; border-bottom: 1px solid var(--pyro-rule); text-align: left; vertical-align: top; line-height: 1.25 }"

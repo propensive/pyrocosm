@@ -649,7 +649,7 @@ extends Focus, Refreshable:
       // The token run as lines, so each token is coloured on its own line, with the
       // decoration's marks (error and warning spans) laid over each as a code block's notes.
       Block.Line.split(tokens).indexed.map { (line: Block.Line, index: Ordinal) =>
-        renderer.codeLine(line, decoration.marks.filter(_.line == index.n0)) }
+        renderer.codeLine(line, decoration.marks, index.n0) }
 
   override def claimsTab: Boolean = true
 
