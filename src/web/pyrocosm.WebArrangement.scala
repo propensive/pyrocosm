@@ -176,8 +176,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
         val count: Int = lines.size
         val rendered: List[Html of Phrasing] =
           lines.indexed.map { (line: Block.Line, index: Ordinal) =>
-            val notes: List[Block.Note] = decoration0.marks.filter(_.line == index.n0)
-            renderer.codeLine(line, notes, index.n0 == count - 1) }
+            renderer.codeLine(line, decoration0.marks, index.n0 == count - 1, index.n0) }
 
         Span(`class` = cls(t"pyro-tokens"), hidden = t"")(rendered*)
 

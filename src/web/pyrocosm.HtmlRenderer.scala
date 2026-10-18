@@ -34,6 +34,7 @@ import attributives.textAttributive
 import htmlDoms.whatwg
 import htmlDoms.whatwg.*
 import nomenclature.CssClass.nominative
+import textMetrics.uniformMetric
 
 // The static half of the web frontend: phrasing to phrasing content, a block to flow content.
 // Everything is semantic HTML carrying `pyro-*` classes for the stylesheet, each naming what an
@@ -144,9 +145,11 @@ class HtmlRenderer():
     case Block.Quotation(content) => Blockquote(`class` = cls(t"pyro-quotation"))(blocks(content))
     case Block.Rule(side)         => Hr(`class` = cls(t"pyro-rule-${side.toString.tt.lower}"))
 
-    case Block.Code(language, lines, notes) =>
-      Pre(`class` = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${language.name}")))
-        (Code(lines.indexed.map { (line: Block.Line, index: Ordinal) => codeLine(line, notes.filter(_.line == index.n0), index.n0 == lines.size - 1) }*))
+    case Block.Code(language, lines, notes, start) =>
+      val numbered: List[Name[CssClass]] = if start.present then List(cls(t"pyro-numbered")) else Nil
+      val classes: List[Name[CssClass]] = cls(t"pyro-codeblock") :: cls(t"pyro-language-${language.name}") :: numbered
+
+      Pre(`class` = classes)(Code(codeRows(lines, notes, start)*))
 
     case Block.Table(columns, rows, caption) => table(columns, rows, caption)
 
@@ -157,6 +160,34 @@ class HtmlRenderer():
     case Block.Notice(tone, title, content) =>
       Aside(`class` = List(cls(t"pyro-notice"), toneClass(tone)))
         (Html.Fragment[Flow](title.lay(Html.Fragment[Flow]()) { title => Header(Strong(phrase(title))) }, blocks(content)))
+
+    // A diagnostic is an article in its tone: a header naming the place and the severity, the
+    // message, the excerpt and whatever follows.
+    case Block.Diagnostic(tone, location, message, excerpt, detail) =>
+      val glyph: Glyph = tone match
+        case Tone.Failure => Glyph.Cross
+        case Tone.Warning => Glyph.Warning
+        case Tone.Success => Glyph.Check
+        case _            => Glyph.Bullet
+
+      val severity: Text = tone match
+        case Tone.Failure => t"error"
+        case Tone.Warning => t"warning"
+        case Tone.Success => t"ok"
+        case Tone.Info    => t"info"
+        case _            => t"note"
+
+      val where: Html of Phrasing =
+        location.lay(Html.Fragment[Phrasing]()) { (location: Block.Location) => Code(`class` = cls(t"pyro-location"))(location.text) }
+
+      val rest: Html of Flow =
+        if detail.nil then Html.Fragment[Flow]() else Div(`class` = cls(t"pyro-detail"))(blocks(detail))
+
+      Article(`class` = List(cls(t"pyro-diagnostic"), toneClass(tone)))
+        ( Header(Span(`class` = cls(t"pyro-glyph"))(glyphText(glyph)), where, Span(`class` = cls(t"pyro-severity"))(severity)),
+          Div(`class` = cls(t"pyro-message"))(blocks(message)),
+          blocks(excerpt),
+          rest )
 
     case Block.Disclosure(summary, content, open) =>
       if open then Details(`class` = cls(t"pyro-disclosure"), open = true)(Summary(phrase(summary)), blocks(content))
@@ -237,24 +268,69 @@ class HtmlRenderer():
     val label: Html of Phrasing = vertex.tone.lay(phrase(vertex.label)) { tone => Span(`class` = toneClass(tone))(phrase(vertex.label)) }
     vertex.action.lay(label) { action => A(href = t"#", id = action.id, `class` = cls(t"pyro-action"))(label) }
 
-  def codeLine(line: Block.Line, notes: List[Block.Note], last: Boolean): Html of Phrasing =
-    // Each token, cut at the boundaries where a note begins or ends inside it, with a running
-    // offset into the line.
+  // The rows of a code block, each ended by a newline but the last: every line, behind its
+  // number when `start` says which line of its source the first is; and beneath a line, a row
+  // for each caret or captioned note ending on it — the caret `╱╲` beneath its position, or `‾`
+  // under each marked column, then the caption — spaced into place with the line's own
+  // columns, as the terminal draws it, since a `pre` keeps them.
+  private def codeRows(lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int]): List[Html of Phrasing] =
+    val digits: Int = start.lay(0) { (first: Int) => (first + lines.size - 1).show.length }
+
+    def number(value: Optional[Int]): Html of Phrasing =
+      if start.absent then Html.Fragment[Phrasing]()
+      else Span(`class` = cls(t"pyro-lineno"))(value.lay(t" "*digits) { (value: Int) => value.show.pad(digits, Rtl) })
+
+    def marker(note: Block.Note, index: Int, length: Int): Html of Phrasing =
+      val range: (Int, Int) = note.range(index, length).or((0, 0))
+      val pad: Int = if note.caret then (range(0) - 1).max(0) else range(0)
+      val marks: Text = if note.caret then t"╱╲" else t"‾"*(range(1) - range(0)).max(1)
+      val caption: Html of Phrasing = if note.caption.nil then Html.Fragment[Phrasing]() else Html.Fragment[Phrasing](t" ", phrase(note.caption))
+
+      Span(`class` = List(cls(t"pyro-marker"), cls(t"pyro-marker-${note.style.toString.tt.lower}")))
+        (number(Unset), t" "*pad, Span(`class` = cls(t"pyro-marks"))(marks), caption)
+
+    val rows: List[Html of Phrasing] =
+      lines.indexed.bind: (line: Block.Line, index: Ordinal) =>
+        val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
+        val own: List[Block.Note] = notes.filter { (note: Block.Note) => note.lastLine == index.n0 && (note.caret || !note.caption.nil) }
+        Html.Fragment[Phrasing](number(start.let(_ + index.n0)), codeLine(line, notes, true, index.n0))
+          :: own.map { (note: Block.Note) => marker(note, index.n0, length) }
+
+    val count: Int = rows.size
+
+    rows.indexed.map: (row: Html of Phrasing, index: Ordinal) =>
+      if index.n0 == count - 1 then row else Html.Fragment[Phrasing](row, t"\n")
+
+  // One line of code, the `index`th of its block, with the segments of the notes which touch
+  // it laid over its tokens; a caret marks no segment. The line ends in a newline unless it is
+  // the `last`.
+  def codeLine(line: Block.Line, notes: List[Block.Note], last: Boolean, index: Int = 0): Html of Phrasing =
+    val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
+
+    val ranges: List[(Int, Int, Block.Note)] =
+      notes.bind: (note: Block.Note) =>
+        note.range(index, length).lay(Nil) { (range: (Int, Int)) => List((range(0), range(1), note)) }
+
+    // Each token, cut at the boundaries where a segment begins or ends inside it, with a
+    // running offset into the line.
     var offset: Int = 0
     var pieces: List[Html of Phrasing] = Nil
 
     line.tokens.each: (token: Token) =>
       val end = offset + token.text.length
-      val ends: List[Int] = notes.bind { (note: Block.Note) => List(note.start, note.end) }
+      val ends: List[Int] = ranges.bind { (range: (Int, Int, Block.Note)) => List(range(0), range(1)) }
       val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
       cuts.zip(cuts.tail).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
 
+        val covering: Optional[Block.Note] =
+          ranges.seek { (range: (Int, Int, Block.Note)) => range(0) <= from && range(1) >= to && range(0) < range(1) }.let(_(2))
+
         val styled: Html of Phrasing =
-          notes.seek { (note: Block.Note) => note.start <= from && note.end >= to }.lay(base): (note: Block.Note) =>
-            Span(`class` = cls(t"pyro-note-${note.style.toString.tt.lower}"), title = note.caption.or(t""))(base)
+          covering.lay(base): (note: Block.Note) =>
+            Span(`class` = cls(t"pyro-note-${note.style.toString.tt.lower}"), title = Inline.plain(note.caption))(base)
 
         pieces = styled :: pieces
 

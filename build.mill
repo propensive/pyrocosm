@@ -146,8 +146,11 @@ object settings:
     "jacinta-core", "iridescence-core", "eucalyptus-core")
   . map(component(soundness))
 
-  // The instances that need the compiler: harlequin highlighting, delicious diagnostic markup.
-  def compilerDeps(soundness: String) = Seq("harlequin-core", "delicious-core").map(component(soundness))
+  // The instances that need the compiler: harlequin highlighting, delicious diagnostic markup,
+  // and the compiler's notices (anthology) as diagnostics; kaleidoscope reads the lines of a
+  // missing-given search.
+  def compilerDeps(soundness: String) =
+    Seq("harlequin-core", "delicious-core", "anthology-core", "kaleidoscope-core").map(component(soundness))
 
   // The instances for rich media: raster images (hallucination, every format it implements) and
   // SVG drawings (savagery), carried as data: URIs and markup; monotonous encodes the Base64.

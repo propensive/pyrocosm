@@ -26,7 +26,7 @@ package pyrocosm
 // `Language` (cosmopolite), `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which
 // would outrank this package's own definitions, since a wildcard import beats a package member
 // declared in another file.
-import soundness.{Control as _, Figure as _, Filter as _, Glyph as _, Language as _, Origin as _, Standing as _, Status as _, Step as _, Token as _, *}
+import soundness.{Control as _, Figure as _, Filter as _, Glyph as _, Language as _, Origin as _, Standing as _, Status as _, Step as _, Token as _, Tool as _, *}
 
 import probably.TestEvent
 
@@ -357,8 +357,14 @@ tags:
                 List(Block.Row(List(Block.Cell(Inline.text(t"parse")), Block.Cell(List(Inline.Amount(0.5, t"s")))), Tone.Success, run)),
                 Inline.text(t"Benchmarks") ),
             Block.Code(Language.Scala, List(Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" x")))),
-                List(Block.Note(0, 0, 3, Block.Note.Style.Highlight))),
+                List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"a keyword"), 0)), 3),
             Block.Notice(Tone.Warning, Unset, List(Block.Rule())),
+            Block.Diagnostic
+              ( Tone.Failure,
+                Block.Location(t"Foo.scala", 2, 5),
+                List(Block.paragraph(t"Not found: x")),
+                List(Block.Code(Language.Scala, List(Block.Line(List(Token.plain(t"x")))), List(Block.Note(0, 0, 0, Block.Note.Style.Erroneous)), 2)),
+                List(Block.paragraph(t"try y")) ),
             Block.Graph
               ( List(Block.Vertex(t"a", Inline.text(t"A")), Block.Vertex(t"b", Inline.text(t"B"))),
                 List(Block.Edge(t"b", t"a")) ),
@@ -397,9 +403,64 @@ tags:
     test(m"highlighted source exhibits as a code block"):
       val exhibit: Block = Scala.highlight(t"val x = 1").exhibit
       exhibit match
-        case Block.Code(Language.Scala, lines, _) => lines.at(Prim).let(_.tokens.at(Prim)).let(_.accent) == Token.Accent.Keyword
-        case _                                    => false
+        case Block.Code(Language.Scala, lines, _, _) => lines.at(Prim).let(_.tokens.at(Prim)).let(_.accent) == Token.Accent.Keyword
+        case _                                       => false
     . assert(_ == true)
+
+    test(m"a fragment of highlighted source is numbered from where it came"):
+      val code = Scala.highlight(t"val a = 1\nval b = 2\nval c = 3").fragment(1, 2).modelCode()
+      (code.start, code.lines.size)
+    . assert(_ == (2, 2))
+
+    test(m"a compiler notice exhibits as a diagnostic with an excerpt"):
+      val notice = anthology.Notice(anthology.Importance.Error, t"Foo.scala", t"Not found: x", Span.line(1.z, 4.z, 1))
+      val diagnostic = Notices.diagnostic(notice, Notices.lines(t"val a = 1\nval b = x\nval c = 3"))
+
+      diagnostic match
+        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(_, lines, List(note), start)), _) =>
+          (location.let(_.text), lines.size, note.line, note.start, note.end, start)
+
+        case _ =>
+          Unset
+    . assert(_ == (t"Foo.scala:2:5", 3, 1, 4, 5, 1))
+
+    test(m"a multi-line code sample in a message becomes a code block"):
+      val markup: List[Markup] =
+        List(Markup.Textual(t"Found:"), Markup.Code(delicious.Rendition.Default, List(Markup.Textual(t"val x =\n  1"))))
+
+      Notices.blocks(markup).map:
+        case _: Block.Paragraph => t"paragraph"
+        case _: Block.Code      => t"code"
+        case _                  => t"other"
+    . assert(_ == List(t"paragraph", t"code"))
+
+    test(m"a TEL error exhibits as a diagnostic with the faulty line marked"):
+      val source = t"tel 1.0\n\ncontact alice\n  phone work 123\n  phone home 456\n"
+      val error = Tel.Error(Tel.Error.Reason.TooManyAtoms, Tel.Error.spanAt(4, 9, 4))
+
+      Block.Diagnostic.of(error, t"contacts.tel", source) match
+        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(Language.Tel, lines, List(note), start)), _) =>
+          (location.let(_.text), lines.size, note.line, note.start, note.end, start)
+
+        case _ =>
+          Unset
+    . assert(_ == (t"contacts.tel:4:9", 3, 1, 8, 12, 3))
+
+    test(m"TEL highlights a compound's keyword and its numbers"):
+      TelSyntax.tokens(t"  phone work 123").map(_.accent)
+    . assert(_ == List(Token.Accent.Unparsed, Token.Accent.Keyword, Token.Accent.Unparsed, Token.Accent.Term, Token.Accent.Unparsed, Token.Accent.Number))
+
+    test(m"a note across lines covers the end of the first and the start of the last"):
+      val note = Block.Note(0, 1, 2, Block.Note.Style.Erroneous, Nil, 2)
+      (note.range(0, 3), note.range(1, 3), note.range(2, 3), note.range(3, 3))
+    . assert(_ == ((1, 3), (0, 3), (0, 2), Unset))
+
+    test(m"an excerpt keeps the context around its notes and renumbers them"):
+      def line(text: Text): Block.Line = Block.Line(List(Token.plain(text)))
+      val lines: List[Block.Line] = List(line(t"a"), line(t"b"), line(t"c"), line(t"d"), line(t"e"))
+      val code = Block.Code.excerpt(Language.Plain, lines, List(Block.Note(3, 0, 1, Block.Note.Style.Erroneous)))
+      (code.start, code.lines.size, code.notes.map(_.line))
+    . assert(_ == (3, 3, List(1)))
 
     // ── Rich media ────────────────────────────────────────────────────────────────────────
 
@@ -595,6 +656,28 @@ tags:
       renderer.block(code, 80).at(Prim).let(_.plain)
     . assert(_ == t"val xs = 1")
 
+    test(m"a numbered code block carries its line numbers in the margin"):
+      val code = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"a"))), Block.Line(List(Token.plain(t"b")))), Nil, 9)
+      renderer.block(code, 80).map(_.plain)
+    . assert(_ == List(t" 9│ a", t"10│ b"))
+
+    test(m"a caret is drawn beneath its position, with its caption"):
+      val note = Block.Note(0, 8, 8, Block.Note.Style.Erroneous, Inline.text(t"not found"))
+      val code = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"val x = y")))), List(note))
+      renderer.block(code, 80).map(_.plain)
+    . assert(_ == List(t"val x = y", t"       ╱╲ not found"))
+
+    test(m"a captioned segment is underscored beneath its line, within the margin"):
+      val note = Block.Note(0, 4, 5, Block.Note.Style.Caution, Inline.text(t"unused"))
+      val code = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"val x = 1")))), List(note), 12)
+      renderer.block(code, 80).map(_.plain)
+    . assert(_ == List(t"12│ val x = 1", t"  │     ‾ unused"))
+
+    test(m"a diagnostic's headline names the place and the severity"):
+      val diagnostic = Block.Diagnostic(Tone.Failure, Block.Location(t"Foo.scala", 2, 5), List(Block.paragraph(t"Not found: x")))
+      renderer.block(diagnostic, 80).map(_.plain)
+    . assert { lines => lines.at(Prim).lay(false)(_.ends(t"Foo.scala:2:5: error")) && lines.at(Sec).lay(false)(_.ends(t"Not found: x")) }
+
     test(m"the plain rendering carries no escape sequences"):
       renderer.plain(List(rich), 80).contains(t"")
     . assert(_ == false)
@@ -688,6 +771,19 @@ tags:
     test(m"a tone renders as its class"):
       html.phrase(List(Inline.Toned(Tone.Failure, Inline.text(t"no")))).show
     . assert(_ == t"""<span class="pyro-tone-failure">no</span>""")
+
+    test(m"a numbered code block renders its numbers apart from the code"):
+      html.block(Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"a")))), Nil, 7)).show
+    . assert(_.contains(t"""<span class="pyro-lineno">7</span>"""))
+
+    test(m"a caret's marker row follows its line"):
+      val note = Block.Note(0, 3, 3, Block.Note.Style.Erroneous, Inline.text(t"here"))
+      html.block(Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"abcd")))), List(note))).show
+    . assert(_.contains(t"""<span class="pyro-marks">╱╲</span> here"""))
+
+    test(m"a diagnostic renders as an article in its tone"):
+      html.block(Block.Diagnostic(Tone.Warning, Block.Location(t"Foo.scala", 2), List(Block.paragraph(t"unused")))).show
+    . assert(_.contains(t"""<article class="pyro-diagnostic pyro-tone-warning">"""))
 
     test(m"a keystroke renders as a kbd element"):
       html.phrase(List(Inline.Keystroke(Keypress.Ctrl('C')))).show
@@ -1090,7 +1186,8 @@ tags:
     test(m"rendered lines draw on a terminal emulator as their plain text"):
       val lines = renderer.blocks(List(rich), 80)
       val rendered = lines.map(_.render(xtermTrueColorTermcap)).join(t"\r\n")
-      val pty = Pty(80, 40).consume(rendered)
+      // The emulator is as tall as the rendering, so its first row is still the first line.
+      val pty = Pty(80, lines.size + 1).consume(rendered)
       val first = lines.at(Prim).let(_.plain).or(t"")
 
       (0 until first.length).forall { column => pty.buffer.char(column.z, Prim) == first.s.charAt(column) }

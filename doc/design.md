@@ -88,7 +88,10 @@ replace direct use of colours, weights and box characters.
 ### Block
 
 `Paragraph`, `Heading`, `Listing` (items may carry an `Action`), `Quotation`, `Rule`, `Code`
-(lines of tokens plus `Note` ranges for annotated samples), `Table` (columns with escritoire-style
+(lines of tokens, `Note` marks — a segment, across lines if need be, or a zero-width *caret* at a
+position, each with a style and a caption of phrasing — and `start`, the source line number of
+the first line, which numbers the lines), `Diagnostic` (a tone, a `Location`, a message, an
+excerpt and detail: what a compiler, a linter or a TEL reader reports), `Table` (columns with escritoire-style
 `Sizing`; rows may carry a `Tone` and an `Action`, which is how master/detail is built),
 `Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Tree` (whose nodes may be collapsible, `open`), `Graph(vertices, edges)`,
 `Chart` (sparkline, bars, histogram only), `Gauge(status, caption)`, `Trace` (an exception's
@@ -525,6 +528,24 @@ one MCP endpoint aggregating every tool's.
   one word aligned on the colon; the web is a section and a frame table with `pyro-trace-*`
   classes and `--pyro-trace-*` theme variables, its source column folding on a narrow viewport.
   `Throwable` exhibits through it.
+- **M6d Diagnostics** (done): one way to report an error at a place, for Flair's findings,
+  Fever's and Fuel's compile errors, Fury's and every tool's TEL errors, and later Fume's
+  failing test bodies. `Block.Diagnostic` (tone, `Location`, message, excerpt, detail);
+  `Block.Code.start` numbers an excerpt from its line in the file; a `Note` may span lines, is
+  a caret when it has no width, and carries phrasing as its caption. The terminal draws the
+  margin, underlines a segment in the note's tone and sets `╱╲` beneath a caret, with the
+  caption after the mark, wrapped to the room that remains; a diagnostic stands behind a bar in
+  its tone with a `path:line:col: error` headline. The web does the same in a `pre`
+  (`pyro-lineno`, `pyro-marker`, unselectable numbers) and frames a diagnostic as an article.
+  `Block.Code.excerpt` cuts the lines around notes from a whole file; `Block.Note.of` reads a
+  denominative `Span` in any of its modes. The compiler module turns an `anthology.Notice` into
+  a diagnostic (`Notices.diagnostic`, with Flame's delicious conversion — types, code samples,
+  frontier's search trees — moved here; stenography stays a hook) and keeps a harlequin
+  fragment's offset, focus and diagnostics. `Block.Diagnostic.of` does the same for a
+  `Tel.Error` with its span (a parse error's own, or its `Tel.Focus`'s), highlighted by
+  `TelSyntax`, a lexical TEL tokeniser written here for want of one in stratiform, and a
+  candidate for Soundness. Not here: Fuel's offset of a fenced block's lines into its Markdown,
+  which needs punctuation to say where a fence begins.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,

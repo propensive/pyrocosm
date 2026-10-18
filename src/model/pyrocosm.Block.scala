@@ -26,6 +26,8 @@ package pyrocosm
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Codecs as _, Language as _, *}
 
+import dysasymptotics.linearSize
+
 // Flow content: the things which occur one after another down a page or a pane. Comparable to
 // Markdown's block nodes, and richer: tables with layout semantics, records, notices, trees,
 // graphs, charts and gauges. Every block is data; nothing here says how it looks.
@@ -85,13 +87,106 @@ object Block:
 
   case class Entry(key: List[Inline], value: List[Block])
 
-  // A range of one line of a code block to be marked: an error, a caution, a highlight or a
-  // parameter, with an optional caption — fluence's annotated samples.
+  // A mark on a code block: an error, a caution, a highlight or a parameter, with a caption
+  // which may carry highlighted code of its own. `line` and `start` are the (zero-based) line
+  // and column where it begins; it ends at column `end` of `line`, or of `last` when it spans
+  // lines. A note of no width — `start == end` on one line — is a *caret*: it points at a
+  // position rather than marking a segment, which is how a compiler reports an error at a
+  // point. A note of width is underlined; a caret is drawn beneath its position.
   object Note:
     enum Style:
       case Erroneous, Caution, Highlight, Param
 
-  case class Note(line: Int, start: Int, end: Int, style: Note.Style, caption: Optional[Text] = Unset)
+    // The note for a source `Span`, in whichever of denominative's modes it was recorded: a
+    // `Line` span is one line's segment, `Lines` and `Area` spans reach across lines. An
+    // `Offset` span names characters of the whole text, not a line, and an empty span nothing,
+    // so neither yields a note. Spans count from zero, as notes do.
+    def of(span: Span, style: Style, caption: List[Inline] = Nil): Optional[Note] =
+      span.startLine.let: (startLine: Ordinal) =>
+        val endLine: Int = span.endLine.lay(startLine.n0)(_.n0)
+        val startColumn: Int = span.startColumn.lay(0)(_.n0)
+
+        // An area ends on a column of its last line; a run of whole lines, at the end of the
+        // last, which `Int.MaxValue` stands for until the line's length is known.
+        val endColumn: Int =
+          if span.mode == Span.Mode.Lines then Int.MaxValue else span.endColumn.lay(startColumn)(_.n0)
+
+        val last: Optional[Int] = if endLine > startLine.n0 then endLine else Unset
+        Note(startLine.n0, startColumn, endColumn, style, caption, last)
+
+  case class Note
+    ( line:    Int,
+      start:   Int,
+      end:     Int,
+      style:   Note.Style,
+      caption: List[Inline]  = Nil,
+      last:    Optional[Int] = Unset ):
+
+    def caret: Boolean = last.absent && start == end
+    def lastLine: Int = last.or(line)
+    def covers(index: Int): Boolean = index >= line && index <= lastLine
+
+    // The segment of line `index`, of `length` characters, which the note marks: from its
+    // start on its first line, to its end on its last, and whole lines between. `Unset` on a
+    // line it does not touch. The columns are clamped to the line, so a note which reaches
+    // beyond the line (an `end` of `Int.MaxValue`, or stale coordinates) marks what there is.
+    def range(index: Int, length: Int): Optional[(Int, Int)] =
+      if !covers(index) then Unset else
+        val from: Int = if index == line then start else 0
+        val to: Int = if index == lastLine then end else length
+        (from.min(length), to.min(length).max(from.min(length)))
+
+    // The same note, `lines` lines earlier and `columns` columns further right: how a note on
+    // a whole file becomes one on an excerpt of it, and one on a prompt's text a note on a
+    // transcript's indented copy.
+    def shifted(lines: Int = 0, columns: Int = 0): Note =
+      copy(line = line - lines, start = start + columns, end = end + columns, last = last.let(_ - lines))
+
+  object Code:
+    // The lines around `notes` cut from the whole of a source, `context` lines either side,
+    // numbered from where in the source they came; the notes move with them. Nothing is cut
+    // when there are no notes: the whole is shown, numbered from its first line.
+    def excerpt(language: Language, lines: List[Line], notes: List[Note], context: Int = 1): Code =
+      val first: Int = notes.map(_.line).minimum.let { (line: Int) => (line - context).max(0) }.or(0)
+
+      val limit: Int =
+        notes.map(_.lastLine).maximum.let { (line: Int) => (line + context + 1).min(lines.size) }.or(lines.size)
+
+      val shown: List[Line] = lines.skip(first).keep(limit - first)
+      Code(language, shown, notes.map(_.shifted(lines = first)), first + 1)
+
+  // Where a diagnostic points: a file, and a line and column within it, counted from one as a
+  // compiler and an editor count them.
+  case class Location(path: Text, line: Optional[Int] = Unset, column: Optional[Int] = Unset):
+    def text: Text = line.lay(path) { (line: Int) => column.lay(t"$path:$line") { (column: Int) => t"$path:$line:$column" } }
+
+  object Location:
+    // The location of a zero-based `Span` in `path`, or the file alone for an empty span.
+    def of(path: Text, span: Span): Location =
+      Location(path, span.startLine.let(_.n1), span.startColumn.let(_.n1))
+
+  object Diagnostic:
+    // A TEL error as a diagnostic: its message as the message; and, given the text it was read
+    // from, an excerpt of the lines around its span, highlighted as TEL, with the span marked.
+    // A parse error carries its span itself; a validation error's is on the `Tel.Focus` accrued
+    // with it, which the caller passes as `span`. Every TEL error is an error, so its tone is
+    // failure.
+    def of
+      ( error:  Tel.Error,
+        path:   Optional[Text] = Unset,
+        source: Optional[Text] = Unset,
+        span:   Optional[Span] = Unset )
+    :   Diagnostic =
+
+      val located: Span = span.or(error.span)
+      val location: Optional[Location] = path.let(Location.of(_, located))
+      val message: List[Block] = List(Paragraph(Inline.message(error.message)))
+
+      val excerpt: List[Block] = source.lay(Nil): (source: Text) =>
+        val notes: List[Note] = Note.of(located, Note.Style.Erroneous).let(List(_)).or(Nil)
+        List(Code.excerpt(Language.Tel, TelSyntax.lines(source), notes))
+
+      Diagnostic(Tone.Failure, location, message, excerpt)
 
   // `open`, when present, makes a node with children collapsible, and says whether it starts
   // open or closed; a frontend with no way to toggle (the terminal) shows every node.
@@ -225,7 +320,13 @@ enum Block:
   // beneath the content before it. Both are what a transcript keeps of a submitted line's
   // frame.
   case Rule(side: Block.Side = Block.Side.Between)
-  case Code(language: Language, lines: List[Block.Line], notes: List[Block.Note] = Nil)
+  // `start`, when present, is the source line number (from one) of the first line: the lines
+  // are then numbered in the margin, as an excerpt of a file is and a sample is not.
+  case Code
+    ( language: Language,
+      lines:    List[Block.Line],
+      notes:    List[Block.Note] = Nil,
+      start:    Optional[Int]    = Unset )
   case Table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] = Unset)
   case Record(entries: List[Block.Entry], title: Optional[List[Inline]] = Unset)
   case Notice(tone: Tone, title: Optional[List[Inline]], content: List[Block])
@@ -237,5 +338,17 @@ enum Block:
   case Chart(kind: Block.Chart.Kind, series: List[Block.Series])
   case Gauge(status: Status, caption: Optional[List[Inline]] = Unset)
   case Trace(stacks: List[Block.Trace.Stack])           // an exception's stack trace and its causes
+  // A report of something wrong, or worth knowing, at a place: a compiler's error or warning, a
+  // linter's finding, a TEL document's fault. The `tone` is its severity; the `message` says
+  // what; the `excerpt` shows the lines it concerns, with the place marked — a `Code` block
+  // with `start`, typed as blocks because a derived codec cannot name one variant of the sum
+  // it is deriving; `detail` is whatever follows — an explanation, a suggestion, a related
+  // place.
+  case Diagnostic
+    ( tone:     Tone,
+      location: Optional[Block.Location],
+      message:  List[Block],
+      excerpt:  List[Block] = Nil,
+      detail:   List[Block] = Nil )
   case Group(content: List[Block])                      // a run of blocks which belong together
   case Output(text: Text, error: Boolean = false)      // captured standard output or error, verbatim
