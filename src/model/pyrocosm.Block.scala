@@ -173,119 +173,57 @@ object Block:
       lines: List[Text]      = Nil )
 
   object Animation:
-    // The atoms of each frame's lines, aligned across the frames: lines are matched by
-    // similarity (dissonance's `evolve`), then the tokens within each run of matched lines, so
-    // that a token which survives from one frame to the next keeps its identity, and a line
-    // or a token which does not appears or departs. Amok's algorithm, with placements as its
-    // result instead of presence classes.
+    // The atoms of each frame's lines, aligned across the frames as one sequence of tokens
+    // per frame, the lines' ends among them, by dissonance's `evolve` with no notion of
+    // similarity: a token survives from one frame to the next when the diff keeps it, so the
+    // surviving tokens of any two frames are in the same order in both — a token is removed
+    // and another inserted, never kept and reordered. A line is named by the token that ends
+    // it, so a line remains, however it grew, shrank or moved, exactly when its end survives.
     def of(frames: List[List[Line]], labels: List[List[Inline]] = Nil): Animation =
-      def plain(line: Line): List[Token] = line.tokens.filter(_.accent != Token.Accent.Unparsed)
+      val break: Token = Token(t"\n", Token.Accent.Unparsed)
 
-      // Lines are compared by their parsed tokens, so that whitespace and comments do not
-      // decide; lines with none (unparsed text) by every token; two empty lines are alike.
-      // Two lines are alike when one's tokens run contiguously within the other's (a line
-      // grown or trimmed at either end, as `t"Hello"` becoming `val greeting = t"Hello"`),
-      // or when fewer than half their tokens differ.
-      def similar(left: Line, right: Line): Boolean =
-        val (xs, ys): (List[Token], List[Token]) =
-          if plain(left).nil && plain(right).nil then (left.tokens, right.tokens)
-          else (plain(left), plain(right))
+      val sequences: List[List[Token]] =
+        frames.map: (lines: List[Line]) =>
+          lines.map(_.tokens).join(List(break))
 
-        def run(tokens: List[Token]): Text =
-          tokens.map { (token: Token) => t"${token.accent.toString.tt}:${token.text}" }.join(t"\u0001", t"\u0001", t"\u0001")
-
-        if xs.nil || ys.nil then xs.nil && ys.nil
-        else run(ys).contains(run(xs)) || run(xs).contains(run(ys))
-          || diff(Sequence(xs*), Sequence(ys*)).size.toDouble / (xs.size + ys.size) < 0.5
-
-      val sameLine: (Line, Line) => Boolean = similar(_, _)
-      val lineAtoms: List[Evolution.Atom[Line]] = evolve(frames, sameLine).sequence
+      val evolved: List[Evolution.Atom[Token]] = evolve(sequences).sequence
 
       var counter: Int = 0
 
-      def fresh(): Text =
+      def fresh(prefix: Text): Text =
         counter += 1
-        t"a${counter.toString.tt}"
+        t"$prefix${counter.toString.tt}"
 
-      var atoms: List[Atom] = Nil
+      val ids: List[Text] = evolved.map { (atom: Evolution.Atom[Token]) => fresh(if atom.value == break then t"l" else t"a") }
+
+      val atoms: List[Atom] =
+        evolved.zip(ids).filter(_(0).value != break).map: (atom: Evolution.Atom[Token], id: Text) =>
+          Atom(id, atom.value.text, atom.value.accent, atom.value.role)
+
+      // Each frame's placements and line names, walking its atoms in sequence: a line's
+      // tokens are placed on the line so far, and its end names it.
       var placements: List[Placement] = Nil
-      val cursors: scala.Array[Int] = new scala.Array[Int](frames.size)   // next line of each frame
-      val lineIndex: scala.Array[Int] = new scala.Array[Int](frames.size) // lines placed so far
-      var lineIds: List[(Int, Text)] = Nil                                  // (frame, line id), in order
-      var lineCounter: Int = 0
+      var lineNames: List[(Int, Text)] = Nil
 
-      // Each aligned line's tokens, aligned across the frames the line is in.
-      lineAtoms.each: (lineAtom: Evolution.Atom[Line]) =>
-        val present: List[Int] =
-          frames.indexed.map(_(1).n0).filter { (f: Int) => lineAtom.presence.has(Ordinal.zerary(f)) }
+      frames.indexed.each: (_, index: Ordinal) =>
+        val f: Int = index.n0
+        var line: Int = 0
 
-        lineCounter += 1
-        val lineId: Text = t"l${lineCounter.toString.tt}"
-        present.each { (f: Int) => lineIds = (f, lineId) :: lineIds }
+        evolved.zip(ids).each: (atom: Evolution.Atom[Token], id: Text) =>
+          if atom.presence.has(index) then
+            if atom.value == break then
+              lineNames = (f, id) :: lineNames
+              line += 1
+            else placements = Placement(f, line, id) :: placements
 
-        val versions: List[List[Token]] =
-          present.map: (f: Int) =>
-            val line: Line =
-              frames.at(Ordinal.zerary(f)).let(_.at(Ordinal.zerary(cursors(f)))).or(Line(Nil))
-
-            cursors(f) += 1
-            line.tokens
-
-        // Tokens by identity alone: given a similarity, `evolve` would pair a deletion with
-        // an insertion as one atom whose text changed, which is a different token.
-        val tokenAtoms: List[Evolution.Atom[Token]] = evolve(versions).sequence
-
-        tokenAtoms.each: (tokenAtom: Evolution.Atom[Token]) =>
-          val id: Text = fresh()
-          atoms = Atom(id, tokenAtom.value.text, tokenAtom.value.accent, tokenAtom.value.role) :: atoms
-
-          present.indexed.each: (f: Int, position: Ordinal) =>
-            if tokenAtom.presence.has(position)
-            then placements = Placement(f, lineIndex(f), id) :: placements
-
-        present.each { (f: Int) => lineIndex(f) += 1 }
+        lineNames = (f, t"end") :: lineNames   // the last line, which no break ends
 
       val described: List[Frame] =
         frames.indexed.map: (_, index: Ordinal) =>
-          val ids: List[Text] = lineIds.reverse.filter(_(0) == index.n0).map(_(1))
-          Frame(index.n0, labels.at(index).or(Nil), Unset, ids)
+          val names: List[Text] = lineNames.reverse.filter(_(0) == index.n0).map(_(1))
+          Frame(index.n0, labels.at(index).or(Nil), Unset, names)
 
-      rejoin(Animation(atoms.reverse, described, placements.reverse))
-
-    // A second pass, across lines: between consecutive frames, an atom which departs and an
-    // atom which arrives with the same text and accent are one token which moved — a value
-    // spread over several lines, say — and are merged, in order of appearance, so that the
-    // front end carries it to its new line rather than fading it out and in.
-    private def rejoin(animation: Animation): Animation =
-      val byId: Map[Text, Atom] = animation.atoms.map { (atom: Atom) => atom.id -> atom }.to[Map]
-      var placements: List[Placement] = animation.placements
-      var merged: List[Text] = Nil   // the ids absorbed into another
-
-      def same(left: Atom, right: Atom): Boolean = left.text == right.text && left.accent == right.accent
-
-      def rename(from: Text, to: Text): Unit =
-        placements = placements.map { (p: Placement) => if p.atom == from then p.copy(atom = to) else p }
-        merged = from :: merged
-
-      animation.frames.each: (frame: Frame) =>
-        val f: Int = frame.index
-        val now: List[Text] = placements.filter(_.frame == f).map(_.atom)
-        val next: List[Text] = placements.filter(_.frame == f + 1).map(_.atom)
-        var departing: List[Text] = now.filter { (id: Text) => !next.has(id) }
-        val arriving: List[Text] = next.filter { (id: Text) => !now.has(id) }
-
-        arriving.each: (arrival: Text) =>
-          byId(arrival).let: (atom: Atom) =>
-            departing.seek { (id: Text) => byId(id).let(same(_, atom)).or(false) }.let: (match0: Text) =>
-              rename(arrival, match0)
-              departing = departing.filter(_ != match0)
-
-      Animation
-        ( animation.atoms.filter { (atom: Atom) => !merged.has(atom.id) },
-          animation.frames,
-          placements,
-          animation.autoplay,
-          animation.loop )
+      Animation(atoms, described, placements.reverse)
 
   case class Animation
     ( atoms:      List[Atom],

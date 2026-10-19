@@ -301,6 +301,21 @@ tags:
       (spread.atoms.size, before.all(after.has(_)), spread.lines(1).map(_.map(_.text)))
     . assert(_ == (3, true, List(List(t"a"), List(t"b"), List(t"c"))))
 
+    // Two lists trading shapes: whatever survives, it survives in order — no two kept tokens
+    // ever swap.
+    test(m"surviving tokens keep their order between frames"):
+      def line(words: List[Text]): Block.Line = Block.Line(words.map(Token.plain(_)))
+
+      val traded = Block.Animation.of(List
+        ( List(line(List(t"List", t"(", t"1", t"2", t"3", t")")), line(List(t"List", t"(")), line(List(t"4")), line(List(t"5")), line(List(t"6")), line(List(t")"))),
+          List(line(List(t"List", t"(")), line(List(t"1")), line(List(t"2")), line(List(t"3")), line(List(t")")), line(List(t"List", t"(", t"4", t"5", t"6", t")"))) ))
+
+      val before: List[Text] = traded.placements.filter(_.frame == 0).map(_.atom)
+      val after: List[Text] = traded.placements.filter(_.frame == 1).map(_.atom)
+      val kept: List[Text] = before.filter(after.has(_))
+      kept == after.filter(kept.has(_))
+    . assert(_ == true)
+
     val animatedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, animation)
 
     test(m"an animated code block round-trips as TEL text"):
