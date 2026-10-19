@@ -816,17 +816,17 @@
       }
 
       return fadeOut.then(function () {
-        departing.forEach(function (id) { current[id].remove(); delete nodes[id]; });
-
-        // Phase 2: survivors move. Their places are measured before the rebuild and after
-        // it; arrivals are in the new layout from the start, invisible, so the gaps are real.
-        // A new line starts collapsed and grows to the code's line height over the same
-        // time, so what lies below it reaches its place as the line opens.
+        // Phase 2: survivors move. Their places are measured before the departures are
+        // removed (removal reflows what follows them, and that reflow is part of the move)
+        // and after the rebuild; arrivals are in the new layout from the start, invisible,
+        // so the gaps are real. A new line starts collapsed and grows to its own height over
+        // the same time, so what lies below it reaches its place as the line opens.
         var first = {};
         Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
+        departing.forEach(function (id) { current[id].remove(); delete nodes[id]; });
         var fresh = rebuild();
-        var lineHeight = parseFloat(getComputedStyle(code).lineHeight) || 0;
         arriving.forEach(function (id) { nodes[id].style.transition = "none"; nodes[id].style.opacity = "0"; });
+        var heights = fresh.map(function (line) { return line.getBoundingClientRect().height; });
         fresh.forEach(function (line) { line.style.transition = "none"; line.style.height = "0px"; line.style.overflow = "hidden"; });
         var moved = fresh.length > 0;
         Object.keys(first).forEach(function (id) {
@@ -842,7 +842,7 @@
         if (!moved) return Promise.resolve();
         return nextFrame().then(function () {
           Object.keys(first).forEach(function (id) { nodes[id].style.transition = ""; nodes[id].style.transform = ""; });
-          fresh.forEach(function (line) { line.style.transition = ""; line.style.height = lineHeight + "px"; });
+          fresh.forEach(function (line, index) { line.style.transition = ""; line.style.height = heights[index] + "px"; });
           return after(MOVE);
         }).then(function () {
           fresh.forEach(function (line) { line.style.height = ""; line.style.overflow = ""; });
