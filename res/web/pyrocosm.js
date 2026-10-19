@@ -881,14 +881,20 @@
         });
         var shrinking = resized && after0 < before, growing = resized && after0 > before;
 
-        // The schedule: the first half's vertical part starts STAGGER after its horizontal
-        // part when both exist; the second half's horizontal part STAGGER after its vertical.
+        // The schedule, as each part's start: the contracting vertical part STAGGER after H1
+        // when both exist; the expanding vertical part halfway through the contracting one
+        // (or after H1, where there is no contraction); H2 STAGGER after that. The move ends
+        // with its last part.
         var firstV = v1.length > 0 || shrinking, secondV = v2.length > 0 || growing;
         var s1 = (h1.length && firstV) ? STAGGER : 0;
-        var P1 = Math.max(h1.length ? MOVE : 0, firstV ? s1 + MOVE : 0);
+        var v2Start = firstV ? s1 + MOVE / 2 : (h1.length ? MOVE : 0);
         var s2 = (secondV && h2.length) ? STAGGER : 0;
-        var P2 = Math.max(secondV ? MOVE : 0, h2.length ? s2 + MOVE : 0);
-        var T = P1 + P2;
+        var h2Start = v2Start + s2;
+        var T = 0;
+        if (h1.length) T = Math.max(T, MOVE);
+        if (firstV) T = Math.max(T, s1 + MOVE);
+        if (secondV) T = Math.max(T, v2Start + MOVE);
+        if (h2.length) T = Math.max(T, h2Start + MOVE);
         if (T === 0) return Promise.resolve();
 
         // One animation per axis per token, over the whole move, adding: held at its
@@ -906,9 +912,9 @@
 
         moves.forEach(function (move) {
           if (h1.indexOf(move) >= 0) track(move.span, "x", move.dx, 0);
-          else if (h2.indexOf(move) >= 0) track(move.span, "x", move.dx, P1 + s2);
+          else if (h2.indexOf(move) >= 0) track(move.span, "x", move.dx, h2Start);
           if (v1.indexOf(move) >= 0) track(move.span, "y", move.dy, s1);
-          else if (v2.indexOf(move) >= 0) track(move.span, "y", move.dy, P1);
+          else if (v2.indexOf(move) >= 0) track(move.span, "y", move.dy, v2Start);
         });
 
         // The block's height contracts in the first half and expands in the second.
@@ -920,7 +926,7 @@
           setTimeout(function () {
             pre.style.transition = "height " + MOVE + "ms ease-in-out";
             pre.style.height = after0 + "px";
-          }, shrinking ? s1 : P1);
+          }, shrinking ? s1 : v2Start);
         }
 
         return after(T).then(function () {
