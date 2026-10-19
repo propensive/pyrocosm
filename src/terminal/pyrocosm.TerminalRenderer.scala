@@ -255,7 +255,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
           case Block.Side.Between => if ascii then t"-" else t"─"
         List(faint(Teletype(rule*width)))
 
-      case Block.Code(_, lines, notes, start) =>
+      case Block.Code(_, lines, notes, start, _) =>
         code(lines, notes, start, width)
 
       case Block.Table(columns, rows, caption) =>

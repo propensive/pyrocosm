@@ -26,7 +26,7 @@ package pyrocosm
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Codecs as _, Language as _, *}
 
-import dysasymptotics.linearSize
+import dysasymptotics.{linearAccess, linearSize}
 
 // Flow content: the things which occur one after another down a page or a pane. Comparable to
 // Markdown's block nodes, and richer: tables with layout semantics, records, notices, trees,
@@ -154,6 +154,99 @@ object Block:
 
       val shown: List[Line] = lines.skip(first).keep(limit - first)
       Code(language, shown, notes.map(_.shifted(lines = first)), first + 1)
+
+  // A code block's animation: identity and placement, never geometry. An `Atom` is a token
+  // with an identity that holds across frames; a `Placement` puts an atom on a line of a
+  // frame (flat, since a repeated TEL field cannot nest); a `Frame` may be captioned and may
+  // say how long it holds when played. The front end measures where each atom is before and
+  // after a step and animates the difference, so an inserted line, a reflowed line and a move
+  // across lines need nothing of the model.
+  case class Atom(id: Text, text: Text, accent: Token.Accent, role: Optional[Token.Role] = Unset)
+  case class Placement(frame: Int, line: Int, atom: Text)
+  case class Frame(index: Int, label: List[Inline] = Nil, hold: Optional[Double] = Unset)
+
+  object Animation:
+    // The atoms of each frame's lines, aligned across the frames: lines are matched by
+    // similarity (dissonance's `evolve`), then the tokens within each run of matched lines, so
+    // that a token which survives from one frame to the next keeps its identity, and a line
+    // or a token which does not appears or departs. Amok's algorithm, with placements as its
+    // result instead of presence classes.
+    def of(frames: List[List[Line]], labels: List[List[Inline]] = Nil): Animation =
+      def plain(line: Line): List[Token] = line.tokens.filter(_.accent != Token.Accent.Unparsed)
+
+      def similar(left: Line, right: Line): Boolean =
+        val xs: List[Token] = plain(left)
+        val ys: List[Token] = plain(right)
+        if xs.nil || ys.nil then xs.nil && ys.nil
+        else diff(Sequence(xs*), Sequence(ys*)).size.toDouble / (xs.size + ys.size) < 0.5
+
+      val sameLine: (Line, Line) => Boolean = similar(_, _)
+      val lineAtoms: List[Evolution.Atom[Line]] = evolve(frames, sameLine).sequence
+
+      var counter: Int = 0
+
+      def fresh(): Text =
+        counter += 1
+        t"a${counter.toString.tt}"
+
+      var atoms: List[Atom] = Nil
+      var placements: List[Placement] = Nil
+      val cursors: scala.Array[Int] = new scala.Array[Int](frames.size)   // next line of each frame
+      val lineIndex: scala.Array[Int] = new scala.Array[Int](frames.size) // lines placed so far
+
+      // Each aligned line's tokens, aligned across the frames the line is in.
+      lineAtoms.each: (lineAtom: Evolution.Atom[Line]) =>
+        val present: List[Int] =
+          frames.indexed.map(_(1).n0).filter { (f: Int) => lineAtom.presence.has(Ordinal.zerary(f)) }
+
+        val versions: List[List[Token]] =
+          present.map: (f: Int) =>
+            val line: Line =
+              frames.at(Ordinal.zerary(f)).let(_.at(Ordinal.zerary(cursors(f)))).or(Line(Nil))
+
+            cursors(f) += 1
+            line.tokens
+
+        val sameToken: (Token, Token) => Boolean = _ == _
+        val tokenAtoms: List[Evolution.Atom[Token]] = evolve(versions, sameToken).sequence
+
+        tokenAtoms.each: (tokenAtom: Evolution.Atom[Token]) =>
+          val id: Text = fresh()
+          atoms = Atom(id, tokenAtom.value.text, tokenAtom.value.accent, tokenAtom.value.role) :: atoms
+
+          present.indexed.each: (f: Int, position: Ordinal) =>
+            if tokenAtom.presence.has(position)
+            then placements = Placement(f, lineIndex(f), id) :: placements
+
+        present.each { (f: Int) => lineIndex(f) += 1 }
+
+      val described: List[Frame] =
+        frames.indexed.map { (_, index: Ordinal) => Frame(index.n0, labels.at(index).or(Nil)) }
+
+      Animation(atoms.reverse, described, placements.reverse)
+
+  case class Animation
+    ( atoms:      List[Atom],
+      frames:     List[Frame],
+      placements: List[Placement],
+      autoplay:   Boolean = false,
+      loop:       Boolean = false ):
+
+    // The lines of one frame, as atoms in order.
+    def lines(frame: Int): List[List[Atom]] =
+      val byId: Map[Text, Atom] = atoms.map { (atom: Atom) => atom.id -> atom }.to[Map]
+      val placed: List[Placement] = placements.filter(_.frame == frame)
+      val count: Int = placed.map(_.line).maximum.let(_ + 1).or(0)
+
+      def recur(line: Int, acc: List[List[Atom]]): List[List[Atom]] =
+        if line >= count then acc.reverse else
+          val row: List[Atom] =
+            placed.filter(_.line == line).map { (placement: Placement) => byId(placement.atom) }
+            . sweep { case atom: Atom => atom }
+
+          recur(line + 1, row :: acc)
+
+      recur(0, Nil)
 
   // Where a diagnostic points: a file, and a line and column within it, counted from one as a
   // compiler and an editor count them.
@@ -322,11 +415,14 @@ enum Block:
   case Rule(side: Block.Side = Block.Side.Between)
   // `start`, when present, is the source line number (from one) of the first line: the lines
   // are then numbered in the margin, as an excerpt of a file is and a sample is not.
+  // `animation`, when present, is the block as a sequence of frames, of which `lines` is the
+  // first, so a renderer that cannot animate shows a correct block.
   case Code
-    ( language: Language,
-      lines:    List[Block.Line],
-      notes:    List[Block.Note] = Nil,
-      start:    Optional[Int]    = Unset )
+    ( language:  Language,
+      lines:     List[Block.Line],
+      notes:     List[Block.Note]          = Nil,
+      start:     Optional[Int]             = Unset,
+      animation: Optional[Block.Animation] = Unset )
   case Table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] = Unset)
   case Record(entries: List[Block.Entry], title: Optional[List[Inline]] = Unset)
   case Notice(tone: Tone, title: Optional[List[Inline]], content: List[Block])

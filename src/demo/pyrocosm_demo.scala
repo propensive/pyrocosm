@@ -101,6 +101,29 @@ object Samples:
 
   private def inlineCode(text: Text, accent: Token.Accent): Inline = Inline.Code(Language.Scala, List(Token(text, accent)))
 
+  // Three frames of one definition: a body filled in, then a parameter added and a line
+  // inserted before the body, so that tokens move across lines as well as along them.
+  private def frameLines(text: Text): List[Block.Line] =
+    text.cut(t"\n").map: (line: Text) =>
+      Block.Line(line.cut(t" ").indexed.bind[List[Token], Token, List[Token]] { (word: Text, index: Ordinal) =>
+        val accent: Token.Accent = word match
+          case t"def" | t"val" | t"=" => Token.Accent.Keyword
+          case t"Int" | t"Text"       => Token.Accent.Typal
+          case _                      => Token.Accent.Term
+
+        val space: List[Token] = if index.n0 == 0 then Nil else List(Token.plain(t" "))
+        space + List(Token(word, accent))
+      })
+
+  private val animated: Block =
+    val frames: List[List[Block.Line]] =
+      List
+        ( frameLines(t"def greet(name: Text): Text = ???"),
+          frameLines(t"def greet(name: Text): Text =\n  t\"Hello, $$name\""),
+          frameLines(t"def greet(name: Text, times: Int): Text =\n  val greeting = t\"Hello, $$name\"\n  greeting * times") )
+
+    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
+
   // Every case of an enum, as a list, through its `Enumerable` evidence.
   private def cases[enumeration <: scala.reflect.Enum: Enumerable as enumerable]: List[enumeration] =
     enumerable.values.to[List]
@@ -311,6 +334,9 @@ object Samples:
         Block.paragraph(t"A code block sits on the page colour behind a hairline, each token accented by its kind. Notes mark spans of a line: a highlight, a parameter, an error and a caution; hover one for its caption."),
         Block.Code(Language.Scala, List(greet, count, call, imported), notes),
         Block.Paragraph(Inline.Textual(t"Inline code takes the same accents: ") :: punctuated(accents)),
+        Block.Heading(2, Inline.text(t"Animation")),
+        Block.paragraph(t"An animated block is a sequence of frames: each token keeps its identity across them, so a step moves what stays, fades in what arrives and fades out what departs, wherever the lines put them. Step with the buttons, or the arrow keys when the block is focused; space plays."),
+        animated,
         Block.Heading(2, Inline.text(t"Diagnostics")),
         Block.paragraph(t"A diagnostic names its place and its severity, says what is wrong, and shows the lines concerned, numbered from where they came in their file, with the place marked: a segment is underlined, a position is pointed at, and a caption follows the mark."),
         Block.Diagnostic
@@ -704,7 +730,7 @@ object Repl:
           field.history.append(text)
           val marks = Samples.decorate(text, text.length).marks
           val code = Samples.code(text) match
-            case Block.Code(language, lines, _, _) => Block.Code(language, lines, marks)
+            case Block.Code(language, lines, _, _, _) => Block.Code(language, lines, marks)
             case other                          => other
 
           val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))))

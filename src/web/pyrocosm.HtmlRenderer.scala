@@ -62,12 +62,43 @@ object HtmlRenderer:
   // its own, as the same action may belong to a navigation item already on the page.
   given actionId: ("data-action" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
+  // `data-atom="a12"` on a token of an animated code block: its identity across the frames,
+  // by which the script moves it from where it was to where it is.
+  given atomId: ("data-atom" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
+  // `tabindex` on an animated block, so that it takes the arrow keys when focused.
+  given tabIndex: ("tabindex" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
+  // A text as a JSON string literal, for the animation the renderer embeds.
+  def jsonText(text: Text): Text =
+    val builder = StringBuilder()
+    builder.append('"')
+
+    var index: Int = 0
+
+    while index < text.s.length do
+      val char: Char = text.s.charAt(index)
+
+      char match
+        case '"'  => builder.append("\\\"")
+        case '\\' => builder.append("\\\\")
+        case '\n' => builder.append("\\n")
+        case '\r' => builder.append("\\r")
+        case '\t' => builder.append("\\t")
+        case char if char < ' ' => builder.append(f"\\u${char.toInt}%04x")
+        case char => builder.append(char)
+
+      index += 1
+
+    builder.append('"')
+    builder.toString.tt
+
   // `data-local="true"` on a menu link to a tool of this machine, whose `localhost` the script
   // replaces with the page's own host when the page is viewed from another.
   given localLink: ("data-local" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
 class HtmlRenderer():
-  import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath, actionId, localLink}
+  import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath, actionId, atomId, tabIndex, localLink, jsonText}
 
   def phrase(content: List[Inline]): Html of Phrasing = Html.Fragment(content.map(inline1)*)
 
@@ -145,11 +176,9 @@ class HtmlRenderer():
     case Block.Quotation(content) => Blockquote(`class` = cls(t"pyro-quotation"))(blocks(content))
     case Block.Rule(side)         => Hr(`class` = cls(t"pyro-rule-${side.toString.tt.lower}"))
 
-    case Block.Code(language, lines, notes, start) =>
-      val numbered: List[Name[CssClass]] = if start.present then List(cls(t"pyro-numbered")) else Nil
-      val classes: List[Name[CssClass]] = cls(t"pyro-codeblock") :: cls(t"pyro-language-${language.name}") :: numbered
-
-      Pre(`class` = classes)(Code(codeRows(lines, notes, start)*))
+    case Block.Code(language, lines, notes, start, animation) =>
+      animation.lay(plainCode(language, lines, notes, start)): (animation: Block.Animation) =>
+        animatedCode(language, animation)
 
     case Block.Table(columns, rows, caption) => table(columns, rows, caption)
 
@@ -300,6 +329,66 @@ class HtmlRenderer():
 
     rows.indexed.map: (row: Html of Phrasing, index: Ordinal) =>
       if index.n0 == count - 1 then row else Html.Fragment[Phrasing](row, t"\n")
+
+  def plainCode(language: pyrocosm.Language, lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int])
+  :   Html of Flow =
+
+    val numbered: List[Name[CssClass]] = if start.present then List(cls(t"pyro-numbered")) else Nil
+    val classes: List[Name[CssClass]] = cls(t"pyro-codeblock") :: cls(t"pyro-language-${language.name}") :: numbered
+
+    Pre(`class` = classes)(Code(codeRows(lines, notes, start)*))
+
+  // An animated block: its first frame as lines of atoms, each carrying its id; its controls;
+  // and the animation as JSON in a hidden element the script reads. Frame 0 is what a page
+  // without the script shows.
+  def animatedCode(language: pyrocosm.Language, animation: Block.Animation): Html of Flow =
+    val classes: List[Name[CssClass]] = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${language.name}"))
+    val first: List[List[Block.Atom]] = animation.lines(0)
+    val count: Int = first.size
+
+    val rows: List[Html of Phrasing] =
+      first.indexed.map: (atoms: List[Block.Atom], index: Ordinal) =>
+        val line = Span(`class` = cls(t"pyro-line"))(atoms.map(atomSpan)*)
+        if index.n0 == count - 1 then line else Html.Fragment[Phrasing](line, t"\n")
+
+    val frames: Int = animation.frames.size
+
+    val controls: Html of Flow =
+      Div(`class` = cls(t"pyro-animation-controls"))
+        ( Button(`class` = cls(t"pyro-animation-prev"), `type` = t"button")(t"‹"),
+          Span(`class` = cls(t"pyro-animation-counter"))(t"1 / ${frames.toString.tt}"),
+          Button(`class` = cls(t"pyro-animation-next"), `type` = t"button")(t"›"),
+          Button(`class` = cls(t"pyro-animation-play"), `type` = t"button")(t"▶") )
+
+    Div(`class` = cls(t"pyro-animated"), tabindex = t"0")
+      ( Pre(`class` = classes)(Code(rows*)),
+        controls,
+        Pre(`class` = cls(t"pyro-animation-data"))(animationJson(animation)) )
+
+  def atomSpan(atom: Block.Atom): Html of Phrasing =
+    val extra: List[Name[CssClass]] = if atom.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
+    Span(`class` = cls(t"pyro-atom") :: accentClass(atom.accent) :: extra, `data-atom` = atom.id)(atom.text)
+
+  // The animation as compact JSON: atoms by id, frames, and placements as `[frame, line, id]`.
+  def animationJson(animation: Block.Animation): Text =
+    val atoms: Text =
+      animation.atoms.map: (atom: Block.Atom) =>
+        val binding: Text = if atom.role == Token.Role.Binding then t"true" else t"false"
+        t"""{"id":${jsonText(atom.id)},"text":${jsonText(atom.text)},"accent":${jsonText(atom.accent.toString.tt.lower)},"binding":$binding}"""
+      . join(t",")
+
+    val frames: Text =
+      animation.frames.map: (frame: Block.Frame) =>
+        val hold: Text = frame.hold.lay(t"null")(_.toString.tt)
+        t"""{"index":${frame.index.toString.tt},"label":${jsonText(Inline.plain(frame.label))},"hold":$hold}"""
+      . join(t",")
+
+    val placements: Text =
+      animation.placements.map: (placement: Block.Placement) =>
+        t"[${placement.frame.toString.tt},${placement.line.toString.tt},${jsonText(placement.atom)}]"
+      . join(t",")
+
+    t"""{"atoms":[$atoms],"frames":[$frames],"placements":[$placements],"autoplay":${animation.autoplay.toString.tt},"loop":${animation.loop.toString.tt}}"""
 
   // One line of code, the `index`th of its block, with the segments of the notes which touch
   // it laid over its tokens; a caret marks no segment. The line ends in a newline unless it is

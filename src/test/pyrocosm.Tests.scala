@@ -266,6 +266,42 @@ tags:
       tree.in[Tel].show.read[Tel].as[Twig]
     . assert(_ == tree)
 
+    // Three frames: a token is added to the first line, then a line is inserted before it and a
+    // token of the first line moves to the new line.
+    val animatedFrames: List[List[Block.Line]] =
+      def line(words: List[Text]): Block.Line = Block.Line(words.map(Token.plain(_)))
+      List
+        ( List(line(List(t"val", t"x"))),
+          List(line(List(t"val", t"x", t"=", t"1"))),
+          List(line(List(t"val", t"y")), line(List(t"val", t"x", t"=", t"y"))) )
+
+    val animation: Block.Animation = Block.Animation.of(animatedFrames)
+
+    def atomsIn(f: Int): List[Text] = animation.placements.filter(_.frame == f).map(_.atom)
+
+    test(m"alignment keeps a surviving token's identity across frames"):
+      (atomsIn(0).all(atomsIn(1).has(_)), atomsIn(1).all(atomsIn(2).has(_)))
+    . assert(_ == (true, true))
+
+    test(m"alignment places an inserted line's tokens on the new line"):
+      animation.lines(2).map(_.map(_.text))
+    . assert(_ == List(List(t"val", t"y"), List(t"val", t"x", t"=", t"y")))
+
+    test(m"the first frame's lines are the block's lines"):
+      animation.lines(0).map(_.map(_.text))
+    . assert(_ == List(List(t"val", t"x")))
+
+    val animatedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, animation)
+
+    test(m"an animated code block round-trips as TEL text"):
+      animatedBlock.in[Tel].show.read[Tel].as[Block]
+    . assert(_ == animatedBlock)
+
+    test(m"an animated code block renders its first frame with atom ids and its data"):
+      val html: Text = HtmlRenderer().block(animatedBlock).show
+      (html.contains(t"data-atom="), html.contains(t"pyro-animation-data"), html.contains(t"\"placements\""))
+    . assert(_ == (true, true, true))
+
     val emptyToken: Block = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"x"))), Block.Line(List(Token.plain(t"")))))
 
     // An empty text is written as a compound with no atom (see `textTelEncodable`).
@@ -403,7 +439,7 @@ tags:
     test(m"highlighted source exhibits as a code block"):
       val exhibit: Block = Scala.highlight(t"val x = 1").exhibit
       exhibit match
-        case Block.Code(Language.Scala, lines, _, _) => lines.at(Prim).let(_.tokens.at(Prim)).let(_.accent) == Token.Accent.Keyword
+        case Block.Code(Language.Scala, lines, _, _, _) => lines.at(Prim).let(_.tokens.at(Prim)).let(_.accent) == Token.Accent.Keyword
         case _                                       => false
     . assert(_ == true)
 
@@ -417,7 +453,7 @@ tags:
       val diagnostic = Notices.diagnostic(notice, Notices.lines(t"val a = 1\nval b = x\nval c = 3"))
 
       diagnostic match
-        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(_, lines, List(note), start)), _) =>
+        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(_, lines, List(note), start, _)), _) =>
           (location.let(_.text), lines.size, note.line, note.start, note.end, start)
 
         case _ =>
@@ -439,7 +475,7 @@ tags:
       val error = Tel.Error(Tel.Error.Reason.TooManyAtoms, Tel.Error.spanAt(4, 9, 4))
 
       Block.Diagnostic.of(error, t"contacts.tel", source) match
-        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(Language.Tel, lines, List(note), start)), _) =>
+        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(Language.Tel, lines, List(note), start, _)), _) =>
           (location.let(_.text), lines.size, note.line, note.start, note.end, start)
 
         case _ =>

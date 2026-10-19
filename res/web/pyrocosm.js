@@ -709,7 +709,137 @@
   // Actionable elements (rows, items, links, buttons) press their id, or the action they name;
   // fields edit and submit. A link to a tool of the server's machine names `localhost`, which
   // is right only when the page is viewed there: elsewhere it takes the page's own host.
+  // An animated code block: the server rendered its first frame, with each token's atom id,
+  // and the animation as JSON. A step rebuilds the lines of the target frame from the same
+  // nodes, keyed by atom, and animates each atom from where it was to where it is (FLIP): a
+  // measured move, so an inserted line, a reflowed line or a move across lines all follow;
+  // an arriving atom fades in, a departing one leaves as a ghost over its old place.
+  function animate(block) {
+    var data;
+    try { data = JSON.parse(block.querySelector(".pyro-animation-data").textContent); } catch (error) { console.error(error); return; }
+    var code = block.querySelector("pre.pyro-codeblock > code");
+    var counter = block.querySelector(".pyro-animation-counter");
+    var prev = block.querySelector(".pyro-animation-prev");
+    var next = block.querySelector(".pyro-animation-next");
+    var play = block.querySelector(".pyro-animation-play");
+    var atoms = {};
+    data.atoms.forEach(function (atom) { atoms[atom.id] = atom; });
+    var nodes = {};
+    code.querySelectorAll("[data-atom]").forEach(function (span) { nodes[span.dataset.atom] = span; });
+    var frame = 0;
+    var timer = null;
+    var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function spanFor(id) {
+      if (nodes[id]) return nodes[id];
+      var atom = atoms[id];
+      var span = document.createElement("span");
+      span.className = "pyro-atom pyro-accent-" + atom.accent + (atom.binding ? " pyro-binding" : "");
+      span.dataset.atom = id;
+      span.textContent = atom.text;
+      nodes[id] = span;
+      return span;
+    }
+
+    function linesOf(index) {
+      var lines = [];
+      data.placements.forEach(function (placement) {
+        if (placement[0] !== index) return;
+        (lines[placement[1]] = lines[placement[1]] || []).push(placement[2]);
+      });
+      for (var i = 0; i < lines.length; i++) lines[i] = lines[i] || [];
+      return lines;
+    }
+
+    function show(target, animated) {
+      var moving = animated && !reduced;
+      var host = block.getBoundingClientRect();
+      var first = {};
+      if (moving) Object.keys(nodes).forEach(function (id) { if (nodes[id].isConnected) first[id] = nodes[id].getBoundingClientRect(); });
+      var present = {};
+      var fragment = document.createDocumentFragment();
+      var lines = linesOf(target);
+      lines.forEach(function (ids, index) {
+        var line = document.createElement("span");
+        line.className = "pyro-line";
+        ids.forEach(function (id) { present[id] = true; line.appendChild(spanFor(id)); });
+        fragment.appendChild(line);
+        if (index < lines.length - 1) fragment.appendChild(document.createTextNode("\n"));
+      });
+      var ghosts = [];
+      if (moving) Object.keys(first).forEach(function (id) {
+        if (present[id]) return;
+        var ghost = nodes[id].cloneNode(true);
+        ghost.classList.add("pyro-ghost");
+        ghost.style.left = (first[id].left - host.left) + "px";
+        ghost.style.top = (first[id].top - host.top) + "px";
+        block.appendChild(ghost);
+        ghosts.push(ghost);
+      });
+      code.replaceChildren(fragment);
+      if (moving) {
+        Object.keys(present).forEach(function (id) {
+          var span = nodes[id];
+          var last = span.getBoundingClientRect();
+          var was = first[id];
+          span.style.transition = "none";
+          if (was) {
+            var dx = was.left - last.left, dy = was.top - last.top;
+            if (dx || dy) span.style.transform = "translate(" + dx + "px," + dy + "px)";
+          } else span.style.opacity = "0";
+        });
+        requestAnimationFrame(function () { requestAnimationFrame(function () {
+          Object.keys(present).forEach(function (id) { var span = nodes[id]; span.style.transition = ""; span.style.transform = ""; span.style.opacity = ""; });
+          ghosts.forEach(function (ghost) { ghost.style.opacity = "0"; setTimeout(function () { ghost.remove(); }, 400); });
+        }); });
+      }
+      frame = target;
+      if (counter) counter.textContent = (frame + 1) + " / " + data.frames.length;
+      if (prev) prev.disabled = frame === 0;
+      if (next) next.disabled = frame === data.frames.length - 1;
+    }
+
+    function step(delta) {
+      var target = frame + delta;
+      if (target < 0 || target >= data.frames.length) {
+        if (data.loop && delta > 0) target = 0; else return false;
+      }
+      show(target, true);
+      return true;
+    }
+
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } if (play) play.textContent = "▶"; }
+
+    function playing() {
+      var hold = (data.frames[frame] && data.frames[frame].hold) || 1.5;
+      timer = setTimeout(function () {
+        if (!step(1)) { stop(); return; }
+        playing();
+      }, hold * 1000);
+      if (play) play.textContent = "⏸";
+    }
+
+    function toggle() { if (timer) stop(); else { if (frame === data.frames.length - 1 && !data.loop) show(0, true); playing(); } }
+
+    if (prev) prev.addEventListener("click", function () { stop(); step(-1); });
+    if (next) next.addEventListener("click", function () { stop(); step(1); });
+    if (play) play.addEventListener("click", toggle);
+    block.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowRight") { stop(); step(1); event.preventDefault(); }
+      else if (event.key === "ArrowLeft") { stop(); step(-1); event.preventDefault(); }
+      else if (event.key === " ") { toggle(); event.preventDefault(); }
+    });
+    show(0, false);
+    if (data.autoplay) playing();
+  }
+
   function wire(root) {
+    root.querySelectorAll(".pyro-animated").forEach(function (block) {
+      if (block.dataset.pyroWired) return;
+      block.dataset.pyroWired = "1";
+      animate(block);
+    });
+
     root.querySelectorAll("a[data-local='true']").forEach(function (link) {
       if (link.dataset.pyroWired) return;
       try {
