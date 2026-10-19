@@ -761,14 +761,12 @@
       return result;
     }
 
-    // Timings of the three phases, in milliseconds; the stylesheet's fades match. A move
-    // whose tokens all travel along one axis takes MOVE; when any token travels along both,
-    // each axis gets its own MOVE and the second starts STAGGER after the first. Which axis
-    // goes first is each token's own: one joining a line that remains and keeps tokens of
-    // its own slides along its old line to its column first, then drops straight into its
-    // slot; one reaching a new or emptied line leaves its old line first, then slides along
-    // the empty one. Neither path crosses a token that stays where it is.
-    var FADE = 750, MOVE = 1000, STAGGER = 300;
+    // Timings, in milliseconds; the stylesheet's fades match. A step is a fade out, then a
+    // move, then a fade in; the move has up to three phases of its own, and any phase with
+    // nothing to do takes no time. Vertical movement runs at a constant speed, LINE per line,
+    // so tokens travelling the same way in a column keep their distance and never overtake;
+    // horizontal movement runs at PIXEL per pixel, within bounds.
+    var FADE = 750, LINE = 300, PIXEL = 2, SLIDE_MIN = 300, SLIDE_MAX = 1000;
     var busy = false;
 
     function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
@@ -845,47 +843,81 @@
           var span = nodes[id];
           var last = span.getBoundingClientRect();
           var dx = first[id].left - last.left, dy = first[id].top - last.top;
-          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moves.push({ span: span, dx: dx, dy: dy });
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moves.push({ span: span, id: id, dx: dx, dy: dy });
         });
         if (!moves.length && !resized) return Promise.resolve();
-        var diagonal = moves.some(function (move) { return Math.abs(move.dx) > 0.5 && Math.abs(move.dy) > 0.5; });
-        var total = diagonal ? MOVE + STAGGER : MOVE;
 
         // Which line each surviving atom leaves and reaches, by line identity; a line is busy
-        // when some atom stays on it from one frame to the next.
+        // when some atom stays on it from one frame to the next. A token joining a busy line
+        // slides along its old row to its column first (H1) and then drops into its slot (V);
+        // one reaching a new or emptied line drops first (V) and slides along the empty row
+        // after (H2), with the tokens shifting within their own lines.
         var wasOn = lineOfAtoms(frame), nowOn = lineOfAtoms(target);
         var busy = {};
         Object.keys(nowOn).forEach(function (id) { if (wasOn[id] === nowOn[id]) busy[nowOn[id]] = true; });
+        var lineHeight = 0;
+        var sample = code.querySelector(".pyro-line");
+        if (sample) lineHeight = sample.getBoundingClientRect().height || 0;
 
-        // Started before the next paint, so no token is ever seen at its destination early.
-        // Along both axes, the two animations add; along one, a single animation suffices.
+        var h1 = [], v = [], h2 = [];
         moves.forEach(function (move) {
-          if (diagonal) {
-            var id = move.span.dataset.atom;
-            var joining = busy[nowOn[id]] && wasOn[id] !== nowOn[id];
-            var verticalDelay = joining ? STAGGER : 0, horizontalDelay = joining ? 0 : STAGGER;
-            if (Math.abs(move.dy) > 0.5)
-              move.span.animate([{ transform: "translateY(" + move.dy + "px)" }, { transform: "translateY(0px)" }],
-                                { duration: MOVE, delay: verticalDelay, easing: "ease", composite: "add", fill: "backwards" });
-            if (Math.abs(move.dx) > 0.5)
-              move.span.animate([{ transform: "translateX(" + move.dx + "px)" }, { transform: "translateX(0px)" }],
-                                { duration: MOVE, delay: horizontalDelay, easing: "ease", composite: "add", fill: "backwards" });
-          } else
-            move.span.animate([{ transform: "translate(" + move.dx + "px," + move.dy + "px)" }, { transform: "none" }],
-                              { duration: MOVE, easing: "ease" });
+          var changesLine = wasOn[move.id] !== nowOn[move.id];
+          var joining = changesLine && busy[nowOn[move.id]];
+          if (Math.abs(move.dx) > 0.5) (joining ? h1 : h2).push(move);
+          if (Math.abs(move.dy) > 0.5) v.push(move);
         });
 
-        // The block's height follows over the same time: set to its old height with no
-        // transition, flushed, then transitioned to the new.
-        if (resized) {
-          pre.style.transition = "none";
-          pre.style.height = before + "px";
-          pre.style.overflow = "hidden";
-          void pre.offsetHeight;
-          pre.style.transition = "height " + total + "ms ease";
-          pre.style.height = after0 + "px";
+        function slide(ms, dx) { return Math.max(SLIDE_MIN, Math.min(SLIDE_MAX, Math.abs(dx) * PIXEL)); }
+
+        // Every token still carries the whole of its displacement until a phase takes an
+        // axis of it away: the three animations add, and each holds its final value after.
+        moves.forEach(function (move) {
+          if (Math.abs(move.dx) > 0.5) move.hold = move.span.animate(
+            [{ transform: "translateX(" + move.dx + "px)" }, { transform: "translateX(" + move.dx + "px)" }],
+            { duration: 1, fill: "forwards", composite: "add" });
+          if (Math.abs(move.dy) > 0.5) move.holdY = move.span.animate(
+            [{ transform: "translateY(" + move.dy + "px)" }, { transform: "translateY(" + move.dy + "px)" }],
+            { duration: 1, fill: "forwards", composite: "add" });
+        });
+
+        function horizontal(group) {
+          if (!group.length) return Promise.resolve();
+          var longest = 0;
+          group.forEach(function (move) {
+            var ms = slide(0, move.dx);
+            longest = Math.max(longest, ms);
+            move.hold.cancel();
+            move.span.animate([{ transform: "translateX(" + move.dx + "px)" }, { transform: "translateX(0px)" }],
+                              { duration: ms, easing: "linear", composite: "add" });
+          });
+          return after(longest);
         }
-        return after(total).then(function () {
+
+        function vertical() {
+          if (!v.length && !resized) return Promise.resolve();
+          var longest = 0;
+          v.forEach(function (move) {
+            var lines = lineHeight > 0 ? Math.abs(move.dy) / lineHeight : 1;
+            var ms = Math.max(LINE, Math.round(lines * LINE));
+            longest = Math.max(longest, ms);
+            move.holdY.cancel();
+            move.span.animate([{ transform: "translateY(" + move.dy + "px)" }, { transform: "translateY(0px)" }],
+                              { duration: ms, easing: "linear", composite: "add" });
+          });
+          if (resized) {
+            var ms = Math.max(LINE, Math.round(Math.abs(after0 - before) / (lineHeight || 1) * LINE));
+            longest = Math.max(longest, ms);
+            pre.style.transition = "none";
+            pre.style.height = before + "px";
+            pre.style.overflow = "hidden";
+            void pre.offsetHeight;
+            pre.style.transition = "height " + ms + "ms linear";
+            pre.style.height = after0 + "px";
+          }
+          return after(longest);
+        }
+
+        return horizontal(h1).then(vertical).then(function () { return horizontal(h2); }).then(function () {
           if (resized) { pre.style.transition = ""; pre.style.height = ""; pre.style.overflow = ""; }
         });
       }).then(function () {
