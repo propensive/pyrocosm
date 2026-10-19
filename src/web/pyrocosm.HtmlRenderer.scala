@@ -344,12 +344,10 @@ class HtmlRenderer():
   def animatedCode(language: pyrocosm.Language, animation: Block.Animation): Html of Flow =
     val classes: List[Name[CssClass]] = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${language.name}"))
     val first: List[List[Block.Atom]] = animation.lines(0)
-    val count: Int = first.size
 
+    // Block-level lines (the stylesheet's rule), so no newline stands between them.
     val rows: List[Html of Phrasing] =
-      first.indexed.map: (atoms: List[Block.Atom], index: Ordinal) =>
-        val line = Span(`class` = cls(t"pyro-line"))(atoms.map(atomSpan)*)
-        if index.n0 == count - 1 then line else Html.Fragment[Phrasing](line, t"\n")
+      first.map { (atoms: List[Block.Atom]) => Span(`class` = cls(t"pyro-line"))(atoms.map(atomSpan)*) }
 
     val frames: Int = animation.frames.size
 

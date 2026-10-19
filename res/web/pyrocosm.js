@@ -752,7 +752,7 @@
     }
 
     // Timings of the three phases, in milliseconds; the stylesheet's transitions match.
-    var FADE = 250, MOVE = 400;
+    var FADE = 750, MOVE = 1200;
     var busy = false;
 
     function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
@@ -773,16 +773,22 @@
       var departing = Object.keys(current).filter(function (id) { return !present[id]; });
       var arriving = Object.keys(present).filter(function (id) { return !current[id]; });
 
+      // The target's lines, block-level (so a line has a height to grow). A line none of
+      // whose atoms survive from the current frame is new, and is marked so that it can
+      // start collapsed.
       function rebuild() {
         var fragment = document.createDocumentFragment();
-        lines.forEach(function (ids, index) {
+        var fresh = [];
+        lines.forEach(function (ids) {
           var line = document.createElement("span");
           line.className = "pyro-line";
+          var survivor = ids.some(function (id) { return !!current[id]; });
           ids.forEach(function (id) { line.appendChild(spanFor(id)); });
+          if (!survivor) fresh.push(line);
           fragment.appendChild(line);
-          if (index < lines.length - 1) fragment.appendChild(document.createTextNode("\n"));
         });
         code.replaceChildren(fragment);
+        return fresh;
       }
 
       function settle() {
@@ -814,11 +820,15 @@
 
         // Phase 2: survivors move. Their places are measured before the rebuild and after
         // it; arrivals are in the new layout from the start, invisible, so the gaps are real.
+        // A new line starts collapsed and grows to the code's line height over the same
+        // time, so what lies below it reaches its place as the line opens.
         var first = {};
         Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
-        rebuild();
+        var fresh = rebuild();
+        var lineHeight = parseFloat(getComputedStyle(code).lineHeight) || 0;
         arriving.forEach(function (id) { nodes[id].style.transition = "none"; nodes[id].style.opacity = "0"; });
-        var moved = false;
+        fresh.forEach(function (line) { line.style.transition = "none"; line.style.height = "0px"; line.style.overflow = "hidden"; });
+        var moved = fresh.length > 0;
         Object.keys(first).forEach(function (id) {
           var span = nodes[id];
           var last = span.getBoundingClientRect();
@@ -832,7 +842,10 @@
         if (!moved) return Promise.resolve();
         return nextFrame().then(function () {
           Object.keys(first).forEach(function (id) { nodes[id].style.transition = ""; nodes[id].style.transform = ""; });
+          fresh.forEach(function (line) { line.style.transition = ""; line.style.height = lineHeight + "px"; });
           return after(MOVE);
+        }).then(function () {
+          fresh.forEach(function (line) { line.style.height = ""; line.style.overflow = ""; });
         });
       }).then(function () {
         // Phase 3: arrivals fade in.
