@@ -203,9 +203,10 @@ object WebStyles:
         + css".pyro-animated { position: relative; outline: none }"
         + css".pyro-animated:focus-visible .pyro-codeblock { box-shadow: 0 0 0 2px var(--pyro-accent) }"
         + css".pyro-atom { display: inline-block; white-space: pre; transition: transform 1.2s ease, opacity 0.75s ease }"
-        // A line of an animated block is a block, so that a new one can grow from nothing;
-        // an empty line keeps a line's height.
-        + css".pyro-animated .pyro-line { display: block; min-height: 1.5em; transition: height 1.2s ease }"
+        // A line of an animated block is a block (an empty one keeps a line's height); the
+        // block itself transitions between heights as lines appear and vanish.
+        + css".pyro-animated .pyro-line { display: block; min-height: 1.5em }"
+        + css".pyro-animated .pyro-codeblock { transition: height 1.2s ease }"
         + css".pyro-animation-data { display: none }"
         + css".pyro-animation-controls { display: flex; gap: var(--pyro-space-2); align-items: center; margin: calc(-1 * var(--pyro-space-3)) 0 var(--pyro-space-4) 0; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small) }"
         + css".pyro-animation-controls button { font: inherit; line-height: 1; padding: 0 var(--pyro-space-2); border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius); background-color: transparent; color: inherit; cursor: pointer }"

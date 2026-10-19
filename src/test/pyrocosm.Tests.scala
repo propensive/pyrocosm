@@ -292,6 +292,15 @@ tags:
       animation.lines(0).map(_.map(_.text))
     . assert(_ == List(List(t"val", t"x")))
 
+    // One line spread over three: every token keeps its identity, on a new line.
+    test(m"a token moved to another line keeps its identity"):
+      def line(words: List[Text]): Block.Line = Block.Line(words.map(Token.plain(_)))
+      val spread = Block.Animation.of(List(List(line(List(t"a", t"b", t"c"))), List(line(List(t"a")), line(List(t"b")), line(List(t"c")))))
+      val before: List[Text] = spread.placements.filter(_.frame == 0).map(_.atom)
+      val after: List[Text] = spread.placements.filter(_.frame == 1).map(_.atom)
+      (spread.atoms.size, before.all(after.has(_)), spread.lines(1).map(_.map(_.text)))
+    . assert(_ == (3, true, List(List(t"a"), List(t"b"), List(t"c"))))
+
     val animatedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, animation)
 
     test(m"an animated code block round-trips as TEL text"):

@@ -235,7 +235,42 @@ object Block:
       val described: List[Frame] =
         frames.indexed.map { (_, index: Ordinal) => Frame(index.n0, labels.at(index).or(Nil)) }
 
-      Animation(atoms.reverse, described, placements.reverse)
+      rejoin(Animation(atoms.reverse, described, placements.reverse))
+
+    // A second pass, across lines: between consecutive frames, an atom which departs and an
+    // atom which arrives with the same text and accent are one token which moved — a value
+    // spread over several lines, say — and are merged, in order of appearance, so that the
+    // front end carries it to its new line rather than fading it out and in.
+    private def rejoin(animation: Animation): Animation =
+      val byId: Map[Text, Atom] = animation.atoms.map { (atom: Atom) => atom.id -> atom }.to[Map]
+      var placements: List[Placement] = animation.placements
+      var merged: List[Text] = Nil   // the ids absorbed into another
+
+      def same(left: Atom, right: Atom): Boolean = left.text == right.text && left.accent == right.accent
+
+      def rename(from: Text, to: Text): Unit =
+        placements = placements.map { (p: Placement) => if p.atom == from then p.copy(atom = to) else p }
+        merged = from :: merged
+
+      animation.frames.each: (frame: Frame) =>
+        val f: Int = frame.index
+        val now: List[Text] = placements.filter(_.frame == f).map(_.atom)
+        val next: List[Text] = placements.filter(_.frame == f + 1).map(_.atom)
+        var departing: List[Text] = now.filter { (id: Text) => !next.has(id) }
+        val arriving: List[Text] = next.filter { (id: Text) => !now.has(id) }
+
+        arriving.each: (arrival: Text) =>
+          byId(arrival).let: (atom: Atom) =>
+            departing.seek { (id: Text) => byId(id).let(same(_, atom)).or(false) }.let: (match0: Text) =>
+              rename(arrival, match0)
+              departing = departing.filter(_ != match0)
+
+      Animation
+        ( animation.atoms.filter { (atom: Atom) => !merged.has(atom.id) },
+          animation.frames,
+          placements,
+          animation.autoplay,
+          animation.loop )
 
   case class Animation
     ( atoms:      List[Atom],

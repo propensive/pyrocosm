@@ -773,22 +773,16 @@
       var departing = Object.keys(current).filter(function (id) { return !present[id]; });
       var arriving = Object.keys(present).filter(function (id) { return !current[id]; });
 
-      // The target's lines, block-level (so a line has a height to grow). A line none of
-      // whose atoms survive from the current frame is new, and is marked so that it can
-      // start collapsed.
+      // The target's lines, block-level, from the surviving nodes and the arriving atoms.
       function rebuild() {
         var fragment = document.createDocumentFragment();
-        var fresh = [];
         lines.forEach(function (ids) {
           var line = document.createElement("span");
           line.className = "pyro-line";
-          var survivor = ids.some(function (id) { return !!current[id]; });
           ids.forEach(function (id) { line.appendChild(spanFor(id)); });
-          if (!survivor) fresh.push(line);
           fragment.appendChild(line);
         });
         code.replaceChildren(fragment);
-        return fresh;
       }
 
       function settle() {
@@ -819,16 +813,19 @@
         // Phase 2: survivors move. Their places are measured before the departures are
         // removed (removal reflows what follows them, and that reflow is part of the move)
         // and after the rebuild; arrivals are in the new layout from the start, invisible,
-        // so the gaps are real. A new line starts collapsed and grows to its own height over
-        // the same time, so what lies below it reaches its place as the line opens.
+        // so the gaps are real. The block itself goes from its old height to its new over
+        // the same time, so lines appearing or vanishing open and close it smoothly.
+        var pre = code.parentElement;
         var first = {};
         Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
+        var before = pre.getBoundingClientRect().height;
         departing.forEach(function (id) { current[id].remove(); delete nodes[id]; });
-        var fresh = rebuild();
+        rebuild();
         arriving.forEach(function (id) { nodes[id].style.transition = "none"; nodes[id].style.opacity = "0"; });
-        var heights = fresh.map(function (line) { return line.getBoundingClientRect().height; });
-        fresh.forEach(function (line) { line.style.transition = "none"; line.style.minHeight = "0"; line.style.height = "0px"; line.style.overflow = "hidden"; });
-        var moved = fresh.length > 0;
+        var after0 = pre.getBoundingClientRect().height;
+        var resized = Math.abs(after0 - before) > 0.5;
+        if (resized) { pre.style.transition = "none"; pre.style.height = before + "px"; pre.style.overflow = "hidden"; }
+        var moved = resized;
         Object.keys(first).forEach(function (id) {
           var span = nodes[id];
           var last = span.getBoundingClientRect();
@@ -842,10 +839,10 @@
         if (!moved) return Promise.resolve();
         return nextFrame().then(function () {
           Object.keys(first).forEach(function (id) { nodes[id].style.transition = ""; nodes[id].style.transform = ""; });
-          fresh.forEach(function (line, index) { line.style.transition = ""; line.style.height = heights[index] + "px"; });
+          if (resized) { pre.style.transition = ""; pre.style.height = after0 + "px"; }
           return after(MOVE);
         }).then(function () {
-          fresh.forEach(function (line) { line.style.height = ""; line.style.minHeight = ""; line.style.overflow = ""; });
+          if (resized) { pre.style.height = ""; pre.style.overflow = ""; }
         });
       }).then(function () {
         // Phase 3: arrivals fade in.

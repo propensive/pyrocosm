@@ -106,7 +106,7 @@ object Samples:
   // A crude tokenizer for the sample: words, a `t"…"` string, runs of spaces, and each
   // punctuation character on its own, so that the animation moves tokens, not phrases.
   private def frameLines(text: Text): List[Block.Line] =
-    val pattern = java.util.regex.Pattern.compile("""t"[^"]*"|[A-Za-z_][A-Za-z0-9_]*|[0-9]+| +|.""").nn
+    val pattern = java.util.regex.Pattern.compile("""t?"[^"]*"|[A-Za-z_][A-Za-z0-9_]*|[0-9]+| +|.""").nn
 
     text.cut(t"\n").map: (line: Text) =>
       val matcher = pattern.matcher(line.s).nn
@@ -118,7 +118,7 @@ object Samples:
         val accent: Token.Accent = word match
           case t"def" | t"val"                    => Token.Accent.Keyword
           case t"Int" | t"Text"                   => Token.Accent.Typal
-          case word if word.starts(t"t\"")       => Token.Accent.String
+          case word if word.contains(t"\"")     => Token.Accent.String
           case word if word.trim == t""           => Token.Accent.Unparsed
           case t"=" | t":" | t"*" | t"," | t"?"   => Token.Accent.Symbol
           case t"(" | t")"                        => Token.Accent.Parens
@@ -134,6 +134,15 @@ object Samples:
         ( frameLines(t"def greet(name: Text): Text = ???"),
           frameLines(t"def greet(name: Text): Text =\n  t\"Hello, $$name\""),
           frameLines(t"def greet(name: Text, times: Int): Text =\n  val greeting = t\"Hello, $$name\"\n  greeting * times") )
+
+    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
+
+  // One line spread over several: every token survives and moves to its line.
+  private val spread: Block =
+    val frames: List[List[Block.Line]] =
+      List
+        ( frameLines(t"List(\"foo\", \"bar\", \"baz\")"),
+          frameLines(t"List(\n  \"foo\",\n  \"bar\",\n  \"baz\"\n)") )
 
     Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
 
@@ -350,6 +359,8 @@ object Samples:
         Block.Heading(2, Inline.text(t"Animation")),
         Block.paragraph(t"An animated block is a sequence of frames: each token keeps its identity across them, so a step moves what stays, fades in what arrives and fades out what departs, wherever the lines put them. Step with the buttons, or the arrow keys when the block is focused; space plays."),
         animated,
+        Block.paragraph(t"A value spread over several lines: every token survives, and moves to its line."),
+        spread,
         Block.Heading(2, Inline.text(t"Diagnostics")),
         Block.paragraph(t"A diagnostic names its place and its severity, says what is wrong, and shows the lines concerned, numbered from where they came in their file, with the place marked: a segment is underlined, a position is pointed at, and a caption follows the mark."),
         Block.Diagnostic
