@@ -163,7 +163,14 @@ object Block:
   // across lines need nothing of the model.
   case class Atom(id: Text, text: Text, accent: Token.Accent, role: Optional[Token.Role] = Unset)
   case class Placement(frame: Int, line: Int, atom: Text)
-  case class Frame(index: Int, label: List[Inline] = Nil, hold: Optional[Double] = Unset)
+  // `lines` names the frame's lines in order, by an identity that holds across frames (a
+  // line that grew, shrank or moved keeps its id; a new line has a new one), so that a front
+  // end can tell a token joining a line that remains from one reaching a new line.
+  case class Frame
+    ( index: Int,
+      label: List[Inline]    = Nil,
+      hold:  Optional[Double] = Unset,
+      lines: List[Text]      = Nil )
 
   object Animation:
     // The atoms of each frame's lines, aligned across the frames: lines are matched by
@@ -204,11 +211,17 @@ object Block:
       var placements: List[Placement] = Nil
       val cursors: scala.Array[Int] = new scala.Array[Int](frames.size)   // next line of each frame
       val lineIndex: scala.Array[Int] = new scala.Array[Int](frames.size) // lines placed so far
+      var lineIds: List[(Int, Text)] = Nil                                  // (frame, line id), in order
+      var lineCounter: Int = 0
 
       // Each aligned line's tokens, aligned across the frames the line is in.
       lineAtoms.each: (lineAtom: Evolution.Atom[Line]) =>
         val present: List[Int] =
           frames.indexed.map(_(1).n0).filter { (f: Int) => lineAtom.presence.has(Ordinal.zerary(f)) }
+
+        lineCounter += 1
+        val lineId: Text = t"l${lineCounter.toString.tt}"
+        present.each { (f: Int) => lineIds = (f, lineId) :: lineIds }
 
         val versions: List[List[Token]] =
           present.map: (f: Int) =>
@@ -233,7 +246,9 @@ object Block:
         present.each { (f: Int) => lineIndex(f) += 1 }
 
       val described: List[Frame] =
-        frames.indexed.map { (_, index: Ordinal) => Frame(index.n0, labels.at(index).or(Nil)) }
+        frames.indexed.map: (_, index: Ordinal) =>
+          val ids: List[Text] = lineIds.reverse.filter(_(0) == index.n0).map(_(1))
+          Frame(index.n0, labels.at(index).or(Nil), Unset, ids)
 
       rejoin(Animation(atoms.reverse, described, placements.reverse))
 

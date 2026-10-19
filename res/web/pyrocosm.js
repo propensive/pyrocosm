@@ -751,13 +751,23 @@
       return lines;
     }
 
+    // The line (by its identity across frames) each atom of a frame is on.
+    function lineOfAtoms(index) {
+      var ids = (data.frames[index] && data.frames[index].lines) || [];
+      var result = {};
+      linesOf(index).forEach(function (atoms, line) {
+        atoms.forEach(function (id) { result[id] = ids[line] || ("#" + line); });
+      });
+      return result;
+    }
+
     // Timings of the three phases, in milliseconds; the stylesheet's fades match. A move
     // whose tokens all travel along one axis takes MOVE; when any token travels along both,
-    // each axis gets its own MOVE and the second starts STAGGER after the first. Tokens
-    // spreading onto new lines go vertically first, so they leave their line before sliding
-    // along the new one; tokens recombining onto lines that remain go horizontally first, so
-    // they make room along their old line before dropping in — the step's change in line
-    // count tells which.
+    // each axis gets its own MOVE and the second starts STAGGER after the first. Which axis
+    // goes first is each token's own: one joining a line that remains and keeps tokens of
+    // its own slides along its old line to its column first, then drops straight into its
+    // slot; one reaching a new or emptied line leaves its old line first, then slides along
+    // the empty one. Neither path crosses a token that stays where it is.
     var FADE = 750, MOVE = 1000, STAGGER = 300;
     var busy = false;
 
@@ -840,13 +850,20 @@
         if (!moves.length && !resized) return Promise.resolve();
         var diagonal = moves.some(function (move) { return Math.abs(move.dx) > 0.5 && Math.abs(move.dy) > 0.5; });
         var total = diagonal ? MOVE + STAGGER : MOVE;
-        var recombining = lines.length < linesOf(frame).length;
-        var verticalDelay = recombining ? STAGGER : 0, horizontalDelay = recombining ? 0 : STAGGER;
+
+        // Which line each surviving atom leaves and reaches, by line identity; a line is busy
+        // when some atom stays on it from one frame to the next.
+        var wasOn = lineOfAtoms(frame), nowOn = lineOfAtoms(target);
+        var busy = {};
+        Object.keys(nowOn).forEach(function (id) { if (wasOn[id] === nowOn[id]) busy[nowOn[id]] = true; });
 
         // Started before the next paint, so no token is ever seen at its destination early.
         // Along both axes, the two animations add; along one, a single animation suffices.
         moves.forEach(function (move) {
           if (diagonal) {
+            var id = move.span.dataset.atom;
+            var joining = busy[nowOn[id]] && wasOn[id] !== nowOn[id];
+            var verticalDelay = joining ? STAGGER : 0, horizontalDelay = joining ? 0 : STAGGER;
             if (Math.abs(move.dy) > 0.5)
               move.span.animate([{ transform: "translateY(" + move.dy + "px)" }, { transform: "translateY(0px)" }],
                                 { duration: MOVE, delay: verticalDelay, easing: "ease", composite: "add", fill: "backwards" });

@@ -378,7 +378,8 @@ class HtmlRenderer():
     val frames: Text =
       animation.frames.map: (frame: Block.Frame) =>
         val hold: Text = frame.hold.lay(t"null")(_.toString.tt)
-        t"""{"index":${frame.index.toString.tt},"label":${jsonText(Inline.plain(frame.label))},"hold":$hold}"""
+        val lines: Text = frame.lines.map(jsonText).join(t",")
+        t"""{"index":${frame.index.toString.tt},"label":${jsonText(Inline.plain(frame.label))},"hold":$hold,"lines":[$lines]}"""
       . join(t",")
 
     val placements: Text =

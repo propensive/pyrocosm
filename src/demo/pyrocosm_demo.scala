@@ -137,6 +137,15 @@ object Samples:
 
     Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
 
+  // Two values trading shapes at once: one spreading over lines, the other recombining.
+  private val traded: Block =
+    val frames: List[List[Block.Line]] =
+      List
+        ( frameLines(t"List(1, 2, 3)\nList(\n  4,\n  5,\n  6\n)"),
+          frameLines(t"List(\n  1,\n  2,\n  3\n)\nList(4, 5, 6)") )
+
+    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
+
   // One line spread over several: every token survives and moves to its line.
   private val spread: Block =
     val frames: List[List[Block.Line]] =
@@ -361,6 +370,8 @@ object Samples:
         animated,
         Block.paragraph(t"A value spread over several lines: every token survives, and moves to its line."),
         spread,
+        Block.paragraph(t"Two lists trading shapes: the tokens joining the line that remains slide along their own lines first and drop in; those reaching new lines leave first and slide along them."),
+        traded,
         Block.Heading(2, Inline.text(t"Diagnostics")),
         Block.paragraph(t"A diagnostic names its place and its severity, says what is wrong, and shows the lines concerned, numbered from where they came in their file, with the place marked: a segment is underlined, a position is pointed at, and a caption follows the mark."),
         Block.Diagnostic
