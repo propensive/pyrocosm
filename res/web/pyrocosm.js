@@ -753,9 +753,12 @@
 
     // Timings of the three phases, in milliseconds; the stylesheet's fades match. A move
     // whose tokens all travel along one axis takes MOVE; when any token travels along both,
-    // every token's vertical movement runs first and its horizontal movement starts STAGGER
-    // later, so that tokens leaving a line do not cross those staying on it.
-    var FADE = 750, MOVE = 1000, STAGGER = 500;
+    // each axis gets its own MOVE and the second starts STAGGER after the first. Tokens
+    // spreading onto new lines go vertically first, so they leave their line before sliding
+    // along the new one; tokens recombining onto lines that remain go horizontally first, so
+    // they make room along their old line before dropping in — the step's change in line
+    // count tells which.
+    var FADE = 750, MOVE = 1000, STAGGER = 300;
     var busy = false;
 
     function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
@@ -837,6 +840,8 @@
         if (!moves.length && !resized) return Promise.resolve();
         var diagonal = moves.some(function (move) { return Math.abs(move.dx) > 0.5 && Math.abs(move.dy) > 0.5; });
         var total = diagonal ? MOVE + STAGGER : MOVE;
+        var recombining = lines.length < linesOf(frame).length;
+        var verticalDelay = recombining ? STAGGER : 0, horizontalDelay = recombining ? 0 : STAGGER;
 
         // Started before the next paint, so no token is ever seen at its destination early.
         // Along both axes, the two animations add; along one, a single animation suffices.
@@ -844,10 +849,10 @@
           if (diagonal) {
             if (Math.abs(move.dy) > 0.5)
               move.span.animate([{ transform: "translateY(" + move.dy + "px)" }, { transform: "translateY(0px)" }],
-                                { duration: MOVE, easing: "ease", composite: "add" });
+                                { duration: MOVE, delay: verticalDelay, easing: "ease", composite: "add", fill: "backwards" });
             if (Math.abs(move.dx) > 0.5)
               move.span.animate([{ transform: "translateX(" + move.dx + "px)" }, { transform: "translateX(0px)" }],
-                                { duration: MOVE, delay: STAGGER, easing: "ease", composite: "add", fill: "backwards" });
+                                { duration: MOVE, delay: horizontalDelay, easing: "ease", composite: "add", fill: "backwards" });
           } else
             move.span.animate([{ transform: "translate(" + move.dx + "px," + move.dy + "px)" }, { transform: "none" }],
                               { duration: MOVE, easing: "ease" });
