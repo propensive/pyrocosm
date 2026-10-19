@@ -751,8 +751,11 @@
       return lines;
     }
 
-    // Timings of the three phases, in milliseconds; the stylesheet's transitions match.
-    var FADE = 750, MOVE = 1200;
+    // Timings of the three phases, in milliseconds; the stylesheet's fades match. A move
+    // whose tokens all travel along one axis takes MOVE; when any token travels along both,
+    // every token's vertical movement runs first and its horizontal movement starts STAGGER
+    // later, so that tokens leaving a line do not cross those staying on it.
+    var FADE = 750, MOVE = 1000, STAGGER = 500;
     var busy = false;
 
     function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
@@ -824,25 +827,44 @@
         arriving.forEach(function (id) { nodes[id].style.transition = "none"; nodes[id].style.opacity = "0"; });
         var after0 = pre.getBoundingClientRect().height;
         var resized = Math.abs(after0 - before) > 0.5;
-        if (resized) { pre.style.transition = "none"; pre.style.height = before + "px"; pre.style.overflow = "hidden"; }
-        var moved = resized;
+        var moves = [];
         Object.keys(first).forEach(function (id) {
           var span = nodes[id];
           var last = span.getBoundingClientRect();
           var dx = first[id].left - last.left, dy = first[id].top - last.top;
-          if (dx || dy) {
-            moved = true;
-            span.style.transition = "none";
-            span.style.transform = "translate(" + dx + "px," + dy + "px)";
-          }
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moves.push({ span: span, dx: dx, dy: dy });
         });
-        if (!moved) return Promise.resolve();
-        return nextFrame().then(function () {
-          Object.keys(first).forEach(function (id) { nodes[id].style.transition = ""; nodes[id].style.transform = ""; });
-          if (resized) { pre.style.transition = ""; pre.style.height = after0 + "px"; }
-          return after(MOVE);
-        }).then(function () {
-          if (resized) { pre.style.height = ""; pre.style.overflow = ""; }
+        if (!moves.length && !resized) return Promise.resolve();
+        var diagonal = moves.some(function (move) { return Math.abs(move.dx) > 0.5 && Math.abs(move.dy) > 0.5; });
+        var total = diagonal ? MOVE + STAGGER : MOVE;
+
+        // Started before the next paint, so no token is ever seen at its destination early.
+        // Along both axes, the two animations add; along one, a single animation suffices.
+        moves.forEach(function (move) {
+          if (diagonal) {
+            if (Math.abs(move.dy) > 0.5)
+              move.span.animate([{ transform: "translateY(" + move.dy + "px)" }, { transform: "translateY(0px)" }],
+                                { duration: MOVE, easing: "ease", composite: "add" });
+            if (Math.abs(move.dx) > 0.5)
+              move.span.animate([{ transform: "translateX(" + move.dx + "px)" }, { transform: "translateX(0px)" }],
+                                { duration: MOVE, delay: STAGGER, easing: "ease", composite: "add", fill: "backwards" });
+          } else
+            move.span.animate([{ transform: "translate(" + move.dx + "px," + move.dy + "px)" }, { transform: "none" }],
+                              { duration: MOVE, easing: "ease" });
+        });
+
+        // The block's height follows over the same time: set to its old height with no
+        // transition, flushed, then transitioned to the new.
+        if (resized) {
+          pre.style.transition = "none";
+          pre.style.height = before + "px";
+          pre.style.overflow = "hidden";
+          void pre.offsetHeight;
+          pre.style.transition = "height " + total + "ms ease";
+          pre.style.height = after0 + "px";
+        }
+        return after(total).then(function () {
+          if (resized) { pre.style.transition = ""; pre.style.height = ""; pre.style.overflow = ""; }
         });
       }).then(function () {
         // Phase 3: arrivals fade in.
