@@ -751,55 +751,101 @@
       return lines;
     }
 
+    // Timings of the three phases, in milliseconds; the stylesheet's transitions match.
+    var FADE = 250, MOVE = 400;
+    var busy = false;
+
+    function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+    function nextFrame() { return new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); }); }
+
+    // One step, in three phases, each awaited before the next: the atoms the target frame
+    // lacks fade out and are removed; the target's lines are then rebuilt from the surviving
+    // nodes, with the arriving atoms in place but invisible, so that the survivors move
+    // (FLIP, from measured geometry) into a layout that already leaves their gaps; and last
+    // the arrivals fade in. A phase with nothing to do takes no time.
     function show(target, animated) {
       var moving = animated && !reduced;
-      var host = block.getBoundingClientRect();
-      var first = {};
-      if (moving) Object.keys(nodes).forEach(function (id) { if (nodes[id].isConnected) first[id] = nodes[id].getBoundingClientRect(); });
-      var present = {};
-      var fragment = document.createDocumentFragment();
       var lines = linesOf(target);
-      lines.forEach(function (ids, index) {
-        var line = document.createElement("span");
-        line.className = "pyro-line";
-        ids.forEach(function (id) { present[id] = true; line.appendChild(spanFor(id)); });
-        fragment.appendChild(line);
-        if (index < lines.length - 1) fragment.appendChild(document.createTextNode("\n"));
-      });
-      var ghosts = [];
-      if (moving) Object.keys(first).forEach(function (id) {
-        if (present[id]) return;
-        var ghost = nodes[id].cloneNode(true);
-        ghost.classList.add("pyro-ghost");
-        ghost.style.left = (first[id].left - host.left) + "px";
-        ghost.style.top = (first[id].top - host.top) + "px";
-        block.appendChild(ghost);
-        ghosts.push(ghost);
-      });
-      code.replaceChildren(fragment);
-      if (moving) {
-        Object.keys(present).forEach(function (id) {
+      var present = {};
+      lines.forEach(function (ids) { ids.forEach(function (id) { present[id] = true; }); });
+      var current = {};
+      code.querySelectorAll("[data-atom]").forEach(function (span) { current[span.dataset.atom] = span; });
+      var departing = Object.keys(current).filter(function (id) { return !present[id]; });
+      var arriving = Object.keys(present).filter(function (id) { return !current[id]; });
+
+      function rebuild() {
+        var fragment = document.createDocumentFragment();
+        lines.forEach(function (ids, index) {
+          var line = document.createElement("span");
+          line.className = "pyro-line";
+          ids.forEach(function (id) { line.appendChild(spanFor(id)); });
+          fragment.appendChild(line);
+          if (index < lines.length - 1) fragment.appendChild(document.createTextNode("\n"));
+        });
+        code.replaceChildren(fragment);
+      }
+
+      function settle() {
+        frame = target;
+        busy = false;
+        if (counter) counter.textContent = (frame + 1) + " / " + data.frames.length;
+        if (prev) prev.disabled = frame === 0;
+        if (next) next.disabled = frame === data.frames.length - 1;
+      }
+
+      if (!moving) {
+        rebuild();
+        Object.keys(present).forEach(function (id) { nodes[id].style.opacity = ""; nodes[id].style.transform = ""; });
+        settle();
+        return Promise.resolve();
+      }
+
+      busy = true;
+
+      // Phase 1: departures fade out.
+      var fadeOut = Promise.resolve();
+      if (departing.length) {
+        departing.forEach(function (id) { current[id].style.opacity = "0"; });
+        fadeOut = after(FADE);
+      }
+
+      return fadeOut.then(function () {
+        departing.forEach(function (id) { current[id].remove(); delete nodes[id]; });
+
+        // Phase 2: survivors move. Their places are measured before the rebuild and after
+        // it; arrivals are in the new layout from the start, invisible, so the gaps are real.
+        var first = {};
+        Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
+        rebuild();
+        arriving.forEach(function (id) { nodes[id].style.transition = "none"; nodes[id].style.opacity = "0"; });
+        var moved = false;
+        Object.keys(first).forEach(function (id) {
           var span = nodes[id];
           var last = span.getBoundingClientRect();
-          var was = first[id];
-          span.style.transition = "none";
-          if (was) {
-            var dx = was.left - last.left, dy = was.top - last.top;
-            if (dx || dy) span.style.transform = "translate(" + dx + "px," + dy + "px)";
-          } else span.style.opacity = "0";
+          var dx = first[id].left - last.left, dy = first[id].top - last.top;
+          if (dx || dy) {
+            moved = true;
+            span.style.transition = "none";
+            span.style.transform = "translate(" + dx + "px," + dy + "px)";
+          }
         });
-        requestAnimationFrame(function () { requestAnimationFrame(function () {
-          Object.keys(present).forEach(function (id) { var span = nodes[id]; span.style.transition = ""; span.style.transform = ""; span.style.opacity = ""; });
-          ghosts.forEach(function (ghost) { ghost.style.opacity = "0"; setTimeout(function () { ghost.remove(); }, 400); });
-        }); });
-      }
-      frame = target;
-      if (counter) counter.textContent = (frame + 1) + " / " + data.frames.length;
-      if (prev) prev.disabled = frame === 0;
-      if (next) next.disabled = frame === data.frames.length - 1;
+        if (!moved) return Promise.resolve();
+        return nextFrame().then(function () {
+          Object.keys(first).forEach(function (id) { nodes[id].style.transition = ""; nodes[id].style.transform = ""; });
+          return after(MOVE);
+        });
+      }).then(function () {
+        // Phase 3: arrivals fade in.
+        if (!arriving.length) return Promise.resolve();
+        return nextFrame().then(function () {
+          arriving.forEach(function (id) { nodes[id].style.transition = ""; nodes[id].style.opacity = ""; });
+          return after(FADE);
+        });
+      }).then(settle);
     }
 
     function step(delta) {
+      if (busy) return false;
       var target = frame + delta;
       if (target < 0 || target >= data.frames.length) {
         if (data.loop && delta > 0) target = 0; else return false;
@@ -814,7 +860,8 @@
       var hold = (data.frames[frame] && data.frames[frame].hold) || 1.5;
       timer = setTimeout(function () {
         if (!step(1)) { stop(); return; }
-        playing();
+        var wait = function () { if (busy) setTimeout(wait, 50); else if (timer) playing(); };
+        wait();
       }, hold * 1000);
       if (play) play.textContent = "⏸";
     }
