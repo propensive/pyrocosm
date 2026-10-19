@@ -762,11 +762,14 @@
     }
 
     // Timings, in milliseconds; the stylesheet's fades match. A step is a fade out, then a
-    // move, then a fade in; the move has up to three phases of its own, and any phase with
-    // nothing to do takes no time. Vertical movement runs at a constant speed, LINE per line,
-    // so tokens travelling the same way in a column keep their distance and never overtake;
-    // horizontal movement runs at PIXEL per pixel, within bounds.
-    var FADE = 750, LINE = 300, PIXEL = 2, SLIDE_MIN = 300, SLIDE_MAX = 1000;
+    // move, then a fade in. The move is two halves. In the first, tokens joining lines that
+    // remain slide along their old rows (H1), and STAGGER later the contracting vertical
+    // movement runs: those tokens dropping into their lines, and lines shifting up as lines
+    // above them go. In the second, the expanding vertical movement runs — tokens reaching
+    // new lines, and lines shifting down as lines are inserted above — and STAGGER later the
+    // tokens slide along their new rows (H2). Every movement takes MOVE, eased; a half with
+    // nothing in it takes no time, and one with no horizontal part has no stagger.
+    var FADE = 750, MOVE = 1000, STAGGER = 300;
     var busy = false;
 
     function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
@@ -855,9 +858,6 @@
         var wasOn = lineOfAtoms(frame), nowOn = lineOfAtoms(target);
         var busy = {};
         Object.keys(nowOn).forEach(function (id) { if (wasOn[id] === nowOn[id]) busy[nowOn[id]] = true; });
-        var lineHeight = 0;
-        var sample = code.querySelector(".pyro-line");
-        if (sample) lineHeight = sample.getBoundingClientRect().height || 0;
 
         // A token shifting within its own line moves with the tokens that line exchanges: in
         // H1 when the line receives joiners, so that it makes room before they drop in, and
@@ -867,55 +867,60 @@
           if (wasOn[move.id] !== nowOn[move.id] && busy[nowOn[move.id]]) receiving[nowOn[move.id]] = true;
         });
 
-        var h1 = [], v = [], h2 = [];
+        // `dy` is the token's displacement back to where it was: positive means it moves up.
+        var h1 = [], v1 = [], v2 = [], h2 = [];
         moves.forEach(function (move) {
           var changesLine = wasOn[move.id] !== nowOn[move.id];
-          var early = changesLine ? busy[nowOn[move.id]] : receiving[nowOn[move.id]];
+          var joining = changesLine && busy[nowOn[move.id]];
+          var early = changesLine ? joining : receiving[nowOn[move.id]];
           if (Math.abs(move.dx) > 0.5) (early ? h1 : h2).push(move);
-          if (Math.abs(move.dy) > 0.5) v.push(move);
+          if (Math.abs(move.dy) > 0.5) {
+            var contracting = changesLine ? joining : move.dy > 0;
+            (contracting ? v1 : v2).push(move);
+          }
         });
+        var shrinking = resized && after0 < before, growing = resized && after0 > before;
 
-        function slide(dx) { return Math.max(SLIDE_MIN, Math.min(SLIDE_MAX, Math.abs(dx) * PIXEL)); }
-        function climb(dy) { return Math.max(LINE, Math.round((lineHeight > 0 ? Math.abs(dy) / lineHeight : 1) * LINE)); }
-
-        // The phases' lengths: each as long as its longest movement, and nothing when empty.
-        var T1 = 0, T2 = 0, T3 = 0;
-        h1.forEach(function (move) { T1 = Math.max(T1, slide(move.dx)); });
-        v.forEach(function (move) { T2 = Math.max(T2, climb(move.dy)); });
-        if (resized) T2 = Math.max(T2, climb(after0 - before));
-        h2.forEach(function (move) { T3 = Math.max(T3, slide(move.dx)); });
-        var T = T1 + T2 + T3;
+        // The schedule: the first half's vertical part starts STAGGER after its horizontal
+        // part when both exist; the second half's horizontal part STAGGER after its vertical.
+        var firstV = v1.length > 0 || shrinking, secondV = v2.length > 0 || growing;
+        var s1 = (h1.length && firstV) ? STAGGER : 0;
+        var P1 = Math.max(h1.length ? MOVE : 0, firstV ? s1 + MOVE : 0);
+        var s2 = (secondV && h2.length) ? STAGGER : 0;
+        var P2 = Math.max(secondV ? MOVE : 0, h2.length ? s2 + MOVE : 0);
+        var T = P1 + P2;
         if (T === 0) return Promise.resolve();
 
-        // One animation per token over the whole move: keyframes at each phase boundary place
-        // it where that phase leaves it, a moving segment easing in and out, a waiting one
-        // holding still, so no token is ever seen anywhere but on its path.
+        // One animation per axis per token, over the whole move, adding: held at its
+        // displacement until its segment, eased to nothing across it, held after.
+        function track(span, axis, d, start) {
+          var tr = function (value) { return (axis === "x" ? "translateX(" : "translateY(") + value + "px)"; };
+          var frames = [{ transform: tr(d), offset: 0, easing: "linear" }];
+          if (start > 0) frames.push({ transform: tr(d), offset: start / T, easing: "ease-in-out" });
+          else frames[0].easing = "ease-in-out";
+          var end = Math.min(1, (start + MOVE) / T);
+          frames.push({ transform: tr(0), offset: end, easing: "linear" });
+          if (end < 1) frames.push({ transform: tr(0), offset: 1 });
+          span.animate(frames, { duration: T, fill: "none", composite: "add" });
+        }
+
         moves.forEach(function (move) {
-          var x = move.dx, y = move.dy;
-          var at = 0;
-          var frames = [];
-          function key(offset, easing) { frames.push({ transform: "translate(" + x + "px," + y + "px)", offset: Math.min(1, offset / T), easing: easing }); }
-          function hold(until) { if (until > at + 0.5) { at = until; key(at, "linear"); } }
-          key(0, "ease-in-out");
-          if (h1.indexOf(move) >= 0) { at += slide(move.dx); x = 0; key(at, "ease-in-out"); }
-          hold(T1);
-          if (v.indexOf(move) >= 0) { at += climb(move.dy); y = 0; key(at, "ease-in-out"); }
-          hold(T1 + T2);
-          if (h2.indexOf(move) >= 0) { at += slide(move.dx); x = 0; key(at, "ease-in-out"); }
-          hold(T);
-          move.span.animate(frames, { duration: T, fill: "none" });
+          if (h1.indexOf(move) >= 0) track(move.span, "x", move.dx, 0);
+          else if (h2.indexOf(move) >= 0) track(move.span, "x", move.dx, P1 + s2);
+          if (v1.indexOf(move) >= 0) track(move.span, "y", move.dy, s1);
+          else if (v2.indexOf(move) >= 0) track(move.span, "y", move.dy, P1);
         });
 
-        // The block's height follows the vertical phase.
+        // The block's height contracts in the first half and expands in the second.
         if (resized) {
           pre.style.transition = "none";
           pre.style.height = before + "px";
           pre.style.overflow = "hidden";
           void pre.offsetHeight;
           setTimeout(function () {
-            pre.style.transition = "height " + climb(after0 - before) + "ms ease-in-out";
+            pre.style.transition = "height " + MOVE + "ms ease-in-out";
             pre.style.height = after0 + "px";
-          }, T1);
+          }, shrinking ? s1 : P1);
         }
 
         return after(T).then(function () {
