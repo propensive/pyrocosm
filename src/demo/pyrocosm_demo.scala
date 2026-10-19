@@ -103,17 +103,30 @@ object Samples:
 
   // Three frames of one definition: a body filled in, then a parameter added and a line
   // inserted before the body, so that tokens move across lines as well as along them.
+  // A crude tokenizer for the sample: words, a `t"…"` string, runs of spaces, and each
+  // punctuation character on its own, so that the animation moves tokens, not phrases.
   private def frameLines(text: Text): List[Block.Line] =
-    text.cut(t"\n").map: (line: Text) =>
-      Block.Line(line.cut(t" ").indexed.bind[List[Token], Token, List[Token]] { (word: Text, index: Ordinal) =>
-        val accent: Token.Accent = word match
-          case t"def" | t"val" | t"=" => Token.Accent.Keyword
-          case t"Int" | t"Text"       => Token.Accent.Typal
-          case _                      => Token.Accent.Term
+    val pattern = java.util.regex.Pattern.compile("""t"[^"]*"|[A-Za-z_][A-Za-z0-9_]*|[0-9]+| +|.""").nn
 
-        val space: List[Token] = if index.n0 == 0 then Nil else List(Token.plain(t" "))
-        space + List(Token(word, accent))
-      })
+    text.cut(t"\n").map: (line: Text) =>
+      val matcher = pattern.matcher(line.s).nn
+      var tokens: List[Token] = Nil
+
+      while matcher.find() do
+        val word: Text = matcher.group().nn.tt
+
+        val accent: Token.Accent = word match
+          case t"def" | t"val"                    => Token.Accent.Keyword
+          case t"Int" | t"Text"                   => Token.Accent.Typal
+          case word if word.starts(t"t\"")       => Token.Accent.String
+          case word if word.trim == t""           => Token.Accent.Unparsed
+          case t"=" | t":" | t"*" | t"," | t"?"   => Token.Accent.Symbol
+          case t"(" | t")"                        => Token.Accent.Parens
+          case _                                  => Token.Accent.Term
+
+        tokens = Token(word, accent) :: tokens
+
+      Block.Line(tokens.reverse)
 
   private val animated: Block =
     val frames: List[List[Block.Line]] =

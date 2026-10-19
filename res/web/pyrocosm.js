@@ -827,7 +827,7 @@
         var fresh = rebuild();
         arriving.forEach(function (id) { nodes[id].style.transition = "none"; nodes[id].style.opacity = "0"; });
         var heights = fresh.map(function (line) { return line.getBoundingClientRect().height; });
-        fresh.forEach(function (line) { line.style.transition = "none"; line.style.height = "0px"; line.style.overflow = "hidden"; });
+        fresh.forEach(function (line) { line.style.transition = "none"; line.style.minHeight = "0"; line.style.height = "0px"; line.style.overflow = "hidden"; });
         var moved = fresh.length > 0;
         Object.keys(first).forEach(function (id) {
           var span = nodes[id];
@@ -845,7 +845,7 @@
           fresh.forEach(function (line, index) { line.style.transition = ""; line.style.height = heights[index] + "px"; });
           return after(MOVE);
         }).then(function () {
-          fresh.forEach(function (line) { line.style.height = ""; line.style.overflow = ""; });
+          fresh.forEach(function (line) { line.style.height = ""; line.style.minHeight = ""; line.style.overflow = ""; });
         });
       }).then(function () {
         // Phase 3: arrivals fade in.

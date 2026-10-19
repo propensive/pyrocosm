@@ -211,8 +211,9 @@ object Block:
             cursors(f) += 1
             line.tokens
 
-        val sameToken: (Token, Token) => Boolean = _ == _
-        val tokenAtoms: List[Evolution.Atom[Token]] = evolve(versions, sameToken).sequence
+        // Tokens by identity alone: given a similarity, `evolve` would pair a deletion with
+        // an insertion as one atom whose text changed, which is a different token.
+        val tokenAtoms: List[Evolution.Atom[Token]] = evolve(versions).sequence
 
         tokenAtoms.each: (tokenAtom: Evolution.Atom[Token]) =>
           val id: Text = fresh()
