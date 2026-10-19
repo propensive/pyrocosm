@@ -867,57 +867,50 @@
           if (Math.abs(move.dy) > 0.5) v.push(move);
         });
 
-        function slide(ms, dx) { return Math.max(SLIDE_MIN, Math.min(SLIDE_MAX, Math.abs(dx) * PIXEL)); }
+        function slide(dx) { return Math.max(SLIDE_MIN, Math.min(SLIDE_MAX, Math.abs(dx) * PIXEL)); }
+        function climb(dy) { return Math.max(LINE, Math.round((lineHeight > 0 ? Math.abs(dy) / lineHeight : 1) * LINE)); }
 
-        // Every token still carries the whole of its displacement until a phase takes an
-        // axis of it away: the three animations add, and each holds its final value after.
+        // The phases' lengths: each as long as its longest movement, and nothing when empty.
+        var T1 = 0, T2 = 0, T3 = 0;
+        h1.forEach(function (move) { T1 = Math.max(T1, slide(move.dx)); });
+        v.forEach(function (move) { T2 = Math.max(T2, climb(move.dy)); });
+        if (resized) T2 = Math.max(T2, climb(after0 - before));
+        h2.forEach(function (move) { T3 = Math.max(T3, slide(move.dx)); });
+        var T = T1 + T2 + T3;
+        if (T === 0) return Promise.resolve();
+
+        // One animation per token over the whole move: keyframes at each phase boundary place
+        // it where that phase leaves it, a moving segment easing in and out, a waiting one
+        // holding still, so no token is ever seen anywhere but on its path.
         moves.forEach(function (move) {
-          if (Math.abs(move.dx) > 0.5) move.hold = move.span.animate(
-            [{ transform: "translateX(" + move.dx + "px)" }, { transform: "translateX(" + move.dx + "px)" }],
-            { duration: 1, fill: "forwards", composite: "add" });
-          if (Math.abs(move.dy) > 0.5) move.holdY = move.span.animate(
-            [{ transform: "translateY(" + move.dy + "px)" }, { transform: "translateY(" + move.dy + "px)" }],
-            { duration: 1, fill: "forwards", composite: "add" });
+          var x = move.dx, y = move.dy;
+          var at = 0;
+          var frames = [];
+          function key(offset, easing) { frames.push({ transform: "translate(" + x + "px," + y + "px)", offset: Math.min(1, offset / T), easing: easing }); }
+          function hold(until) { if (until > at + 0.5) { at = until; key(at, "linear"); } }
+          key(0, "ease-in-out");
+          if (h1.indexOf(move) >= 0) { at += slide(move.dx); x = 0; key(at, "ease-in-out"); }
+          hold(T1);
+          if (v.indexOf(move) >= 0) { at += climb(move.dy); y = 0; key(at, "ease-in-out"); }
+          hold(T1 + T2);
+          if (h2.indexOf(move) >= 0) { at += slide(move.dx); x = 0; key(at, "ease-in-out"); }
+          hold(T);
+          move.span.animate(frames, { duration: T, fill: "none" });
         });
 
-        function horizontal(group) {
-          if (!group.length) return Promise.resolve();
-          var longest = 0;
-          group.forEach(function (move) {
-            var ms = slide(0, move.dx);
-            longest = Math.max(longest, ms);
-            move.hold.cancel();
-            move.span.animate([{ transform: "translateX(" + move.dx + "px)" }, { transform: "translateX(0px)" }],
-                              { duration: ms, easing: "linear", composite: "add" });
-          });
-          return after(longest);
-        }
-
-        function vertical() {
-          if (!v.length && !resized) return Promise.resolve();
-          var longest = 0;
-          v.forEach(function (move) {
-            var lines = lineHeight > 0 ? Math.abs(move.dy) / lineHeight : 1;
-            var ms = Math.max(LINE, Math.round(lines * LINE));
-            longest = Math.max(longest, ms);
-            move.holdY.cancel();
-            move.span.animate([{ transform: "translateY(" + move.dy + "px)" }, { transform: "translateY(0px)" }],
-                              { duration: ms, easing: "linear", composite: "add" });
-          });
-          if (resized) {
-            var ms = Math.max(LINE, Math.round(Math.abs(after0 - before) / (lineHeight || 1) * LINE));
-            longest = Math.max(longest, ms);
-            pre.style.transition = "none";
-            pre.style.height = before + "px";
-            pre.style.overflow = "hidden";
-            void pre.offsetHeight;
-            pre.style.transition = "height " + ms + "ms linear";
+        // The block's height follows the vertical phase.
+        if (resized) {
+          pre.style.transition = "none";
+          pre.style.height = before + "px";
+          pre.style.overflow = "hidden";
+          void pre.offsetHeight;
+          setTimeout(function () {
+            pre.style.transition = "height " + climb(after0 - before) + "ms ease-in-out";
             pre.style.height = after0 + "px";
-          }
-          return after(longest);
+          }, T1);
         }
 
-        return horizontal(h1).then(vertical).then(function () { return horizontal(h2); }).then(function () {
+        return after(T).then(function () {
           if (resized) { pre.style.transition = ""; pre.style.height = ""; pre.style.overflow = ""; }
         });
       }).then(function () {
