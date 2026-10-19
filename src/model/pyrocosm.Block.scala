@@ -176,13 +176,20 @@ object Block:
 
       // Lines are compared by their parsed tokens, so that whitespace and comments do not
       // decide; lines with none (unparsed text) by every token; two empty lines are alike.
+      // Two lines are alike when one's tokens run contiguously within the other's (a line
+      // grown or trimmed at either end, as `t"Hello"` becoming `val greeting = t"Hello"`),
+      // or when fewer than half their tokens differ.
       def similar(left: Line, right: Line): Boolean =
         val (xs, ys): (List[Token], List[Token]) =
           if plain(left).nil && plain(right).nil then (left.tokens, right.tokens)
           else (plain(left), plain(right))
 
+        def run(tokens: List[Token]): Text =
+          tokens.map { (token: Token) => t"${token.accent.toString.tt}:${token.text}" }.join(t"\u0001", t"\u0001", t"\u0001")
+
         if xs.nil || ys.nil then xs.nil && ys.nil
-        else diff(Sequence(xs*), Sequence(ys*)).size.toDouble / (xs.size + ys.size) < 0.5
+        else run(ys).contains(run(xs)) || run(xs).contains(run(ys))
+          || diff(Sequence(xs*), Sequence(ys*)).size.toDouble / (xs.size + ys.size) < 0.5
 
       val sameLine: (Line, Line) => Boolean = similar(_, _)
       val lineAtoms: List[Evolution.Atom[Line]] = evolve(frames, sameLine).sequence
