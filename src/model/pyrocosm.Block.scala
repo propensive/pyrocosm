@@ -174,9 +174,13 @@ object Block:
     def of(frames: List[List[Line]], labels: List[List[Inline]] = Nil): Animation =
       def plain(line: Line): List[Token] = line.tokens.filter(_.accent != Token.Accent.Unparsed)
 
+      // Lines are compared by their parsed tokens, so that whitespace and comments do not
+      // decide; lines with none (unparsed text) by every token; two empty lines are alike.
       def similar(left: Line, right: Line): Boolean =
-        val xs: List[Token] = plain(left)
-        val ys: List[Token] = plain(right)
+        val (xs, ys): (List[Token], List[Token]) =
+          if plain(left).nil && plain(right).nil then (left.tokens, right.tokens)
+          else (plain(left), plain(right))
+
         if xs.nil || ys.nil then xs.nil && ys.nil
         else diff(Sequence(xs*), Sequence(ys*)).size.toDouble / (xs.size + ys.size) < 0.5
 

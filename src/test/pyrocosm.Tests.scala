@@ -279,8 +279,9 @@ tags:
 
     def atomsIn(f: Int): List[Text] = animation.placements.filter(_.frame == f).map(_.atom)
 
+    // `val x` survives into every frame; frame 1's `1` is replaced by `y` in frame 2.
     test(m"alignment keeps a surviving token's identity across frames"):
-      (atomsIn(0).all(atomsIn(1).has(_)), atomsIn(1).all(atomsIn(2).has(_)))
+      (atomsIn(0).all(atomsIn(1).has(_)), atomsIn(0).all(atomsIn(2).has(_)))
     . assert(_ == (true, true))
 
     test(m"alignment places an inserted line's tokens on the new line"):
@@ -1448,8 +1449,13 @@ tags:
       // the environment a process inherits explicit.
       import environments.javaBaseEnvironment
 
+      // The scratch repository never signs: a user's global `commit.gpgsign` would otherwise
+      // have `git commit` wait on a passphrase the test runner cannot supply.
       def git(arguments: Text*): Text =
-        val fixed = scala.collection.immutable.List(t"git", t"-C", repo)
+        val fixed =
+          scala.collection.immutable.List
+            (t"git", t"-C", repo, t"-c", t"commit.gpgsign=false", t"-c", t"tag.gpgsign=false")
+
         Command((fixed ++ arguments)*).exec[Text]().trim
 
       def put(path: Text, content: Text): Unit =
