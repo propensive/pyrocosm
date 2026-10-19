@@ -859,11 +859,19 @@
         var sample = code.querySelector(".pyro-line");
         if (sample) lineHeight = sample.getBoundingClientRect().height || 0;
 
+        // A token shifting within its own line moves with the tokens that line exchanges: in
+        // H1 when the line receives joiners, so that it makes room before they drop in, and
+        // otherwise in H2, closing the gap once the leavers have gone.
+        var receiving = {};
+        moves.forEach(function (move) {
+          if (wasOn[move.id] !== nowOn[move.id] && busy[nowOn[move.id]]) receiving[nowOn[move.id]] = true;
+        });
+
         var h1 = [], v = [], h2 = [];
         moves.forEach(function (move) {
           var changesLine = wasOn[move.id] !== nowOn[move.id];
-          var joining = changesLine && busy[nowOn[move.id]];
-          if (Math.abs(move.dx) > 0.5) (joining ? h1 : h2).push(move);
+          var early = changesLine ? busy[nowOn[move.id]] : receiving[nowOn[move.id]];
+          if (Math.abs(move.dx) > 0.5) (early ? h1 : h2).push(move);
           if (Math.abs(move.dy) > 0.5) v.push(move);
         });
 
