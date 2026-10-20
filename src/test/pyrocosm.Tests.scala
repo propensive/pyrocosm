@@ -327,6 +327,40 @@ tags:
       (html.contains(t"data-atom="), html.contains(t"pyro-animation-data"), html.contains(t"\"placements\""))
     . assert(_ == (true, true, true))
 
+    // Each frame's details: a label, a hold, a time, a language and a mark, in its own
+    // coordinates; the second frame has them all, and the third a mark across its two lines.
+    val detailed: Block.Animation =
+      Block.Animation.of(animatedFrames, List
+        ( Block.Frame.Detail(),
+          Block.Frame.Detail(Inline.text(t"a value"), 2.0, 3.0, Language.Java, List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"the keyword")))),
+          Block.Frame.Detail(notes = List(Block.Note(0, 0, 3, Block.Note.Style.Caution, Inline.text(t"spans"), 1))) ))
+
+    test(m"a frame's details reach the animation, and the others keep their defaults"):
+      def frame(index: Int): Block.Frame = detailed.frames.skip(index).prim.or(Block.Frame(-1))
+      (frame(1).label, frame(1).hold, frame(1).at, frame(1).language, frame(1).notes.size, frame(0).at, frame(2).notes.prim.let(_.last))
+    . assert(_ == (Inline.text(t"a value"), 2.0, 3.0, Language.Java, 1, Unset, 1))
+
+    val detailedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, detailed)
+
+    test(m"an animated block's frame details round-trip as TEL text"):
+      detailedBlock.in[Tel].show.read[Tel].as[Block]
+    . assert(_ == detailedBlock)
+
+    test(m"an animated block renders its first frame's marks, label and language, and its data"):
+      val first: Block.Animation =
+        Block.Animation.of(animatedFrames, List(Block.Frame.Detail(Inline.text(t"the start"), Unset, 3.0, Language.Java, List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"the keyword"))))))
+
+      val html: Text = HtmlRenderer().block(Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, first)).show
+
+      ( html.contains(t"pyro-marked-highlight"),
+        html.contains(t"pyro-marker-highlight"),
+        html.contains(t"pyro-animation-label"),
+        html.contains(t"the start"),
+        html.contains(t"\"at\":3.0"),
+        html.contains(t"\"notes\":[{"),
+        html.contains(t"pyro-language-java") )
+    . assert(_ == (true, true, true, true, true, true, true))
+
     val emptyToken: Block = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"x"))), Block.Line(List(Token.plain(t"")))))
 
     // An empty text is written as a compound with no atom (see `textTelEncodable`).

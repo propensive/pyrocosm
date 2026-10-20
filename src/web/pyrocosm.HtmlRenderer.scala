@@ -309,26 +309,34 @@ class HtmlRenderer():
       if start.absent then Html.Fragment[Phrasing]()
       else Span(`class` = cls(t"pyro-lineno"))(value.lay(t" "*digits) { (value: Int) => value.show.pad(digits, Rtl) })
 
-    def marker(note: Block.Note, index: Int, length: Int): Html of Phrasing =
-      val range: (Int, Int) = note.range(index, length).or((0, 0))
-      val pad: Int = if note.caret then (range(0) - 1).max(0) else range(0)
-      val marks: Text = if note.caret then t"╱╲" else t"‾"*(range(1) - range(0)).max(1)
-      val caption: Html of Phrasing = if note.caption.nil then Html.Fragment[Phrasing]() else Html.Fragment[Phrasing](t" ", phrase(note.caption))
-
-      Span(`class` = List(cls(t"pyro-marker"), cls(t"pyro-marker-${note.style.toString.tt.lower}")))
-        (number(Unset), t" "*pad, Span(`class` = cls(t"pyro-marks"))(marks), caption)
-
     val rows: List[Html of Phrasing] =
       lines.indexed.bind: (line: Block.Line, index: Ordinal) =>
         val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
-        val own: List[Block.Note] = notes.filter { (note: Block.Note) => note.lastLine == index.n0 && (note.caret || !note.caption.nil) }
         Html.Fragment[Phrasing](number(start.let(_ + index.n0)), codeLine(line, notes, true, index.n0))
-          :: own.map { (note: Block.Note) => marker(note, index.n0, length) }
+          :: markers(notes, index.n0, length).map { (note: Block.Note) => marker(note, index.n0, length, number(Unset)) }
 
     val count: Int = rows.size
 
     rows.indexed.map: (row: Html of Phrasing, index: Ordinal) =>
       if index.n0 == count - 1 then row else Html.Fragment[Phrasing](row, t"\n")
+
+  // The notes which end on line `index` and are drawn beneath it: a caret, or a captioned note.
+  private def markers(notes: List[Block.Note], index: Int, length: Int): List[Block.Note] =
+    notes.filter { (note: Block.Note) => note.lastLine == index && (note.caret || !note.caption.nil) }
+
+  // The row beneath a line for one of its notes: the caret `╱╲` beneath its position, or `‾`
+  // under each marked column, then the caption, spaced into place with the line's own columns;
+  // `margin` is what stands where the line's number does, so the columns align.
+  private def marker(note: Block.Note, index: Int, length: Int, margin: Html of Phrasing = Html.Fragment[Phrasing]())
+  :   Html of Phrasing =
+
+    val range: (Int, Int) = note.range(index, length).or((0, 0))
+    val pad: Int = if note.caret then (range(0) - 1).max(0) else range(0)
+    val marks: Text = if note.caret then t"╱╲" else t"‾"*(range(1) - range(0)).max(1)
+    val caption: Html of Phrasing = if note.caption.nil then Html.Fragment[Phrasing]() else Html.Fragment[Phrasing](t" ", phrase(note.caption))
+
+    Span(`class` = List(cls(t"pyro-marker"), cls(t"pyro-marker-${note.style.toString.tt.lower}")))
+      (margin, t" "*pad, Span(`class` = cls(t"pyro-marks"))(marks), caption)
 
   def plainCode(language: pyrocosm.Language, lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int])
   :   Html of Flow =
@@ -338,17 +346,14 @@ class HtmlRenderer():
 
     Pre(`class` = classes)(Code(codeRows(lines, notes, start)*))
 
-  // An animated block: its first frame as lines of atoms, each carrying its id; its controls;
-  // and the animation as JSON in a hidden element the script reads. Frame 0 is what a page
-  // without the script shows.
+  // An animated block: its first frame as lines of atoms, each carrying its id, with that
+  // frame's marks and label and in its language; its controls; and the animation as JSON in a
+  // hidden element the script reads. Frame 0 is what a page without the script shows.
   def animatedCode(language: pyrocosm.Language, animation: Block.Animation): Html of Flow =
-    val classes: List[Name[CssClass]] = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${language.name}"))
-    val first: List[List[Block.Atom]] = animation.lines(0)
-
-    // Block-level lines (the stylesheet's rule), so no newline stands between them.
-    val rows: List[Html of Phrasing] =
-      first.map { (atoms: List[Block.Atom]) => Span(`class` = cls(t"pyro-line"))(atoms.map(atomSpan)*) }
-
+    val first: Optional[Block.Frame] = animation.frames.prim
+    val shown: pyrocosm.Language = first.let(_.language).or(language)
+    val classes: List[Name[CssClass]] = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}"))
+    val rows: List[Html of Phrasing] = animatedRows(animation.lines(0), first.lay(Nil)(_.notes))
     val frames: Int = animation.frames.size
 
     val controls: Html of Flow =
@@ -356,30 +361,78 @@ class HtmlRenderer():
         ( Button(`class` = cls(t"pyro-animation-prev"), `type` = t"button")(t"‹"),
           Span(`class` = cls(t"pyro-animation-counter"))(t"1 / ${frames.toString.tt}"),
           Button(`class` = cls(t"pyro-animation-next"), `type` = t"button")(t"›"),
-          Button(`class` = cls(t"pyro-animation-play"), `type` = t"button")(t"▶") )
+          Button(`class` = cls(t"pyro-animation-play"), `type` = t"button")(t"▶"),
+          Span(`class` = cls(t"pyro-animation-label"))(phrase(first.lay(Nil)(_.label))) )
 
     Div(`class` = cls(t"pyro-animated"), tabindex = t"0")
       ( Pre(`class` = classes)(Code(rows*)),
         controls,
-        Pre(`class` = cls(t"pyro-animation-data"))(animationJson(animation)) )
+        Pre(`class` = cls(t"pyro-animation-data"))(animationJson(language, animation)) )
 
-  def atomSpan(atom: Block.Atom): Html of Phrasing =
-    val extra: List[Name[CssClass]] = if atom.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
-    Span(`class` = cls(t"pyro-atom") :: accentClass(atom.accent) :: extra, `data-atom` = atom.id)(atom.text)
+  // One frame's lines as rows of atoms — block-level lines (the stylesheet's rule), so no
+  // newline stands between them — with the frame's notes laid over them: an atom any part of
+  // which a note covers is marked whole, since an atom is never split (its identity is what
+  // the animation moves), and a caret or captioned note has its row beneath its line, as a
+  // plain block draws it.
+  private def animatedRows(lines: List[List[Block.Atom]], notes: List[Block.Note]): List[Html of Phrasing] =
+    lines.indexed.bind: (atoms: List[Block.Atom], index: Ordinal) =>
+      val length: Int = atoms.fold(0) { (total: Int, atom: Block.Atom) => total + atom.text.length }
 
-  // The animation as compact JSON: atoms by id, frames, and placements as `[frame, line, id]`.
-  def animationJson(animation: Block.Animation): Text =
+      val ranges: List[(Int, Int, Block.Note)] =
+        notes.bind: (note: Block.Note) =>
+          note.range(index.n0, length).lay(Nil) { (range: (Int, Int)) => List((range(0), range(1), note)) }
+
+      var offset: Int = 0
+
+      val spans: List[Html of Phrasing] =
+        atoms.map: (atom: Block.Atom) =>
+          val end: Int = offset + atom.text.length
+
+          val covering: Optional[Block.Note] =
+            ranges.seek { (range: (Int, Int, Block.Note)) => range(0) < range(1) && range(0) < end && range(1) > offset }.let(_(2))
+
+          offset = end
+          atomSpan(atom, covering)
+
+      val row: Html of Phrasing = Span(`class` = cls(t"pyro-line"))(spans*)
+      row :: markers(notes, index.n0, length).map { (note: Block.Note) => marker(note, index.n0, length) }
+
+  def atomSpan(atom: Block.Atom, note: Optional[Block.Note] = Unset): Html of Phrasing =
+    val binding: List[Name[CssClass]] = if atom.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
+
+    val marked: List[Name[CssClass]] =
+      note.lay(Nil) { (note: Block.Note) => List(cls(t"pyro-marked"), cls(t"pyro-marked-${note.style.toString.tt.lower}")) }
+
+    val classes: List[Name[CssClass]] = cls(t"pyro-atom") :: accentClass(atom.accent) :: (binding + marked)
+
+    note.lay(Span(`class` = classes, `data-atom` = atom.id)(atom.text)): (note: Block.Note) =>
+      Span(`class` = classes, `data-atom` = atom.id, title = Inline.plain(note.caption))(atom.text)
+
+  // The animation as compact JSON: the block's language, atoms by id, frames, and placements
+  // as `[frame, line, id]`. A frame's label and its notes' captions are phrasing, rendered
+  // here as HTML, so the script shows them without a renderer of its own.
+  def animationJson(language: pyrocosm.Language, animation: Block.Animation): Text =
+    def optional(value: Optional[Double]): Text = value.lay(t"null")(_.toString.tt)
+
     val atoms: Text =
       animation.atoms.map: (atom: Block.Atom) =>
         val binding: Text = if atom.role == Token.Role.Binding then t"true" else t"false"
         t"""{"id":${jsonText(atom.id)},"text":${jsonText(atom.text)},"accent":${jsonText(atom.accent.toString.tt.lower)},"binding":$binding}"""
       . join(t",")
 
+    def notes(frame: Block.Frame): Text =
+      frame.notes.map: (note: Block.Note) =>
+        val last: Text = note.last.lay(t"null")(_.toString.tt)
+        val caption: Text = if note.caption.nil then t"\"\"" else jsonText(phrase(note.caption).show)
+        t"""{"line":${note.line.toString.tt},"start":${note.start.toString.tt},"end":${note.end.toString.tt},"last":$last,"style":${jsonText(note.style.toString.tt.lower)},"caption":$caption}"""
+      . join(t",")
+
     val frames: Text =
       animation.frames.map: (frame: Block.Frame) =>
-        val hold: Text = frame.hold.lay(t"null")(_.toString.tt)
         val lines: Text = frame.lines.map(jsonText).join(t",")
-        t"""{"index":${frame.index.toString.tt},"label":${jsonText(Inline.plain(frame.label))},"hold":$hold,"lines":[$lines]}"""
+        val label: Text = if frame.label.nil then t"\"\"" else jsonText(phrase(frame.label).show)
+        val frameLanguage: Text = frame.language.lay(t"null") { (language: pyrocosm.Language) => jsonText(language.name) }
+        t"""{"index":${frame.index.toString.tt},"label":$label,"hold":${optional(frame.hold)},"at":${optional(frame.at)},"language":$frameLanguage,"lines":[$lines],"notes":[${notes(frame)}]}"""
       . join(t",")
 
     val placements: Text =
@@ -387,7 +440,7 @@ class HtmlRenderer():
         t"[${placement.frame.toString.tt},${placement.line.toString.tt},${jsonText(placement.atom)}]"
       . join(t",")
 
-    t"""{"atoms":[$atoms],"frames":[$frames],"placements":[$placements],"autoplay":${animation.autoplay.toString.tt},"loop":${animation.loop.toString.tt}}"""
+    t"""{"language":${jsonText(language.name)},"atoms":[$atoms],"frames":[$frames],"placements":[$placements],"autoplay":${animation.autoplay.toString.tt},"loop":${animation.loop.toString.tt}}"""
 
   // One line of code, the `index`th of its block, with the segments of the notes which touch
   // it laid over its tokens; a caret marks no segment. The line ends in a newline unless it is

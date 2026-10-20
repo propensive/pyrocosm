@@ -157,20 +157,38 @@ object Block:
 
   // A code block's animation: identity and placement, never geometry. An `Atom` is a token
   // with an identity that holds across frames; a `Placement` puts an atom on a line of a
-  // frame (flat, since a repeated TEL field cannot nest); a `Frame` may be captioned and may
-  // say how long it holds when played. The front end measures where each atom is before and
-  // after a step and animates the difference, so an inserted line, a reflowed line and a move
-  // across lines need nothing of the model.
+  // frame (flat, since a repeated TEL field cannot nest); a `Frame` may be captioned, may say
+  // how long it holds when played, and may carry marks and a language of its own. The front
+  // end measures where each atom is before and after a step and animates the difference, so
+  // an inserted line, a reflowed line and a move across lines need nothing of the model.
   case class Atom(id: Text, text: Text, accent: Token.Accent, role: Optional[Token.Role] = Unset)
   case class Placement(frame: Int, line: Int, atom: Text)
+
+  object Frame:
+    // What is said of a frame before it is aligned: `Animation.of` adds the index and the
+    // line names, which alignment decides.
+    case class Detail
+      ( label:    List[Inline]       = Nil,
+        hold:     Optional[Double]   = Unset,
+        at:       Optional[Double]   = Unset,
+        language: Optional[Language] = Unset,
+        notes:    List[Note]         = Nil )
+
   // `lines` names the frame's lines in order, by an identity that holds across frames (a
   // line that grew, shrank or moved keeps its id; a new line has a new one), so that a front
-  // end can tell a token joining a line that remains from one reaching a new line.
+  // end can tell a token joining a line that remains from one reaching a new line. `hold` is
+  // how long a played animation rests on the frame, in seconds; `at` puts it on the page's
+  // one clock, which a frame without `at` follows by its predecessor's `hold` (1.5 s unless
+  // said) when any frame of its block has one; `language` is the frame's own, the block's
+  // otherwise; and `notes` are its marks, in the coordinates of its own lines.
   case class Frame
-    ( index: Int,
-      label: List[Inline]    = Nil,
-      hold:  Optional[Double] = Unset,
-      lines: List[Text]      = Nil )
+    ( index:    Int,
+      label:    List[Inline]       = Nil,
+      hold:     Optional[Double]   = Unset,
+      lines:    List[Text]         = Nil,
+      at:       Optional[Double]   = Unset,
+      language: Optional[Language] = Unset,
+      notes:    List[Note]         = Nil )
 
   object Animation:
     // The atoms of each frame's lines, aligned across the frames as one sequence of tokens
@@ -179,7 +197,7 @@ object Block:
     // surviving tokens of any two frames are in the same order in both — a token is removed
     // and another inserted, never kept and reordered. A line is named by the token that ends
     // it, so a line remains, however it grew, shrank or moved, exactly when its end survives.
-    def of(frames: List[List[Line]], labels: List[List[Inline]] = Nil): Animation =
+    def of(frames: List[List[Line]], details: List[Frame.Detail] = Nil): Animation =
       val break: Token = Token(t"\n", Token.Accent.Unparsed)
 
       val sequences: List[List[Token]] =
@@ -221,7 +239,8 @@ object Block:
       val described: List[Frame] =
         frames.indexed.map: (_, index: Ordinal) =>
           val names: List[Text] = lineNames.reverse.filter(_(0) == index.n0).map(_(1))
-          Frame(index.n0, labels.at(index).or(Nil), Unset, names)
+          val detail: Frame.Detail = details.at(index).or(Frame.Detail())
+          Frame(index.n0, detail.label, detail.hold, names, detail.at, detail.language, detail.notes)
 
       Animation(atoms, described, placements.reverse)
 

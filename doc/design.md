@@ -546,22 +546,35 @@ one MCP endpoint aggregating every tool's.
   `TelSyntax`, a lexical TEL tokeniser written here for want of one in stratiform, and a
   candidate for Soundness. Not here: Fuel's offset of a fenced block's lines into its Markdown,
   which needs punctuation to say where a fence begins.
-- **M6e Animation** (done, first cut): a code block as a sequence of frames, animated in the
-  browser. `Block.Code.animation` is an `Animation(atoms, frames, placements)`: an `Atom` is a
-  token with an identity that holds across frames, a `Placement` puts an atom on a line of a
-  frame (flat, since a repeated TEL field cannot nest), and `lines` stays the first frame, so a
+- **M6e Animation** (done): a code block as a sequence of frames, animated in the browser.
+  `Block.Code.animation` is an `Animation(atoms, frames, placements)`: an `Atom` is a token
+  with an identity that holds across frames, a `Placement` puts an atom on a line of a frame
+  (flat, since a repeated TEL field cannot nest), and `lines` stays the first frame, so a
   renderer that cannot animate — the terminal, a static page — shows a correct block.
-  `Animation.of(frames)` aligns the frames (dissonance's `evolve` over lines by similarity,
-  then over the tokens of each run of matched lines: Amok's algorithm, with placements as its
-  result rather than presence classes). The web renderer emits frame 0 with `data-atom` on
-  each token, the animation as JSON in a hidden `pyro-animation-data` element, and controls;
-  `pyrocosm.js` steps it by FLIP — it measures every atom's place, rebuilds the target frame's
-  lines from the same nodes keyed by atom, and animates each from where it was, fading in what
-  arrives and ghosting out what departs — so an inserted line, a reflowed line and a move
-  across lines all follow from geometry it measured rather than predicted. Arrow keys when
-  focused, space plays, `prefers-reduced-motion` jumps; `Frame.hold`, `autoplay` and `loop`
-  time one block, and a document-level timeline is a later `Interface`-level addition. Not
-  yet: the terminal stepping frames, and `Frame.label` shown.
+  `Animation.of(frames, details)` aligns the frames as one diff: each frame is its tokens in
+  sequence with a break token between lines, dissonance's `evolve` runs over those sequences
+  with no notion of similarity, so a token survives exactly when the diff keeps it (surviving
+  tokens never reorder), and a line is named by the break that ends it, so a line remains,
+  however it grew or moved, exactly when its end survives. A `Frame.Detail` says what is known
+  of a frame before alignment — `label` (phrasing), `hold` (seconds, when played), `at`
+  (seconds on the page's one clock), `language` (its own; the block's otherwise) and `notes`
+  (marks, in its own lines' coordinates) — and `of` adds the index and the line names. The web
+  renderer emits frame 0 with `data-atom` on each token, its marks on whole atoms (an atom is
+  never split) with marker rows beneath their lines as a plain block draws them, its label
+  beside the counter, its language on the block, and the animation as JSON (labels and
+  captions as rendered phrasing) in a hidden `pyro-animation-data` element. `pyrocosm.js`
+  steps it in phases: the frame's marks and label fade out; departures fade; the survivors
+  move by FLIP — it measures every atom's place, rebuilds the target frame's lines (with its
+  marker rows, unseen) from the same nodes keyed by atom, and animates each from where it was,
+  so an inserted line, a reflowed line and a move across lines all follow from geometry
+  measured rather than predicted; arrivals fade in; and the target's marks and label fade in
+  in its language. Arrow keys when focused, space plays, `prefers-reduced-motion` jumps. The
+  page has one clock: a block any frame of which has an `at` is timed (a frame without one
+  follows its predecessor by that frame's `hold`, 1.5 s unless said), the script makes a bar
+  at the foot of the page — play, the clock, a scrubber — when a timed block is wired, space
+  outside any block toggles it, and at each tick every timed block shows the last frame due,
+  scrolled into view; stepping a block by hand pauses the clock. Not yet: the terminal
+  stepping frames.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,

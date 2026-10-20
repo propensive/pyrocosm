@@ -709,11 +709,130 @@
   // Actionable elements (rows, items, links, buttons) press their id, or the action they name;
   // fields edit and submit. A link to a tool of the server's machine names `localhost`, which
   // is right only when the page is viewed there: elsewhere it takes the page's own host.
+  // The page's one clock, which the animated blocks with a frame at a time follow: at a time
+  // t, such a block shows the last of its frames whose time is not after t (a frame without
+  // a time follows its predecessor by that frame's hold). The bar — play, the clock and a
+  // scrubber — is made when a timed block is first wired, and hidden when none remains;
+  // space on the page toggles it, and stepping a block by hand pauses it. A block still
+  // mid-step when its frame falls due is caught up on a later tick.
+  var timeline = (function () {
+    var players = [];
+    var bar = null, playButton = null, clock = null, scrub = null;
+    var elapsed = 0, origin = 0, raf = null, end = 0;
+    var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function timed() {
+      players = players.filter(function (player) { return document.contains(player.block); });
+      return players.filter(function (player) { return player.timed; });
+    }
+
+    function format(seconds) { return seconds.toFixed(1) + " s"; }
+
+    function update() {
+      clock.textContent = format(elapsed);
+      scrub.value = elapsed;
+    }
+
+    function targetOf(player, time) {
+      var target = 0;
+      player.times.forEach(function (at, index) { if (at !== null && at <= time) target = index; });
+      return target;
+    }
+
+    function apply(animated) {
+      timed().forEach(function (player) {
+        var target = targetOf(player, elapsed);
+        if (target === player.frame() || player.busy()) return;
+        player.show(target, animated);
+        if (animated) player.block.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+      });
+    }
+
+    function tick(now) {
+      elapsed = Math.min(end, (now - origin) / 1000);
+      update();
+      apply(true);
+      if (elapsed >= end) { pause(); return; }
+      raf = requestAnimationFrame(tick);
+    }
+
+    function play() {
+      if (raf) return;
+      if (elapsed >= end) elapsed = 0;
+      timed().forEach(function (player) { player.stop(); });
+      origin = performance.now() - elapsed * 1000;
+      raf = requestAnimationFrame(tick);
+      playButton.textContent = "⏸";
+    }
+
+    function pause() {
+      if (raf) cancelAnimationFrame(raf);
+      raf = null;
+      if (playButton) playButton.textContent = "▶";
+    }
+
+    function toggle() { if (raf) pause(); else play(); }
+
+    function create() {
+      bar = document.createElement("div");
+      bar.className = "pyro-timeline";
+      playButton = document.createElement("button");
+      playButton.type = "button";
+      playButton.className = "pyro-timeline-play";
+      playButton.textContent = "▶";
+      playButton.addEventListener("click", toggle);
+      clock = document.createElement("span");
+      clock.className = "pyro-timeline-clock";
+      scrub = document.createElement("input");
+      scrub.type = "range";
+      scrub.className = "pyro-timeline-scrub";
+      scrub.min = "0";
+      scrub.step = "0.1";
+      scrub.addEventListener("input", function () {
+        pause();
+        elapsed = parseFloat(scrub.value) || 0;
+        update();
+        apply(false);
+      });
+      bar.appendChild(playButton);
+      bar.appendChild(clock);
+      bar.appendChild(scrub);
+      document.body.appendChild(bar);
+    }
+
+    // The bar for the timed blocks now on the page: shown, with the clock's end the last
+    // frame's time plus its hold, or hidden when there are none.
+    function refresh() {
+      var active = timed();
+      if (!active.length) { if (bar) bar.style.display = "none"; return; }
+      if (!bar) create();
+      bar.style.display = "";
+      end = 0;
+      active.forEach(function (player) {
+        var last = player.times.length - 1;
+        var at = player.times[last];
+        if (at !== null) end = Math.max(end, at + (player.data.frames[last].hold || 1.5));
+      });
+      scrub.max = end.toFixed(1);
+      update();
+    }
+
+    return {
+      register: function (player) { players.push(player); },
+      refresh: refresh,
+      pause: pause,
+      toggle: toggle,
+      shown: function () { return !!bar && bar.style.display !== "none"; }
+    };
+  })();
+
   // An animated code block: the server rendered its first frame, with each token's atom id,
   // and the animation as JSON. A step rebuilds the lines of the target frame from the same
   // nodes, keyed by atom, and animates each atom from where it was to where it is (FLIP): a
   // measured move, so an inserted line, a reflowed line or a move across lines all follow;
-  // an arriving atom fades in, a departing one leaves as a ghost over its old place.
+  // an arriving atom fades in, a departing one leaves as a ghost over its old place. The
+  // frame's marks fade out before the step and the target's fade in after it, with its label
+  // and in its language. The result is the block's player, which the timeline drives.
   function animate(block) {
     var data;
     try { data = JSON.parse(block.querySelector(".pyro-animation-data").textContent); } catch (error) { console.error(error); return; }
@@ -722,6 +841,8 @@
     var prev = block.querySelector(".pyro-animation-prev");
     var next = block.querySelector(".pyro-animation-next");
     var play = block.querySelector(".pyro-animation-play");
+    var label = block.querySelector(".pyro-animation-label");
+    var pre = code.parentElement;
     var atoms = {};
     data.atoms.forEach(function (atom) { atoms[atom.id] = atom; });
     var nodes = {};
@@ -761,6 +882,94 @@
       return result;
     }
 
+    // The time of each frame on the page's clock: its own, or its predecessor's plus that
+    // frame's hold when it has none; null before any frame with a time. A block is timed when
+    // any frame of it is.
+    var times = [];
+    data.frames.forEach(function (f, i) {
+      if (typeof f.at === "number") times[i] = f.at;
+      else if (i > 0 && times[i - 1] !== null) times[i] = times[i - 1] + (data.frames[i - 1].hold || 1.5);
+      else times[i] = null;
+    });
+    var timed = times.some(function (at) { return at !== null; });
+
+    // A frame's notes laid over its atoms: the note, if any, covering some part of each atom
+    // of each line, keyed by atom id — an atom is marked whole, never split.
+    function coverage(index) {
+      var result = {};
+      var notes = (data.frames[index] && data.frames[index].notes) || [];
+      linesOf(index).forEach(function (ids, line) {
+        var offset = 0;
+        ids.forEach(function (id) {
+          var end = offset + atoms[id].text.length;
+          notes.forEach(function (note) {
+            if (result[id]) return;
+            var range = rangeOf(note, line, end);
+            if (range && range[0] < range[1] && range[0] < end && range[1] > offset) result[id] = note;
+          });
+          offset = end;
+        });
+      });
+      return result;
+    }
+
+    // The columns of line `line` (of `length` characters) which a note marks, as the server
+    // computes them: from its start on its first line to its end on its last, whole lines
+    // between, clamped to the line; null on a line it does not touch.
+    function rangeOf(note, line, length) {
+      var last = note.last === null ? note.line : note.last;
+      if (line < note.line || line > last) return null;
+      var from = line === note.line ? note.start : 0;
+      var to = line === last ? note.end : length;
+      from = Math.min(from, length);
+      return [from, Math.max(Math.min(to, length), from)];
+    }
+
+    // The rows beneath line `line` of a frame for its caret and captioned notes, as the
+    // server renders them: the caret beneath its position, or a mark under each column, then
+    // the caption.
+    function markersOf(index, line, length) {
+      var notes = (data.frames[index] && data.frames[index].notes) || [];
+      var rows = [];
+      notes.forEach(function (note) {
+        var last = note.last === null ? note.line : note.last;
+        var caret = note.last === null && note.start === note.end;
+        if (last !== line || !(caret || note.caption)) return;
+        var range = rangeOf(note, line, length) || [0, 0];
+        var pad = caret ? Math.max(range[0] - 1, 0) : range[0];
+        var marks = caret ? "╱╲" : "‾".repeat(Math.max(range[1] - range[0], 1));
+        var row = document.createElement("span");
+        row.className = "pyro-marker pyro-marker-" + note.style;
+        row.appendChild(document.createTextNode(" ".repeat(pad)));
+        var span = document.createElement("span");
+        span.className = "pyro-marks";
+        span.textContent = marks;
+        row.appendChild(span);
+        if (note.caption) {
+          row.appendChild(document.createTextNode(" "));
+          var caption = document.createElement("span");
+          caption.innerHTML = note.caption;
+          row.appendChild(caption);
+        }
+        rows.push(row);
+      });
+      return rows;
+    }
+
+    // The target frame's marks, label and language, applied: classes on the atoms its notes
+    // cover, the marker rows and the label shown, the block's language class its own.
+    function dress(index) {
+      var covered = coverage(index);
+      Object.keys(covered).forEach(function (id) {
+        nodes[id].classList.add("pyro-marked", "pyro-marked-" + covered[id].style);
+      });
+      code.querySelectorAll(".pyro-marker").forEach(function (row) { row.style.transition = ""; row.style.opacity = ""; });
+      if (label) { label.innerHTML = (data.frames[index] && data.frames[index].label) || ""; label.style.opacity = ""; }
+      var language = (data.frames[index] && data.frames[index].language) || data.language;
+      pre.className = pre.className.replace(/\bpyro-language-\S+/, "pyro-language-" + language);
+      return Object.keys(covered).length > 0 || code.querySelector(".pyro-marker") !== null || (label && label.innerHTML !== "");
+    }
+
     // Timings, in milliseconds; the stylesheet's fades match. A step is a fade out, then a
     // move, then a fade in. The move is two halves. In the first, tokens joining lines that
     // remain slide along their old rows (H1), and STAGGER later the contracting vertical
@@ -790,14 +999,21 @@
       var departing = Object.keys(current).filter(function (id) { return !present[id]; });
       var arriving = Object.keys(present).filter(function (id) { return !current[id]; });
 
-      // The target's lines, block-level, from the surviving nodes and the arriving atoms.
+      // The target's lines, block-level, from the surviving nodes and the arriving atoms,
+      // each followed by its marker rows — unseen when the step is animated, so that the
+      // layout the survivors move into already leaves their room.
       function rebuild() {
         var fragment = document.createDocumentFragment();
-        lines.forEach(function (ids) {
+        lines.forEach(function (ids, index) {
           var line = document.createElement("span");
           line.className = "pyro-line";
-          ids.forEach(function (id) { line.appendChild(spanFor(id)); });
+          var length = 0;
+          ids.forEach(function (id) { line.appendChild(spanFor(id)); length += atoms[id].text.length; });
           fragment.appendChild(line);
+          markersOf(target, index, length).forEach(function (row) {
+            if (moving) { row.style.transition = "none"; row.style.opacity = "0"; }
+            fragment.appendChild(row);
+          });
         });
         code.replaceChildren(fragment);
       }
@@ -811,20 +1027,35 @@
       }
 
       if (!moving) {
+        Object.keys(current).forEach(function (id) { current[id].className = current[id].className.replace(/ ?pyro-marked\S*/g, ""); });
         rebuild();
         Object.keys(present).forEach(function (id) { nodes[id].style.opacity = ""; nodes[id].style.transform = ""; });
+        dress(target);
         settle();
         return Promise.resolve();
       }
 
       busy = true;
 
-      // Phase 1: departures fade out.
-      var fadeOut = Promise.resolve();
-      if (departing.length) {
-        departing.forEach(function (id) { current[id].style.opacity = "0"; });
-        fadeOut = after(FADE);
+      // Phase 0: the frame's marks, marker rows and label fade out. The rows stay in place,
+      // unseen, until the rebuild, so that their going is part of the measured move.
+      var marked = code.querySelectorAll(".pyro-marked");
+      var rows = code.querySelectorAll(".pyro-marker");
+      var labelled = label && label.innerHTML !== "";
+      var undress = Promise.resolve();
+      if (marked.length || rows.length || labelled) {
+        marked.forEach(function (span) { span.className = span.className.replace(/ ?pyro-marked\S*/g, ""); });
+        rows.forEach(function (row) { row.style.opacity = "0"; });
+        if (labelled) label.style.opacity = "0";
+        undress = after(FADE);
       }
+
+      // Phase 1: departures fade out.
+      var fadeOut = undress.then(function () {
+        if (!departing.length) return Promise.resolve();
+        departing.forEach(function (id) { current[id].style.opacity = "0"; });
+        return after(FADE);
+      });
 
       return fadeOut.then(function () {
         // Phase 2: survivors move. Their places are measured before the departures are
@@ -832,7 +1063,6 @@
         // and after the rebuild; arrivals are in the new layout from the start, invisible,
         // so the gaps are real. The block itself goes from its old height to its new over
         // the same time, so lines appearing or vanishing open and close it smoothly.
-        var pre = code.parentElement;
         var first = {};
         Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
         var before = pre.getBoundingClientRect().height;
@@ -939,6 +1169,9 @@
           arriving.forEach(function (id) { nodes[id].style.transition = ""; nodes[id].style.opacity = ""; });
           return after(FADE);
         });
+      }).then(function () {
+        // Phase 4: the target's marks, marker rows and label fade in.
+        return nextFrame().then(function () { return dress(target) ? after(FADE) : Promise.resolve(); });
       }).then(settle);
     }
 
@@ -966,24 +1199,39 @@
 
     function toggle() { if (timer) stop(); else { if (frame === data.frames.length - 1 && !data.loop) show(0, true); playing(); } }
 
-    if (prev) prev.addEventListener("click", function () { stop(); step(-1); });
-    if (next) next.addEventListener("click", function () { stop(); step(1); });
-    if (play) play.addEventListener("click", toggle);
+    function manual(delta) { timeline.pause(); stop(); step(delta); }
+
+    if (prev) prev.addEventListener("click", function () { manual(-1); });
+    if (next) next.addEventListener("click", function () { manual(1); });
+    if (play) play.addEventListener("click", function () { timeline.pause(); toggle(); });
     block.addEventListener("keydown", function (event) {
-      if (event.key === "ArrowRight") { stop(); step(1); event.preventDefault(); }
-      else if (event.key === "ArrowLeft") { stop(); step(-1); event.preventDefault(); }
-      else if (event.key === " ") { toggle(); event.preventDefault(); }
+      if (event.key === "ArrowRight") { manual(1); event.preventDefault(); }
+      else if (event.key === "ArrowLeft") { manual(-1); event.preventDefault(); }
+      else if (event.key === " ") { timeline.pause(); toggle(); event.preventDefault(); event.stopPropagation(); }
     });
     show(0, false);
     if (data.autoplay) playing();
+
+    return {
+      block: block,
+      data: data,
+      times: times,
+      timed: timed,
+      frame: function () { return frame; },
+      busy: function () { return busy; },
+      show: show,
+      stop: stop
+    };
   }
 
   function wire(root) {
     root.querySelectorAll(".pyro-animated").forEach(function (block) {
       if (block.dataset.pyroWired) return;
       block.dataset.pyroWired = "1";
-      animate(block);
+      var player = animate(block);
+      if (player) timeline.register(player);
     });
+    timeline.refresh();
 
     root.querySelectorAll("a[data-local='true']").forEach(function (link) {
       if (link.dataset.pyroWired) return;
@@ -1052,6 +1300,13 @@
 
   // Declared shortcuts arrive as keypresses in clavichord's rendering, e.g. "[⌃]+[L]"; only
   // chords with a modifier are reported, so ordinary typing is never intercepted.
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== " " || !timeline.shown()) return;
+    if (event.target && event.target.closest && event.target.closest(".pyro-animated, .pyro-editor, input, textarea, select, button, [contenteditable]")) return;
+    timeline.toggle();
+    event.preventDefault();
+  });
+
   document.addEventListener("keydown", function (event) {
     if (!(event.ctrlKey || event.altKey || event.metaKey)) return;
     if (event.target && (event.target.tagName === "TEXTAREA" || event.target.tagName === "INPUT")) return;
