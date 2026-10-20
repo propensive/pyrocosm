@@ -101,6 +101,60 @@ object Samples:
 
   private def inlineCode(text: Text, accent: Token.Accent): Inline = Inline.Code(Language.Scala, List(Token(text, accent)))
 
+  // Three frames of one definition: a body filled in, then a parameter added and a line
+  // inserted before the body, so that tokens move across lines as well as along them.
+  // A crude tokenizer for the sample: words, a `t"…"` string, runs of spaces, and each
+  // punctuation character on its own, so that the animation moves tokens, not phrases.
+  private def frameLines(text: Text): List[Block.Line] =
+    val pattern = java.util.regex.Pattern.compile("""t?"[^"]*"|[A-Za-z_][A-Za-z0-9_]*|[0-9]+| +|.""").nn
+
+    text.cut(t"\n").map: (line: Text) =>
+      val matcher = pattern.matcher(line.s).nn
+      var tokens: List[Token] = Nil
+
+      while matcher.find() do
+        val word: Text = matcher.group().nn.tt
+
+        val accent: Token.Accent = word match
+          case t"def" | t"val"                    => Token.Accent.Keyword
+          case t"Int" | t"Text"                   => Token.Accent.Typal
+          case word if word.contains(t"\"")     => Token.Accent.String
+          case word if word.trim == t""           => Token.Accent.Unparsed
+          case t"=" | t":" | t"*" | t"," | t"?"   => Token.Accent.Symbol
+          case t"(" | t")"                        => Token.Accent.Parens
+          case _                                  => Token.Accent.Term
+
+        tokens = Token(word, accent) :: tokens
+
+      Block.Line(tokens.reverse)
+
+  private val animated: Block =
+    val frames: List[List[Block.Line]] =
+      List
+        ( frameLines(t"def greet(name: Text): Text = ???"),
+          frameLines(t"def greet(name: Text): Text =\n  t\"Hello, $$name\""),
+          frameLines(t"def greet(name: Text, times: Int): Text =\n  val greeting = t\"Hello, $$name\"\n  greeting * times") )
+
+    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
+
+  // Two values trading shapes at once: one spreading over lines, the other recombining.
+  private val traded: Block =
+    val frames: List[List[Block.Line]] =
+      List
+        ( frameLines(t"List(1, 2, 3)\nList(\n  4,\n  5,\n  6\n)"),
+          frameLines(t"List(\n  1,\n  2,\n  3\n)\nList(4, 5, 6)") )
+
+    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
+
+  // One line spread over several: every token survives and moves to its line.
+  private val spread: Block =
+    val frames: List[List[Block.Line]] =
+      List
+        ( frameLines(t"List(\"foo\", \"bar\", \"baz\")"),
+          frameLines(t"List(\n  \"foo\",\n  \"bar\",\n  \"baz\"\n)") )
+
+    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
+
   // Every case of an enum, as a list, through its `Enumerable` evidence.
   private def cases[enumeration <: scala.reflect.Enum: Enumerable as enumerable]: List[enumeration] =
     enumerable.values.to[List]
@@ -311,6 +365,13 @@ object Samples:
         Block.paragraph(t"A code block sits on the page colour behind a hairline, each token accented by its kind. Notes mark spans of a line: a highlight, a parameter, an error and a caution; hover one for its caption."),
         Block.Code(Language.Scala, List(greet, count, call, imported), notes),
         Block.Paragraph(Inline.Textual(t"Inline code takes the same accents: ") :: punctuated(accents)),
+        Block.Heading(2, Inline.text(t"Animation")),
+        Block.paragraph(t"An animated block is a sequence of frames: each token keeps its identity across them, so a step moves what stays, fades in what arrives and fades out what departs, wherever the lines put them. Step with the buttons, or the arrow keys when the block is focused; space plays."),
+        animated,
+        Block.paragraph(t"A value spread over several lines: every token survives, and moves to its line."),
+        spread,
+        Block.paragraph(t"Two lists trading shapes: the tokens joining the line that remains slide along their own lines first and drop in; those reaching new lines leave first and slide along them."),
+        traded,
         Block.Heading(2, Inline.text(t"Diagnostics")),
         Block.paragraph(t"A diagnostic names its place and its severity, says what is wrong, and shows the lines concerned, numbered from where they came in their file, with the place marked: a segment is underlined, a position is pointed at, and a caption follows the mark."),
         Block.Diagnostic
@@ -704,7 +765,7 @@ object Repl:
           field.history.append(text)
           val marks = Samples.decorate(text, text.length).marks
           val code = Samples.code(text) match
-            case Block.Code(language, lines, _, _) => Block.Code(language, lines, marks)
+            case Block.Code(language, lines, _, _, _) => Block.Code(language, lines, marks)
             case other                          => other
 
           val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))))

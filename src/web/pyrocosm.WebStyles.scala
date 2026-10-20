@@ -197,6 +197,20 @@ object WebStyles:
         + css".pyro-codeblock .pyro-note-highlight { background-color: color-mix(in srgb, var(--pyro-code-fg) 22%, transparent) }"
         + css".pyro-codeblock .pyro-note-erroneous { text-decoration-color: var(--pyro-code-accent-error) }"
         + css".pyro-note-param { font-style: italic }"
+        // An animated block: a step fades its departing atoms out, moves the survivors, then
+        // fades the arrivals in, each phase after the last (the durations are the script's);
+        // the data the script reads is not shown.
+        + css".pyro-animated { position: relative; outline: none }"
+        + css".pyro-animated:focus-visible .pyro-codeblock { box-shadow: 0 0 0 2px var(--pyro-accent) }"
+        + css".pyro-atom { display: inline-block; white-space: pre; transition: opacity 0.75s ease }"
+        // A line of an animated block is a block (an empty one keeps a line's height); the
+        // block itself transitions between heights as lines appear and vanish.
+        + css".pyro-animated .pyro-line { display: block; min-height: 1.5em }"
+        + css".pyro-animated .pyro-codeblock { will-change: height }"
+        + css".pyro-animation-data { display: none }"
+        + css".pyro-animation-controls { display: flex; gap: var(--pyro-space-2); align-items: center; margin: calc(-1 * var(--pyro-space-3)) 0 var(--pyro-space-4) 0; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small) }"
+        + css".pyro-animation-controls button { font: inherit; line-height: 1; padding: 0 var(--pyro-space-2); border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius); background-color: transparent; color: inherit; cursor: pointer }"
+        + css".pyro-animation-controls button:disabled { opacity: 0.4; cursor: default }"
         // A numbered block's margin: the numbers are not part of the code, so a selection
         // leaves them out; a marker row beneath a line keeps the line's columns and wraps
         // its caption.

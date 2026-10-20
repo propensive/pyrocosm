@@ -709,7 +709,282 @@
   // Actionable elements (rows, items, links, buttons) press their id, or the action they name;
   // fields edit and submit. A link to a tool of the server's machine names `localhost`, which
   // is right only when the page is viewed there: elsewhere it takes the page's own host.
+  // An animated code block: the server rendered its first frame, with each token's atom id,
+  // and the animation as JSON. A step rebuilds the lines of the target frame from the same
+  // nodes, keyed by atom, and animates each atom from where it was to where it is (FLIP): a
+  // measured move, so an inserted line, a reflowed line or a move across lines all follow;
+  // an arriving atom fades in, a departing one leaves as a ghost over its old place.
+  function animate(block) {
+    var data;
+    try { data = JSON.parse(block.querySelector(".pyro-animation-data").textContent); } catch (error) { console.error(error); return; }
+    var code = block.querySelector("pre.pyro-codeblock > code");
+    var counter = block.querySelector(".pyro-animation-counter");
+    var prev = block.querySelector(".pyro-animation-prev");
+    var next = block.querySelector(".pyro-animation-next");
+    var play = block.querySelector(".pyro-animation-play");
+    var atoms = {};
+    data.atoms.forEach(function (atom) { atoms[atom.id] = atom; });
+    var nodes = {};
+    code.querySelectorAll("[data-atom]").forEach(function (span) { nodes[span.dataset.atom] = span; });
+    var frame = 0;
+    var timer = null;
+    var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function spanFor(id) {
+      if (nodes[id]) return nodes[id];
+      var atom = atoms[id];
+      var span = document.createElement("span");
+      span.className = "pyro-atom pyro-accent-" + atom.accent + (atom.binding ? " pyro-binding" : "");
+      span.dataset.atom = id;
+      span.textContent = atom.text;
+      nodes[id] = span;
+      return span;
+    }
+
+    function linesOf(index) {
+      var lines = [];
+      data.placements.forEach(function (placement) {
+        if (placement[0] !== index) return;
+        (lines[placement[1]] = lines[placement[1]] || []).push(placement[2]);
+      });
+      for (var i = 0; i < lines.length; i++) lines[i] = lines[i] || [];
+      return lines;
+    }
+
+    // The line (by its identity across frames) each atom of a frame is on.
+    function lineOfAtoms(index) {
+      var ids = (data.frames[index] && data.frames[index].lines) || [];
+      var result = {};
+      linesOf(index).forEach(function (atoms, line) {
+        atoms.forEach(function (id) { result[id] = ids[line] || ("#" + line); });
+      });
+      return result;
+    }
+
+    // Timings, in milliseconds; the stylesheet's fades match. A step is a fade out, then a
+    // move, then a fade in. The move is two halves. In the first, tokens joining lines that
+    // remain slide along their old rows (H1), and STAGGER later the contracting vertical
+    // movement runs: those tokens dropping into their lines, and lines shifting up as lines
+    // above them go. In the second, the expanding vertical movement runs — tokens reaching
+    // new lines, and lines shifting down as lines are inserted above — and STAGGER later the
+    // tokens slide along their new rows (H2). Every movement takes MOVE, eased; a half with
+    // nothing in it takes no time, and one with no horizontal part has no stagger.
+    var FADE = 750, MOVE = 1000, STAGGER = 300;
+    var busy = false;
+
+    function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+    function nextFrame() { return new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); }); }
+
+    // One step, in three phases, each awaited before the next: the atoms the target frame
+    // lacks fade out and are removed; the target's lines are then rebuilt from the surviving
+    // nodes, with the arriving atoms in place but invisible, so that the survivors move
+    // (FLIP, from measured geometry) into a layout that already leaves their gaps; and last
+    // the arrivals fade in. A phase with nothing to do takes no time.
+    function show(target, animated) {
+      var moving = animated && !reduced;
+      var lines = linesOf(target);
+      var present = {};
+      lines.forEach(function (ids) { ids.forEach(function (id) { present[id] = true; }); });
+      var current = {};
+      code.querySelectorAll("[data-atom]").forEach(function (span) { current[span.dataset.atom] = span; });
+      var departing = Object.keys(current).filter(function (id) { return !present[id]; });
+      var arriving = Object.keys(present).filter(function (id) { return !current[id]; });
+
+      // The target's lines, block-level, from the surviving nodes and the arriving atoms.
+      function rebuild() {
+        var fragment = document.createDocumentFragment();
+        lines.forEach(function (ids) {
+          var line = document.createElement("span");
+          line.className = "pyro-line";
+          ids.forEach(function (id) { line.appendChild(spanFor(id)); });
+          fragment.appendChild(line);
+        });
+        code.replaceChildren(fragment);
+      }
+
+      function settle() {
+        frame = target;
+        busy = false;
+        if (counter) counter.textContent = (frame + 1) + " / " + data.frames.length;
+        if (prev) prev.disabled = frame === 0;
+        if (next) next.disabled = frame === data.frames.length - 1;
+      }
+
+      if (!moving) {
+        rebuild();
+        Object.keys(present).forEach(function (id) { nodes[id].style.opacity = ""; nodes[id].style.transform = ""; });
+        settle();
+        return Promise.resolve();
+      }
+
+      busy = true;
+
+      // Phase 1: departures fade out.
+      var fadeOut = Promise.resolve();
+      if (departing.length) {
+        departing.forEach(function (id) { current[id].style.opacity = "0"; });
+        fadeOut = after(FADE);
+      }
+
+      return fadeOut.then(function () {
+        // Phase 2: survivors move. Their places are measured before the departures are
+        // removed (removal reflows what follows them, and that reflow is part of the move)
+        // and after the rebuild; arrivals are in the new layout from the start, invisible,
+        // so the gaps are real. The block itself goes from its old height to its new over
+        // the same time, so lines appearing or vanishing open and close it smoothly.
+        var pre = code.parentElement;
+        var first = {};
+        Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
+        var before = pre.getBoundingClientRect().height;
+        departing.forEach(function (id) { current[id].remove(); delete nodes[id]; });
+        rebuild();
+        arriving.forEach(function (id) { nodes[id].style.transition = "none"; nodes[id].style.opacity = "0"; });
+        var after0 = pre.getBoundingClientRect().height;
+        var resized = Math.abs(after0 - before) > 0.5;
+        var moves = [];
+        Object.keys(first).forEach(function (id) {
+          var span = nodes[id];
+          var last = span.getBoundingClientRect();
+          var dx = first[id].left - last.left, dy = first[id].top - last.top;
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moves.push({ span: span, id: id, dx: dx, dy: dy });
+        });
+        if (!moves.length && !resized) return Promise.resolve();
+
+        // Which line each surviving atom leaves and reaches, by line identity; a line is busy
+        // when some atom stays on it from one frame to the next. A token joining a busy line
+        // slides along its old row to its column first (H1) and then drops into its slot (V);
+        // one reaching a new or emptied line drops first (V) and slides along the empty row
+        // after (H2), with the tokens shifting within their own lines.
+        var wasOn = lineOfAtoms(frame), nowOn = lineOfAtoms(target);
+        var busy = {};
+        Object.keys(nowOn).forEach(function (id) { if (wasOn[id] === nowOn[id]) busy[nowOn[id]] = true; });
+
+        // A token shifting within its own line moves with the tokens that line exchanges: in
+        // H1 when the line receives joiners, so that it makes room before they drop in, and
+        // otherwise in H2, closing the gap once the leavers have gone.
+        var receiving = {};
+        moves.forEach(function (move) {
+          if (wasOn[move.id] !== nowOn[move.id] && busy[nowOn[move.id]]) receiving[nowOn[move.id]] = true;
+        });
+
+        // `dy` is the token's displacement back to where it was: positive means it moves up.
+        var h1 = [], v1 = [], v2 = [], h2 = [];
+        moves.forEach(function (move) {
+          var changesLine = wasOn[move.id] !== nowOn[move.id];
+          var joining = changesLine && busy[nowOn[move.id]];
+          var early = changesLine ? joining : receiving[nowOn[move.id]];
+          if (Math.abs(move.dx) > 0.5) (early ? h1 : h2).push(move);
+          if (Math.abs(move.dy) > 0.5) {
+            var contracting = changesLine ? joining : move.dy > 0;
+            (contracting ? v1 : v2).push(move);
+          }
+        });
+        var shrinking = resized && after0 < before, growing = resized && after0 > before;
+
+        // The schedule, as each part's start: the contracting vertical part STAGGER after H1
+        // when both exist; the expanding vertical part halfway through the contracting one
+        // (or after H1, where there is no contraction); H2 STAGGER after that. The move ends
+        // with its last part.
+        var firstV = v1.length > 0 || shrinking, secondV = v2.length > 0 || growing;
+        var s1 = (h1.length && firstV) ? STAGGER : 0;
+        var v2Start = firstV ? s1 + MOVE / 2 : (h1.length ? MOVE : 0);
+        var s2 = (secondV && h2.length) ? STAGGER : 0;
+        var h2Start = v2Start + s2;
+        var T = 0;
+        if (h1.length) T = Math.max(T, MOVE);
+        if (firstV) T = Math.max(T, s1 + MOVE);
+        if (secondV) T = Math.max(T, v2Start + MOVE);
+        if (h2.length) T = Math.max(T, h2Start + MOVE);
+        if (T === 0) return Promise.resolve();
+
+        // One animation per axis per token, over the whole move, adding: held at its
+        // displacement until its segment, eased to nothing across it, held after.
+        function track(span, axis, d, start) {
+          var tr = function (value) { return (axis === "x" ? "translateX(" : "translateY(") + value + "px)"; };
+          var frames = [{ transform: tr(d), offset: 0, easing: "linear" }];
+          if (start > 0) frames.push({ transform: tr(d), offset: start / T, easing: "ease-in-out" });
+          else frames[0].easing = "ease-in-out";
+          var end = Math.min(1, (start + MOVE) / T);
+          frames.push({ transform: tr(0), offset: end, easing: "linear" });
+          if (end < 1) frames.push({ transform: tr(0), offset: 1 });
+          span.animate(frames, { duration: T, fill: "none", composite: "add" });
+        }
+
+        moves.forEach(function (move) {
+          if (h1.indexOf(move) >= 0) track(move.span, "x", move.dx, 0);
+          else if (h2.indexOf(move) >= 0) track(move.span, "x", move.dx, h2Start);
+          if (v1.indexOf(move) >= 0) track(move.span, "y", move.dy, s1);
+          else if (v2.indexOf(move) >= 0) track(move.span, "y", move.dy, v2Start);
+        });
+
+        // The block's height contracts in the first half and expands in the second.
+        if (resized) {
+          pre.style.transition = "none";
+          pre.style.height = before + "px";
+          pre.style.overflow = "hidden";
+          void pre.offsetHeight;
+          setTimeout(function () {
+            pre.style.transition = "height " + MOVE + "ms ease-in-out";
+            pre.style.height = after0 + "px";
+          }, shrinking ? s1 : v2Start);
+        }
+
+        return after(T).then(function () {
+          if (resized) { pre.style.transition = ""; pre.style.height = ""; pre.style.overflow = ""; }
+        });
+      }).then(function () {
+        // Phase 3: arrivals fade in.
+        if (!arriving.length) return Promise.resolve();
+        return nextFrame().then(function () {
+          arriving.forEach(function (id) { nodes[id].style.transition = ""; nodes[id].style.opacity = ""; });
+          return after(FADE);
+        });
+      }).then(settle);
+    }
+
+    function step(delta) {
+      if (busy) return false;
+      var target = frame + delta;
+      if (target < 0 || target >= data.frames.length) {
+        if (data.loop && delta > 0) target = 0; else return false;
+      }
+      show(target, true);
+      return true;
+    }
+
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } if (play) play.textContent = "▶"; }
+
+    function playing() {
+      var hold = (data.frames[frame] && data.frames[frame].hold) || 1.5;
+      timer = setTimeout(function () {
+        if (!step(1)) { stop(); return; }
+        var wait = function () { if (busy) setTimeout(wait, 50); else if (timer) playing(); };
+        wait();
+      }, hold * 1000);
+      if (play) play.textContent = "⏸";
+    }
+
+    function toggle() { if (timer) stop(); else { if (frame === data.frames.length - 1 && !data.loop) show(0, true); playing(); } }
+
+    if (prev) prev.addEventListener("click", function () { stop(); step(-1); });
+    if (next) next.addEventListener("click", function () { stop(); step(1); });
+    if (play) play.addEventListener("click", toggle);
+    block.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowRight") { stop(); step(1); event.preventDefault(); }
+      else if (event.key === "ArrowLeft") { stop(); step(-1); event.preventDefault(); }
+      else if (event.key === " ") { toggle(); event.preventDefault(); }
+    });
+    show(0, false);
+    if (data.autoplay) playing();
+  }
+
   function wire(root) {
+    root.querySelectorAll(".pyro-animated").forEach(function (block) {
+      if (block.dataset.pyroWired) return;
+      block.dataset.pyroWired = "1";
+      animate(block);
+    });
+
     root.querySelectorAll("a[data-local='true']").forEach(function (link) {
       if (link.dataset.pyroWired) return;
       try {
