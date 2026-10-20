@@ -277,7 +277,7 @@ tags:
 
     val animation: Block.Animation = Block.Animation.of(animatedFrames)
 
-    def atomsIn(f: Int): List[Text] = animation.placements.filter(_.frame == f).map(_.atom)
+    def atomsIn(f: Int): List[Text] = animation.placements.filter(_.slide == f).map(_.atom)
 
     // `val x` survives into every frame; frame 1's `1` is replaced by `y` in frame 2.
     test(m"alignment keeps a surviving token's identity across frames"):
@@ -296,8 +296,8 @@ tags:
     test(m"a token moved to another line keeps its identity"):
       def line(words: List[Text]): Block.Line = Block.Line(words.map(Token.plain(_)))
       val spread = Block.Animation.of(List(List(line(List(t"a", t"b", t"c"))), List(line(List(t"a")), line(List(t"b")), line(List(t"c")))))
-      val before: List[Text] = spread.placements.filter(_.frame == 0).map(_.atom)
-      val after: List[Text] = spread.placements.filter(_.frame == 1).map(_.atom)
+      val before: List[Text] = spread.placements.filter(_.slide == 0).map(_.atom)
+      val after: List[Text] = spread.placements.filter(_.slide == 1).map(_.atom)
       (spread.atoms.size, before.all(after.has(_)), spread.lines(1).map(_.map(_.text)))
     . assert(_ == (3, true, List(List(t"a"), List(t"b"), List(t"c"))))
 
@@ -310,8 +310,8 @@ tags:
         ( List(line(List(t"List", t"(", t"1", t"2", t"3", t")")), line(List(t"List", t"(")), line(List(t"4")), line(List(t"5")), line(List(t"6")), line(List(t")"))),
           List(line(List(t"List", t"(")), line(List(t"1")), line(List(t"2")), line(List(t"3")), line(List(t")")), line(List(t"List", t"(", t"4", t"5", t"6", t")"))) ))
 
-      val before: List[Text] = traded.placements.filter(_.frame == 0).map(_.atom)
-      val after: List[Text] = traded.placements.filter(_.frame == 1).map(_.atom)
+      val before: List[Text] = traded.placements.filter(_.slide == 0).map(_.atom)
+      val after: List[Text] = traded.placements.filter(_.slide == 1).map(_.atom)
       val kept: List[Text] = before.filter(after.has(_))
       kept == after.filter(kept.has(_))
     . assert(_ == true)
@@ -327,28 +327,54 @@ tags:
       (html.contains(t"data-atom="), html.contains(t"pyro-animation-data"), html.contains(t"\"placements\""))
     . assert(_ == (true, true, true))
 
-    // Each frame's details: a label, a hold, a time, a language and a mark, in its own
-    // coordinates; the second frame has them all, and the third a mark across its two lines.
+    // Each slide's details: a label, a hold, a time, a language and a mark, in its own
+    // coordinates; the second slide has them all, and the third a mark across its two lines
+    // and is arrived at by a fade of a second.
     val detailed: Block.Animation =
       Block.Animation.of(animatedFrames, List
-        ( Block.Frame.Detail(),
-          Block.Frame.Detail(Inline.text(t"a value"), 2.0, 3.0, Language.Java, List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"the keyword")))),
-          Block.Frame.Detail(notes = List(Block.Note(0, 0, 3, Block.Note.Style.Caution, Inline.text(t"spans"), 1))) ))
+        ( Block.Slide.Detail(),
+          Block.Slide.Detail(Inline.text(t"a value"), 2.0, 3.0, Language.Java, List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"the keyword")))),
+          Block.Slide.Detail(notes = List(Block.Note(0, 0, 3, Block.Note.Style.Caution, Inline.text(t"spans"), 1)), transition = Block.Transition.Kind.Fade, duration = 1.0) ))
 
-    test(m"a frame's details reach the animation, and the others keep their defaults"):
-      def frame(index: Int): Block.Frame = detailed.frames.skip(index).prim.or(Block.Frame(-1))
-      (frame(1).label, frame(1).hold, frame(1).at, frame(1).language, frame(1).notes.size, frame(0).at, frame(2).notes.prim.let(_.last))
+    def slide(index: Int): Block.Slide = detailed.slides.skip(index).prim.or(Block.Slide(-1))
+    def transition(index: Int): Block.Transition = detailed.transitions.skip(index).prim.or(Block.Transition(-1, -1))
+
+    test(m"a slide's details reach the animation, and the others keep their defaults"):
+      (slide(1).label, slide(1).hold, slide(1).at, slide(1).language, slide(1).notes.size, slide(0).at, slide(2).notes.prim.let(_.last))
     . assert(_ == (Inline.text(t"a value"), 2.0, 3.0, Language.Java, 1, Unset, 1))
+
+    // Into the second slide two tokens arrive and nothing departs or moves; into the third a
+    // token departs, a line is inserted before the first, and the slide's detail says how.
+    test(m"the transition into each slide says what arrives, departs and is inserted"):
+      ( detailed.transitions.map { (transition: Block.Transition) => (transition.from, transition.to) },
+        transition(0).arriving.size, transition(0).departing.size, transition(0).moved.size,
+        transition(1).departing.size >= 1, transition(1).inserted.size, transition(1).removed.size,
+        transition(1).kind, transition(1).duration, transition(0).kind )
+    . assert(_ == (List((0, 1), (1, 2)), 2, 0, 0, true, 1, 0, Block.Transition.Kind.Fade, 1.0, Block.Transition.Kind.Morph))
+
+    // A line appended after the first: the first line remains, named by its own end, so
+    // nothing moves and one line is inserted — the last line is not a line apart.
+    test(m"a line appended is an insertion, and the line before it remains"):
+      def line(words: List[Text]): Block.Line = Block.Line(words.map(Token.plain(_)))
+      val appended = Block.Animation.of(List(List(line(List(t"a", t"b"))), List(line(List(t"a", t"b")), line(List(t"c")))))
+      appended.transitions.prim.let { (transition: Block.Transition) => (transition.moved.size, transition.inserted.size, transition.arriving.size, transition.removed.size) }
+    . assert(_ == (0, 1, 1, 0))
+
+    test(m"a token moved to another line is a move of the transition"):
+      def line(words: List[Text]): Block.Line = Block.Line(words.map(Token.plain(_)))
+      val spread = Block.Animation.of(List(List(line(List(t"a", t"b", t"c"))), List(line(List(t"a")), line(List(t"b")), line(List(t"c")))))
+      spread.transitions.prim.let { (transition: Block.Transition) => (transition.moved.size, transition.inserted.size, transition.arriving.size) }
+    . assert(_ == (2, 2, 0))
 
     val detailedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, detailed)
 
-    test(m"an animated block's frame details round-trip as TEL text"):
+    test(m"an animated block's slide details and transitions round-trip as TEL text"):
       detailedBlock.in[Tel].show.read[Tel].as[Block]
     . assert(_ == detailedBlock)
 
-    test(m"an animated block renders its first frame's marks, label and language, and its data"):
+    test(m"an animated block renders its first slide's marks, label and language, and its data"):
       val first: Block.Animation =
-        Block.Animation.of(animatedFrames, List(Block.Frame.Detail(Inline.text(t"the start"), Unset, 3.0, Language.Java, List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"the keyword"))))))
+        Block.Animation.of(animatedFrames, List(Block.Slide.Detail(Inline.text(t"the start"), Unset, 3.0, Language.Java, List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"the keyword"))))))
 
       val html: Text = HtmlRenderer().block(Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, first)).show
 
@@ -358,8 +384,9 @@ tags:
         html.contains(t"the start"),
         html.contains(t"\"at\":3.0"),
         html.contains(t"\"notes\":[{"),
-        html.contains(t"pyro-language-java") )
-    . assert(_ == (true, true, true, true, true, true, true))
+        html.contains(t"pyro-language-java"),
+        html.contains(t"\"transitions\":[{\"from\":0,\"to\":1,\"kind\":\"morph\"") )
+    . assert(_ == (true, true, true, true, true, true, true, true))
 
     val emptyToken: Block = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"x"))), Block.Line(List(Token.plain(t"")))))
 

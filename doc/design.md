@@ -546,35 +546,47 @@ one MCP endpoint aggregating every tool's.
   `TelSyntax`, a lexical TEL tokeniser written here for want of one in stratiform, and a
   candidate for Soundness. Not here: Fuel's offset of a fenced block's lines into its Markdown,
   which needs punctuation to say where a fence begins.
-- **M6e Animation** (done): a code block as a sequence of frames, animated in the browser.
-  `Block.Code.animation` is an `Animation(atoms, frames, placements)`: an `Atom` is a token
-  with an identity that holds across frames, a `Placement` puts an atom on a line of a frame
-  (flat, since a repeated TEL field cannot nest), and `lines` stays the first frame, so a
+- **M6e Animation** (done): a code block as a sequence of slides, animated in the browser,
+  through an intermediate form between what an author writes and what a renderer shows.
+  `Block.Code.animation` is an `Animation(atoms, slides, placements, transitions)`: an `Atom`
+  is a token with an identity that holds across slides; a `Placement` puts an atom on a line
+  of a slide; a `Slide` is one complete state of the block — its lines (named by an identity
+  that holds across slides), its annotations (`Note`s, which add to the tokens or change how
+  they are shown without changing them), its `label` (phrasing), its `language` (its own; the
+  block's otherwise) and its timing (`hold`, the seconds a played animation rests on it; `at`,
+  its time on the page's one clock); and a `Transition` is what happens between two slides —
+  its `kind` (`Morph`: surviving tokens move and the rest fade; `Fade`: the slide goes before
+  the next appears; `Edit`: the change typed with a cursor, representable now and rendered
+  later, as a morph until then), its `duration`, and what departs, arrives, moves between
+  lines, and which lines are removed and inserted. `lines` stays the first slide, so a
   renderer that cannot animate — the terminal, a static page — shows a correct block.
-  `Animation.of(frames, details)` aligns the frames as one diff: each frame is its tokens in
+  `Animation.of(frames, details)` aligns the slides as one diff — each slide is its tokens in
   sequence with a break token between lines, dissonance's `evolve` runs over those sequences
   with no notion of similarity, so a token survives exactly when the diff keeps it (surviving
   tokens never reorder), and a line is named by the break that ends it, so a line remains,
-  however it grew or moved, exactly when its end survives. A `Frame.Detail` says what is known
-  of a frame before alignment — `label` (phrasing), `hold` (seconds, when played), `at`
-  (seconds on the page's one clock), `language` (its own; the block's otherwise) and `notes`
-  (marks, in its own lines' coordinates) — and `of` adds the index and the line names. The web
-  renderer emits frame 0 with `data-atom` on each token, its marks on whole atoms (an atom is
-  never split) with marker rows beneath their lines as a plain block draws them, its label
-  beside the counter, its language on the block, and the animation as JSON (labels and
-  captions as rendered phrasing) in a hidden `pyro-animation-data` element. `pyrocosm.js`
-  steps it in phases: the frame's marks and label fade out; departures fade; the survivors
-  move by FLIP — it measures every atom's place, rebuilds the target frame's lines (with its
-  marker rows, unseen) from the same nodes keyed by atom, and animates each from where it was,
-  so an inserted line, a reflowed line and a move across lines all follow from geometry
-  measured rather than predicted; arrivals fade in; and the target's marks and label fade in
-  in its language. Arrow keys when focused, space plays, `prefers-reduced-motion` jumps. The
-  page has one clock: a block any frame of which has an `at` is timed (a frame without one
-  follows its predecessor by that frame's `hold`, 1.5 s unless said), the script makes a bar
-  at the foot of the page — play, the clock, a scrubber — when a timed block is wired, space
-  outside any block toggles it, and at each tick every timed block shows the last frame due,
-  scrolled into view; stepping a block by hand pauses the clock. Not yet: the terminal
-  stepping frames.
+  however it grew or moved, exactly when its end survives — and derives the transition into
+  each slide from the alignment, so that it never disagrees with the slides and what a step
+  does is known, and testable, before it is rendered. A `Slide.Detail` says what is known of
+  a slide before alignment (label, hold, at, language, notes, and the kind and duration of
+  the transition into it); `of` adds the index and the line names. The web renderer emits
+  slide 0 with `data-atom` on each token, its annotations on whole atoms (an atom is never
+  split) with marker rows beneath their lines as a plain block draws them, its label beside
+  the counter, its language on the block, and the animation as JSON (labels and captions as
+  rendered phrasing) in a hidden `pyro-animation-data` element. `pyrocosm.js` plays a
+  transition — the server's between neighbours, or a morph it derives for a jump — in
+  phases: the slide's annotations and label fade out; departures fade; a morph moves the
+  survivors by FLIP — it measures every atom's place, rebuilds the target slide's lines (with
+  its marker rows, unseen) from the same nodes keyed by atom, and animates each from where it
+  was, so an inserted line, a reflowed line and a move across lines all follow from geometry
+  measured rather than predicted — while a fade only lets the block reach its new height;
+  arrivals fade in; and the target's annotations and label fade in, in its language. Arrow
+  keys when focused, space plays, `prefers-reduced-motion` jumps. The page has one clock: a
+  block any slide of which has an `at` is timed (a slide without one follows its predecessor
+  by that slide's `hold`, 1.5 s unless said), the script makes a bar at the foot of the page
+  — play, the clock, a scrubber — when a timed block is wired, space outside any block
+  toggles it, and at each tick every timed block shows the last slide due, scrolled into
+  view; stepping a block by hand pauses the clock. Not yet: the edit transition played, and
+  the terminal stepping slides.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,

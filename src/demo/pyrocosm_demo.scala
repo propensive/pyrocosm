@@ -136,11 +136,11 @@ object Samples:
           frameLines(t"def greet(name: Text): Text =\n  t\"Hello, $$name\""),
           frameLines(t"def greet(name: Text, times: Int): Text =\n  val greeting = t\"Hello, $$name\"\n  greeting * times") )
 
-    val details: List[Block.Frame.Detail] =
+    val details: List[Block.Slide.Detail] =
       List
-        ( Block.Frame.Detail(Inline.text(t"A stub"), 2.0, 0.0),
-          Block.Frame.Detail(Inline.text(t"A body"), 2.5, 5.0),
-          Block.Frame.Detail
+        ( Block.Slide.Detail(Inline.text(t"A stub"), 2.0, 0.0),
+          Block.Slide.Detail(Inline.text(t"A body"), 2.5, 5.0),
+          Block.Slide.Detail
             ( Inline.text(t"A parameter, and a line before the body"),
               Unset,
               11.0,
@@ -148,7 +148,7 @@ object Samples:
               List(Block.Note(0, 22, 27, Block.Note.Style.Highlight, Inline.text(t"the new parameter"))) ) )
 
     val animation: Block.Animation = Block.Animation.of(frames, details)
-    Block.Code(Language.Scala, frames.prim.or(Nil), animation.frames.prim.lay(Nil)(_.notes), Unset, animation)
+    Block.Code(Language.Scala, frames.prim.or(Nil), animation.slides.prim.lay(Nil)(_.notes), Unset, animation)
 
   // Two values trading shapes at once: one spreading over lines, the other recombining; timed
   // after the definition above, so the page's clock steps both.
@@ -158,19 +158,23 @@ object Samples:
         ( frameLines(t"List(1, 2, 3)\nList(\n  4,\n  5,\n  6\n)"),
           frameLines(t"List(\n  1,\n  2,\n  3\n)\nList(4, 5, 6)") )
 
-    val details: List[Block.Frame.Detail] =
-      List(Block.Frame.Detail(at = 16.0), Block.Frame.Detail(at = 21.0))
+    val details: List[Block.Slide.Detail] =
+      List(Block.Slide.Detail(at = 16.0), Block.Slide.Detail(at = 21.0))
 
     Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames, details))
 
-  // One line spread over several: every token survives and moves to its line.
+  // One line spread over several, arrived at by a fade rather than a morph: the slide goes
+  // and the next appears, with no token moving.
   private val spread: Block =
     val frames: List[List[Block.Line]] =
       List
         ( frameLines(t"List(\"foo\", \"bar\", \"baz\")"),
           frameLines(t"List(\n  \"foo\",\n  \"bar\",\n  \"baz\"\n)") )
 
-    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames))
+    val details: List[Block.Slide.Detail] =
+      List(Block.Slide.Detail(), Block.Slide.Detail(transition = Block.Transition.Kind.Fade))
+
+    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames, details))
 
   // Every case of an enum, as a list, through its `Enumerable` evidence.
   private def cases[enumeration <: scala.reflect.Enum: Enumerable as enumerable]: List[enumeration] =
@@ -385,7 +389,7 @@ object Samples:
         Block.Heading(2, Inline.text(t"Animation")),
         Block.paragraph(t"An animated block is a sequence of frames: each token keeps its identity across them, so a step moves what stays, fades in what arrives and fades out what departs, wherever the lines put them. A frame may be labelled, and may mark some of its code: the marks fade out before a step and the next frame's fade in after it. Step with the buttons, or the arrow keys when the block is focused; space plays. A frame may also have a time on the page's one clock, whose bar appears at the foot of the page: play it, or press space outside any block, and every timed block steps when its frames fall due; stepping a block by hand pauses it."),
         animated,
-        Block.paragraph(t"A value spread over several lines: every token survives, and moves to its line."),
+        Block.paragraph(t"A value spread over several lines, by a fade rather than a morph: the slide goes, and the next appears."),
         spread,
         Block.paragraph(t"Two lists trading shapes: the tokens joining the line that remains slide along their own lines first and drop in; those reaching new lines leave first and slide along them."),
         traded,

@@ -346,15 +346,16 @@ class HtmlRenderer():
 
     Pre(`class` = classes)(Code(codeRows(lines, notes, start)*))
 
-  // An animated block: its first frame as lines of atoms, each carrying its id, with that
-  // frame's marks and label and in its language; its controls; and the animation as JSON in a
-  // hidden element the script reads. Frame 0 is what a page without the script shows.
+  // An animated block: its first slide as lines of atoms, each carrying its id, with that
+  // slide's annotations and label and in its language; its controls; and the animation as
+  // JSON in a hidden element the script reads. Slide 0 is what a page without the script
+  // shows.
   def animatedCode(language: pyrocosm.Language, animation: Block.Animation): Html of Flow =
-    val first: Optional[Block.Frame] = animation.frames.prim
+    val first: Optional[Block.Slide] = animation.slides.prim
     val shown: pyrocosm.Language = first.let(_.language).or(language)
     val classes: List[Name[CssClass]] = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}"))
     val rows: List[Html of Phrasing] = animatedRows(animation.lines(0), first.lay(Nil)(_.notes))
-    val frames: Int = animation.frames.size
+    val frames: Int = animation.slides.size
 
     val controls: Html of Flow =
       Div(`class` = cls(t"pyro-animation-controls"))
@@ -369,7 +370,7 @@ class HtmlRenderer():
         controls,
         Pre(`class` = cls(t"pyro-animation-data"))(animationJson(language, animation)) )
 
-  // One frame's lines as rows of atoms — block-level lines (the stylesheet's rule), so no
+  // One slide's lines as rows of atoms — block-level lines (the stylesheet's rule), so no
   // newline stands between them — with the frame's notes laid over them: an atom any part of
   // which a note covers is marked whole, since an atom is never split (its identity is what
   // the animation moves), and a caret or captioned note has its row beneath its line, as a
@@ -408,11 +409,13 @@ class HtmlRenderer():
     note.lay(Span(`class` = classes, `data-atom` = atom.id)(atom.text)): (note: Block.Note) =>
       Span(`class` = classes, `data-atom` = atom.id, title = Inline.plain(note.caption))(atom.text)
 
-  // The animation as compact JSON: the block's language, atoms by id, frames, and placements
-  // as `[frame, line, id]`. A frame's label and its notes' captions are phrasing, rendered
-  // here as HTML, so the script shows them without a renderer of its own.
+  // The animation as compact JSON: the block's language, atoms by id, slides, placements as
+  // `[slide, line, id]`, and transitions with their moves as `[id, from, to]`. A slide's
+  // label and its notes' captions are phrasing, rendered here as HTML, so the script shows
+  // them without a renderer of its own.
   def animationJson(language: pyrocosm.Language, animation: Block.Animation): Text =
     def optional(value: Optional[Double]): Text = value.lay(t"null")(_.toString.tt)
+    def ids(ids: List[Text]): Text = ids.map(jsonText).join(t",")
 
     val atoms: Text =
       animation.atoms.map: (atom: Block.Atom) =>
@@ -420,16 +423,16 @@ class HtmlRenderer():
         t"""{"id":${jsonText(atom.id)},"text":${jsonText(atom.text)},"accent":${jsonText(atom.accent.toString.tt.lower)},"binding":$binding}"""
       . join(t",")
 
-    def notes(frame: Block.Frame): Text =
+    def notes(frame: Block.Slide): Text =
       frame.notes.map: (note: Block.Note) =>
         val last: Text = note.last.lay(t"null")(_.toString.tt)
         val caption: Text = if note.caption.nil then t"\"\"" else jsonText(phrase(note.caption).show)
         t"""{"line":${note.line.toString.tt},"start":${note.start.toString.tt},"end":${note.end.toString.tt},"last":$last,"style":${jsonText(note.style.toString.tt.lower)},"caption":$caption}"""
       . join(t",")
 
-    val frames: Text =
-      animation.frames.map: (frame: Block.Frame) =>
-        val lines: Text = frame.lines.map(jsonText).join(t",")
+    val slides: Text =
+      animation.slides.map: (frame: Block.Slide) =>
+        val lines: Text = ids(frame.lines)
         val label: Text = if frame.label.nil then t"\"\"" else jsonText(phrase(frame.label).show)
         val frameLanguage: Text = frame.language.lay(t"null") { (language: pyrocosm.Language) => jsonText(language.name) }
         t"""{"index":${frame.index.toString.tt},"label":$label,"hold":${optional(frame.hold)},"at":${optional(frame.at)},"language":$frameLanguage,"lines":[$lines],"notes":[${notes(frame)}]}"""
@@ -437,10 +440,18 @@ class HtmlRenderer():
 
     val placements: Text =
       animation.placements.map: (placement: Block.Placement) =>
-        t"[${placement.frame.toString.tt},${placement.line.toString.tt},${jsonText(placement.atom)}]"
+        t"[${placement.slide.toString.tt},${placement.line.toString.tt},${jsonText(placement.atom)}]"
       . join(t",")
 
-    t"""{"language":${jsonText(language.name)},"atoms":[$atoms],"frames":[$frames],"placements":[$placements],"autoplay":${animation.autoplay.toString.tt},"loop":${animation.loop.toString.tt}}"""
+    val transitions: Text =
+      animation.transitions.map: (transition: Block.Transition) =>
+        val moved: Text =
+          transition.moved.map { (move: Block.Transition.Move) => t"[${jsonText(move.atom)},${jsonText(move.from)},${jsonText(move.to)}]" }.join(t",")
+
+        t"""{"from":${transition.from.toString.tt},"to":${transition.to.toString.tt},"kind":${jsonText(transition.kind.toString.tt.lower)},"duration":${optional(transition.duration)},"departing":[${ids(transition.departing)}],"arriving":[${ids(transition.arriving)}],"moved":[$moved],"removed":[${ids(transition.removed)}],"inserted":[${ids(transition.inserted)}]}"""
+      . join(t",")
+
+    t"""{"language":${jsonText(language.name)},"atoms":[$atoms],"slides":[$slides],"placements":[$placements],"transitions":[$transitions],"autoplay":${animation.autoplay.toString.tt},"loop":${animation.loop.toString.tt}}"""
 
   // One line of code, the `index`th of its block, with the segments of the notes which touch
   // it laid over its tokens; a caret marks no segment. The line ends in a newline unless it is

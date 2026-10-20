@@ -811,7 +811,7 @@
       active.forEach(function (player) {
         var last = player.times.length - 1;
         var at = player.times[last];
-        if (at !== null) end = Math.max(end, at + (player.data.frames[last].hold || 1.5));
+        if (at !== null) end = Math.max(end, at + (player.data.slides[last].hold || 1.5));
       });
       scrub.max = end.toFixed(1);
       update();
@@ -826,13 +826,15 @@
     };
   })();
 
-  // An animated code block: the server rendered its first frame, with each token's atom id,
-  // and the animation as JSON. A step rebuilds the lines of the target frame from the same
-  // nodes, keyed by atom, and animates each atom from where it was to where it is (FLIP): a
-  // measured move, so an inserted line, a reflowed line or a move across lines all follow;
-  // an arriving atom fades in, a departing one leaves as a ghost over its old place. The
-  // frame's marks fade out before the step and the target's fade in after it, with its label
-  // and in its language. The result is the block's player, which the timeline drives.
+  // An animated code block: the server rendered its first slide, with each token's atom id,
+  // and the animation as JSON — slides, and the transition into each. A step plays a
+  // transition: a morph rebuilds the lines of the target slide from the same nodes, keyed by
+  // atom, and animates each atom from where it was to where it is (FLIP): a measured move,
+  // so an inserted line, a reflowed line or a move across lines all follow; an arriving atom
+  // fades in, a departing one leaves as a ghost over its old place. A fade lets the whole
+  // slide go before the next appears; an edit is not yet played, and is shown as a morph. The
+  // slide's annotations fade out before the step and the target's fade in after it, with its
+  // label and in its language. The result is the block's player, which the timeline drives.
   function animate(block) {
     var data;
     try { data = JSON.parse(block.querySelector(".pyro-animation-data").textContent); } catch (error) { console.error(error); return; }
@@ -872,9 +874,9 @@
       return lines;
     }
 
-    // The line (by its identity across frames) each atom of a frame is on.
+    // The line (by its identity across slides) each atom of a slide is on.
     function lineOfAtoms(index) {
-      var ids = (data.frames[index] && data.frames[index].lines) || [];
+      var ids = (data.slides[index] && data.slides[index].lines) || [];
       var result = {};
       linesOf(index).forEach(function (atoms, line) {
         atoms.forEach(function (id) { result[id] = ids[line] || ("#" + line); });
@@ -882,13 +884,36 @@
       return result;
     }
 
+    // The transition from one slide to another: the server's, between neighbours (the one
+    // back is the one forward reversed), else a morph derived here from the placements, for
+    // a jump the clock or the scrubber makes.
+    function transitionFor(from, to) {
+      var found = null;
+      (data.transitions || []).forEach(function (t) {
+        if (t.from === from && t.to === to) found = t;
+        else if (t.from === to && t.to === from && !found)
+          found = { from: from, to: to, kind: t.kind, duration: t.duration, departing: t.arriving, arriving: t.departing,
+                    moved: t.moved.map(function (m) { return [m[0], m[2], m[1]]; }), removed: t.inserted, inserted: t.removed };
+      });
+      if (found) return found;
+      var before = lineOfAtoms(from), after = lineOfAtoms(to);
+      var moved = [];
+      Object.keys(before).forEach(function (id) { if (after[id] && after[id] !== before[id]) moved.push([id, before[id], after[id]]); });
+      return {
+        from: from, to: to, kind: "morph", duration: null,
+        departing: Object.keys(before).filter(function (id) { return !after[id]; }),
+        arriving: Object.keys(after).filter(function (id) { return !before[id]; }),
+        moved: moved, removed: [], inserted: []
+      };
+    }
+
     // The time of each frame on the page's clock: its own, or its predecessor's plus that
     // frame's hold when it has none; null before any frame with a time. A block is timed when
     // any frame of it is.
     var times = [];
-    data.frames.forEach(function (f, i) {
+    data.slides.forEach(function (f, i) {
       if (typeof f.at === "number") times[i] = f.at;
-      else if (i > 0 && times[i - 1] !== null) times[i] = times[i - 1] + (data.frames[i - 1].hold || 1.5);
+      else if (i > 0 && times[i - 1] !== null) times[i] = times[i - 1] + (data.slides[i - 1].hold || 1.5);
       else times[i] = null;
     });
     var timed = times.some(function (at) { return at !== null; });
@@ -897,7 +922,7 @@
     // of each line, keyed by atom id — an atom is marked whole, never split.
     function coverage(index) {
       var result = {};
-      var notes = (data.frames[index] && data.frames[index].notes) || [];
+      var notes = (data.slides[index] && data.slides[index].notes) || [];
       linesOf(index).forEach(function (ids, line) {
         var offset = 0;
         ids.forEach(function (id) {
@@ -929,7 +954,7 @@
     // server renders them: the caret beneath its position, or a mark under each column, then
     // the caption.
     function markersOf(index, line, length) {
-      var notes = (data.frames[index] && data.frames[index].notes) || [];
+      var notes = (data.slides[index] && data.slides[index].notes) || [];
       var rows = [];
       notes.forEach(function (note) {
         var last = note.last === null ? note.line : note.last;
@@ -964,8 +989,8 @@
         nodes[id].classList.add("pyro-marked", "pyro-marked-" + covered[id].style);
       });
       code.querySelectorAll(".pyro-marker").forEach(function (row) { row.style.transition = ""; row.style.opacity = ""; });
-      if (label) { label.innerHTML = (data.frames[index] && data.frames[index].label) || ""; label.style.opacity = ""; }
-      var language = (data.frames[index] && data.frames[index].language) || data.language;
+      if (label) { label.innerHTML = (data.slides[index] && data.slides[index].label) || ""; label.style.opacity = ""; }
+      var language = (data.slides[index] && data.slides[index].language) || data.language;
       pre.className = pre.className.replace(/\bpyro-language-\S+/, "pyro-language-" + language);
       return Object.keys(covered).length > 0 || code.querySelector(".pyro-marker") !== null || (label && label.innerHTML !== "");
     }
@@ -978,7 +1003,7 @@
     // new lines, and lines shifting down as lines are inserted above — and STAGGER later the
     // tokens slide along their new rows (H2). Every movement takes MOVE, eased; a half with
     // nothing in it takes no time, and one with no horizontal part has no stagger.
-    var FADE = 750, MOVE = 1000, STAGGER = 300;
+    var FADE = 750, MOVE_DEFAULT = 1000, STAGGER = 300;
     var busy = false;
 
     function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
@@ -996,8 +1021,18 @@
       lines.forEach(function (ids) { ids.forEach(function (id) { present[id] = true; }); });
       var current = {};
       code.querySelectorAll("[data-atom]").forEach(function (span) { current[span.dataset.atom] = span; });
-      var departing = Object.keys(current).filter(function (id) { return !present[id]; });
-      var arriving = Object.keys(present).filter(function (id) { return !current[id]; });
+
+      // The transition says what departs and arrives; whatever the block holds beyond its
+      // say (after a jump) goes or comes too. A fade takes everything out and brings
+      // everything in; an edit is played as a morph for now.
+      var transition = transitionFor(frame, target);
+      var fading = transition.kind === "fade";
+      var MOVE = transition.duration ? transition.duration * 1000 : MOVE_DEFAULT;
+      var departing = transition.departing.filter(function (id) { return current[id]; });
+      var arriving = transition.arriving.filter(function (id) { return present[id] && !current[id]; });
+      Object.keys(current).forEach(function (id) { if (!present[id] && departing.indexOf(id) < 0) departing.push(id); });
+      Object.keys(present).forEach(function (id) { if (!current[id] && arriving.indexOf(id) < 0) arriving.push(id); });
+      if (fading) { departing = Object.keys(current); arriving = Object.keys(present); }
 
       // The target's lines, block-level, from the surviving nodes and the arriving atoms,
       // each followed by its marker rows — unseen when the step is animated, so that the
@@ -1021,9 +1056,9 @@
       function settle() {
         frame = target;
         busy = false;
-        if (counter) counter.textContent = (frame + 1) + " / " + data.frames.length;
+        if (counter) counter.textContent = (frame + 1) + " / " + data.slides.length;
         if (prev) prev.disabled = frame === 0;
-        if (next) next.disabled = frame === data.frames.length - 1;
+        if (next) next.disabled = frame === data.slides.length - 1;
       }
 
       if (!moving) {
@@ -1064,13 +1099,25 @@
         // so the gaps are real. The block itself goes from its old height to its new over
         // the same time, so lines appearing or vanishing open and close it smoothly.
         var first = {};
-        Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
+        if (!fading) Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
         var before = pre.getBoundingClientRect().height;
         departing.forEach(function (id) { current[id].remove(); delete nodes[id]; });
         rebuild();
         arriving.forEach(function (id) { nodes[id].style.transition = "none"; nodes[id].style.opacity = "0"; });
         var after0 = pre.getBoundingClientRect().height;
         var resized = Math.abs(after0 - before) > 0.5;
+
+        // A fade has no move: the block goes to its new height, and the arrivals follow.
+        if (fading) {
+          if (!resized) return Promise.resolve();
+          pre.style.transition = "none";
+          pre.style.height = before + "px";
+          pre.style.overflow = "hidden";
+          void pre.offsetHeight;
+          pre.style.transition = "height " + (MOVE / 2) + "ms ease-in-out";
+          pre.style.height = after0 + "px";
+          return after(MOVE / 2).then(function () { pre.style.transition = ""; pre.style.height = ""; pre.style.overflow = ""; });
+        }
         var moves = [];
         Object.keys(first).forEach(function (id) {
           var span = nodes[id];
@@ -1178,7 +1225,7 @@
     function step(delta) {
       if (busy) return false;
       var target = frame + delta;
-      if (target < 0 || target >= data.frames.length) {
+      if (target < 0 || target >= data.slides.length) {
         if (data.loop && delta > 0) target = 0; else return false;
       }
       show(target, true);
@@ -1188,7 +1235,7 @@
     function stop() { if (timer) { clearTimeout(timer); timer = null; } if (play) play.textContent = "▶"; }
 
     function playing() {
-      var hold = (data.frames[frame] && data.frames[frame].hold) || 1.5;
+      var hold = (data.slides[frame] && data.slides[frame].hold) || 1.5;
       timer = setTimeout(function () {
         if (!step(1)) { stop(); return; }
         var wait = function () { if (busy) setTimeout(wait, 50); else if (timer) playing(); };
@@ -1197,7 +1244,7 @@
       if (play) play.textContent = "⏸";
     }
 
-    function toggle() { if (timer) stop(); else { if (frame === data.frames.length - 1 && !data.loop) show(0, true); playing(); } }
+    function toggle() { if (timer) stop(); else { if (frame === data.slides.length - 1 && !data.loop) show(0, true); playing(); } }
 
     function manual(delta) { timeline.pause(); stop(); step(delta); }
 
