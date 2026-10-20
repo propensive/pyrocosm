@@ -202,7 +202,23 @@ object WebStyles:
         // the data the script reads is not shown.
         + css".pyro-animated { position: relative; outline: none }"
         + css".pyro-animated:focus-visible .pyro-codeblock { box-shadow: 0 0 0 2px var(--pyro-accent) }"
-        + css".pyro-atom { display: inline-block; white-space: pre; transition: opacity 0.75s ease }"
+        + css".pyro-atom { display: inline-block; white-space: pre; border-radius: 2px; text-decoration: underline wavy transparent; transition: opacity 0.75s ease, background-color 0.75s ease, text-decoration-color 0.75s ease }"
+        // A frame's marks, on whole atoms: they fade out before a step and the target's fade
+        // in after it, by the same transition; a marker row beneath a line is a block, as the
+        // lines are, and fades likewise.
+        + css".pyro-marked-erroneous { text-decoration-color: var(--pyro-code-accent-error) }"
+        + css".pyro-marked-caution { text-decoration-color: var(--pyro-tone-warning) }"
+        + css".pyro-marked-highlight { background-color: color-mix(in srgb, var(--pyro-code-fg) 22%, transparent) }"
+        + css".pyro-marked-param { font-style: italic }"
+        + css".pyro-animated .pyro-marker { display: block; transition: opacity 0.75s ease }"
+        + css".pyro-animation-label { margin-left: var(--pyro-space-2); color: var(--pyro-muted); transition: opacity 0.75s ease }"
+        + css".pyro-animation-label:empty { display: none }"
+        // The page's timeline, which the script makes when any frame has a time: a bar at the
+        // foot of the page with play, the clock and a scrubber.
+        + css".pyro-timeline { position: fixed; bottom: var(--pyro-space-4); left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: var(--pyro-space-3); padding: var(--pyro-space-2) var(--pyro-space-4); border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius); background-color: var(--pyro-surface); font-family: var(--pyro-font-label); font-size: var(--pyro-text-small) }"
+        + css".pyro-timeline button { font: inherit; line-height: 1; padding: 0 var(--pyro-space-2); border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius); background-color: transparent; color: inherit; cursor: pointer }"
+        + css".pyro-timeline-clock { font-variant-numeric: tabular-nums; min-width: 5ch }"
+        + css".pyro-timeline input { width: 14rem }"
         // A line of an animated block is a block (an empty one keeps a line's height); the
         // block itself transitions between heights as lines appear and vanish.
         + css".pyro-animated .pyro-line { display: block; min-height: 1.5em }"

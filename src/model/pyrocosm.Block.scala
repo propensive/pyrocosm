@@ -155,36 +155,89 @@ object Block:
       val shown: List[Line] = lines.skip(first).keep(limit - first)
       Code(language, shown, notes.map(_.shifted(lines = first)), first + 1)
 
-  // A code block's animation: identity and placement, never geometry. An `Atom` is a token
-  // with an identity that holds across frames; a `Placement` puts an atom on a line of a
-  // frame (flat, since a repeated TEL field cannot nest); a `Frame` may be captioned and may
-  // say how long it holds when played. The front end measures where each atom is before and
-  // after a step and animates the difference, so an inserted line, a reflowed line and a move
-  // across lines need nothing of the model.
+  // A code block's animation, as an intermediate form between what an author writes and what
+  // a renderer shows: identity, placement and change, never geometry. An `Atom` is a token
+  // with an identity that holds across slides; a `Placement` puts an atom on a line of a
+  // slide; a `Slide` is one complete state of the block — its lines, its annotations (marks
+  // which add to the tokens or change how they are shown, without changing them), its label,
+  // its language, and its timing; and a `Transition` is what happens between two slides —
+  // its kind, its duration, and what departs, arrives, moves and is inserted or removed.
+  // A renderer shows a slide alone, or plays a transition: the browser measures where each
+  // atom is before and after and animates the difference, the terminal shows the first slide.
   case class Atom(id: Text, text: Text, accent: Token.Accent, role: Optional[Token.Role] = Unset)
-  case class Placement(frame: Int, line: Int, atom: Text)
-  // `lines` names the frame's lines in order, by an identity that holds across frames (a
+  case class Placement(slide: Int, line: Int, atom: Text)
+
+  object Slide:
+    // What is said of a slide before it is aligned — `Animation.of` adds the index and the
+    // line names, which alignment decides — and how it is arrived at: the kind of transition
+    // into it, and that transition's duration when the renderer's own will not do.
+    case class Detail
+      ( label:      List[Inline]       = Nil,
+        hold:       Optional[Double]   = Unset,
+        at:         Optional[Double]   = Unset,
+        language:   Optional[Language] = Unset,
+        notes:      List[Note]         = Nil,
+        transition: Transition.Kind    = Transition.Kind.Morph,
+        duration:   Optional[Double]   = Unset )
+
+  // `lines` names the slide's lines in order, by an identity that holds across slides (a
   // line that grew, shrank or moved keeps its id; a new line has a new one), so that a front
-  // end can tell a token joining a line that remains from one reaching a new line.
-  case class Frame
-    ( index: Int,
-      label: List[Inline]    = Nil,
-      hold:  Optional[Double] = Unset,
-      lines: List[Text]      = Nil )
+  // end can tell a token joining a line that remains from one reaching a new line. `hold` is
+  // how long a played animation rests on the slide, in seconds; `at` puts it on the page's
+  // one clock, which a slide without `at` follows by its predecessor's `hold` (1.5 s unless
+  // said) when any slide of its block has one; `language` is the slide's own, the block's
+  // otherwise; and `notes` are its annotations, in the coordinates of its own lines.
+  case class Slide
+    ( index:    Int,
+      label:    List[Inline]       = Nil,
+      hold:     Optional[Double]   = Unset,
+      lines:    List[Text]         = Nil,
+      at:       Optional[Double]   = Unset,
+      language: Optional[Language] = Unset,
+      notes:    List[Note]         = Nil )
+
+  object Transition:
+    // How one slide becomes the next. A morph keeps every token that survives and moves it
+    // to its place, fading out what departs and in what arrives; a fade lets the whole slide
+    // go before the next appears; an edit types the change with a cursor, as an editor would.
+    // A renderer plays what it can — one that cannot play an edit shows it as a morph.
+    enum Kind:
+      case Morph, Fade, Edit
+
+    // An atom on one line of the slide before and another of the slide after, by line name.
+    case class Move(atom: Text, from: Text, to: Text)
+
+  // The change from slide `from` to slide `to`: the atoms which depart, arrive and move
+  // between lines, and the lines removed and inserted, by name; `duration` is in seconds,
+  // the renderer's own when unset. Derived by `Animation.of` from the slides, so that it
+  // never disagrees with them, and so that what a step does is known before it is rendered.
+  case class Transition
+    ( from:      Int,
+      to:        Int,
+      kind:      Transition.Kind       = Transition.Kind.Morph,
+      duration:  Optional[Double]      = Unset,
+      departing: List[Text]            = Nil,
+      arriving:  List[Text]            = Nil,
+      moved:     List[Transition.Move] = Nil,
+      removed:   List[Text]            = Nil,
+      inserted:  List[Text]            = Nil )
 
   object Animation:
-    // The atoms of each frame's lines, aligned across the frames as one sequence of tokens
-    // per frame, the lines' ends among them, by dissonance's `evolve` with no notion of
-    // similarity: a token survives from one frame to the next when the diff keeps it, so the
-    // surviving tokens of any two frames are in the same order in both — a token is removed
-    // and another inserted, never kept and reordered. A line is named by the token that ends
-    // it, so a line remains, however it grew, shrank or moved, exactly when its end survives.
-    def of(frames: List[List[Line]], labels: List[List[Inline]] = Nil): Animation =
+    // The atoms of each slide's lines, aligned across the slides as one sequence of tokens
+    // per slide, the lines' ends among them (every line's, the last included, so that each
+    // has one), by dissonance's `evolve` with no notion of similarity: a token survives from
+    // one slide to the next when the diff keeps it, so the surviving tokens of any two slides
+    // are in the same order in both — a token is removed and another inserted, never kept
+    // and reordered. A line is named by the token that ends it, so a line remains, however it
+    // grew, shrank or moved, exactly when its end survives.
+    // The transition into each slide but the first follows: what the alignment says departs,
+    // arrives and changes line, and which lines go and come.
+    def of(frames: List[List[Line]], details: List[Slide.Detail] = Nil): Animation =
       val break: Token = Token(t"\n", Token.Accent.Unparsed)
 
       val sequences: List[List[Token]] =
         frames.map: (lines: List[Line]) =>
-          lines.map(_.tokens).join(List(break))
+          lines.map(_.tokens).join(List(break)) + List(break)
 
       val evolved: List[Evolution.Atom[Token]] = evolve(sequences).sequence
 
@@ -200,7 +253,7 @@ object Block:
         evolved.zip(ids).filter(_(0).value != break).map: (atom: Evolution.Atom[Token], id: Text) =>
           Atom(id, atom.value.text, atom.value.accent, atom.value.role)
 
-      // Each frame's placements and line names, walking its atoms in sequence: a line's
+      // Each slide's placements and line names, walking its atoms in sequence: a line's
       // tokens are placed on the line so far, and its end names it.
       var placements: List[Placement] = Nil
       var lineNames: List[(Int, Text)] = Nil
@@ -216,26 +269,63 @@ object Block:
               line += 1
             else placements = Placement(f, line, id) :: placements
 
-        lineNames = (f, t"end") :: lineNames   // the last line, which no break ends
-
-      val described: List[Frame] =
+      val described: List[Slide] =
         frames.indexed.map: (_, index: Ordinal) =>
           val names: List[Text] = lineNames.reverse.filter(_(0) == index.n0).map(_(1))
-          Frame(index.n0, labels.at(index).or(Nil), Unset, names)
+          val detail: Slide.Detail = details.at(index).or(Slide.Detail())
+          Slide(index.n0, detail.label, detail.hold, names, detail.at, detail.language, detail.notes)
 
-      Animation(atoms, described, placements.reverse)
+      val placed: List[Placement] = placements.reverse
+
+      // The line, by name, each atom of a slide is on.
+      def lineOf(slide: Slide): Map[Text, Text] =
+        placed.filter(_.slide == slide.index).map: (placement: Placement) =>
+          placement.atom -> slide.lines.skip(placement.line).prim.or(t"?")
+        . to[Map]
+
+      val transitions: List[Transition] =
+        described.indexed.bind: (slide: Slide, index: Ordinal) =>
+          described.skip(index.n0 - 1).prim.lay(Nil): (previous: Slide) =>
+            if index.n0 == 0 then Nil else
+              val before: Map[Text, Text] = lineOf(previous)
+              val after: Map[Text, Text] = lineOf(slide)
+              val ids: List[Text] = atoms.map(_.id)
+              val detail: Slide.Detail = details.at(index).or(Slide.Detail())
+
+              val moved: List[Transition.Move] =
+                ids.bind: (id: Text) =>
+                  val from: Optional[Text] = before.at(id)
+                  val to: Optional[Text] = after.at(id)
+
+                  from.lay(Nil: List[Transition.Move]): (from: Text) =>
+                    to.lay(Nil: List[Transition.Move]): (to: Text) =>
+                      if from == to then Nil else List(Transition.Move(id, from, to))
+
+              List(Transition
+                ( previous.index,
+                  slide.index,
+                  detail.transition,
+                  detail.duration,
+                  ids.filter { (id: Text) => before.defines(id) && !after.defines(id) },
+                  ids.filter { (id: Text) => after.defines(id) && !before.defines(id) },
+                  moved,
+                  previous.lines.filter(!slide.lines.has(_)),
+                  slide.lines.filter(!previous.lines.has(_)) ))
+
+      Animation(atoms, described, placed, transitions)
 
   case class Animation
-    ( atoms:      List[Atom],
-      frames:     List[Frame],
-      placements: List[Placement],
-      autoplay:   Boolean = false,
-      loop:       Boolean = false ):
+    ( atoms:       List[Atom],
+      slides:      List[Slide],
+      placements:  List[Placement],
+      transitions: List[Transition] = Nil,
+      autoplay:    Boolean          = false,
+      loop:        Boolean          = false ):
 
-    // The lines of one frame, as atoms in order.
-    def lines(frame: Int): List[List[Atom]] =
+    // The lines of one slide, as atoms in order.
+    def lines(slide: Int): List[List[Atom]] =
       val byId: Map[Text, Atom] = atoms.map { (atom: Atom) => atom.id -> atom }.to[Map]
-      val placed: List[Placement] = placements.filter(_.frame == frame)
+      val placed: List[Placement] = placements.filter(_.slide == slide)
       val count: Int = placed.map(_.line).maximum.let(_ + 1).or(0)
 
       def recur(line: Int, acc: List[List[Atom]]): List[List[Atom]] =
@@ -415,7 +505,7 @@ enum Block:
   case Rule(side: Block.Side = Block.Side.Between)
   // `start`, when present, is the source line number (from one) of the first line: the lines
   // are then numbered in the margin, as an excerpt of a file is and a sample is not.
-  // `animation`, when present, is the block as a sequence of frames, of which `lines` is the
+  // `animation`, when present, is the block as a sequence of slides, of which `lines` is the
   // first, so a renderer that cannot animate shows a correct block.
   case Code
     ( language:  Language,
