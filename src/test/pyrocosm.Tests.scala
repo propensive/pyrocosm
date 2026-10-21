@@ -318,6 +318,24 @@ tags:
 
     val animatedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, animation)
 
+    test(m"the terminal renders an animated block as its slides in sequence"):
+      val rows: List[Text] = TerminalRenderer().block(animatedBlock, 60).map(_.plain)
+      (rows.count(_.starts(t"step ")), rows.has(t"step 3 of 3"), rows.has(t"valx=y"))
+    . assert(_ == (3, true, true))
+
+    test(m"a justifying renderer spreads every row but a paragraph's last to the width"):
+      val prose: Text = t"The quick brown fox jumps over the lazy dog, and then the dog, being lazy, lies down again in the sun to sleep."
+      val rows: List[Text] = TerminalRenderer(justify = true).block(Block.paragraph(prose), 40).map(_.plain)
+      val body: List[Text] = rows.keep(rows.size - 1)
+      (rows.size > 2, body.all(_.length == 40), rows.last.lay(0)(_.length) <= 40)
+    . assert(_ == (true, true, true))
+
+    test(m"a renderer not justifying leaves rows ragged"):
+      val prose: Text = t"The quick brown fox jumps over the lazy dog, and then the dog, being lazy, lies down again in the sun to sleep."
+      val rows: List[Text] = TerminalRenderer().block(Block.paragraph(prose), 40).map(_.plain)
+      rows.keep(rows.size - 1).all(_.length == 40)
+    . assert(_ == false)
+
     test(m"an animated code block round-trips as TEL text"):
       animatedBlock.in[Tel].show.read[Tel].as[Block]
     . assert(_ == animatedBlock)

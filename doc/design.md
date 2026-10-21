@@ -587,6 +587,11 @@ one MCP endpoint aggregating every tool's.
   toggles it, and at each tick every timed block shows the last slide due, scrolled into
   view; stepping a block by hand pauses the clock. Not yet: the edit transition played, and
   the terminal stepping slides.
+- **M6f The terminal's page** (done, first cut): `TerminalRenderer(justify = true)` spreads
+  each wrapped row of a paragraph to the width but a paragraph's last and any short by more
+  than a third, as Fuel's `fuel show` wants a page set; off by default, since a log or a
+  board reads better ragged. An animated block, which a terminal cannot step, is its slides
+  in sequence, each under `step n of m` and its label, with its own notes.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,
