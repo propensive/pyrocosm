@@ -79,15 +79,22 @@ is an edge detail of the web frontend. Several model shapes follow from being se
 ### Inline
 
 `Textual`, `Phrase`, `Emphasis` (one kind), `Toned(tone, …)`, `Code(language, tokens)`,
-`Keystroke(keypress)`, `Link(External | Internal(action), …)`, `Math`, `Symbol(glyph)`,
-`Reference(id)`, `Amount(value, units)`, `Figure(value, precision)`, `Break`.
+`Keystroke(keypress)`, `Link(External | Internal(action) | Local(path, fragment), …)`, `Math`,
+`Symbol(glyph)`, `Reference(id)`, `Amount(value, units)`, `Figure(value, precision)`, `Break`.
+
+A `Local` destination is a page of the application by its root-absolute path, and a place on
+it: stable across processes, as an action's handle is not, so it can be bookmarked and opened
+directly. A `Token` may carry one too, so that an identifier in a signature links to what it
+names; an `Item` and a `TreeNode` may lead to one instead of acting.
 
 `Tone` (Success, Failure, Warning, Muted, Accent, Info) and `Glyph` are the semantic hooks that
 replace direct use of colours, weights and box characters.
 
 ### Block
 
-`Paragraph`, `Heading`, `Listing` (items may carry an `Action`), `Quotation`, `Rule`, `Code`
+`Paragraph`, `Heading` (with an optional `id`, an anchor a local destination's fragment
+targets; a `Row` may have one too), `Listing` (items may carry an `Action` or a destination),
+`Quotation`, `Rule`, `Code`
 (lines of tokens, `Note` marks — a segment, across lines if need be, or a zero-width *caret* at a
 position, each with a style and a caption of phrasing — and `start`, the source line number of
 the first line, which numbers the lines), `Diagnostic` (a tone, a `Location`, a message, an
@@ -361,9 +368,20 @@ front-end answers by pressing the activity's own action and sending the browser 
 and the menu bar lists the tools running, as they come and go. The terminal publishes too, and
 shows only its own activities: it is one run's view, not a dashboard.
 
+**Pages.** The web front-end serves a page at *any* path a browser navigates to (one the
+fallback declines, and whose `Accept` asks for HTML), telling the session where it is with
+`Event.Located(path)` *before* rendering, so the first paint is the right content and a
+`#fragment` finds its anchor; a click on a local link, and the browser's back and forward,
+send the same event over the socket while the script keeps the address bar current
+(`pushState`, keeping the query which names the session). The application answers a `Located`
+as it answers a press — by setting its cells — and decides what a path it does not know shows.
+In `run` mode every tab shares the one session, so a `Located` moves them all, as a press
+does; a tool whose pages are per tab (fuel) uses `serve`. A `Local` destination travels over
+the swarm as an external URL, as an internal one does.
+
 **Later**: one HTTP server serving every tool's front-end under one origin (every link is
-root-absolute now, so that is a prefix on the page and `Origin.url` becoming `/<tool>/`), and
-one MCP endpoint aggregating every tool's.
+root-absolute now, so that is a prefix on the page — `HtmlRenderer.href` is the one seam — and
+`Origin.url` becoming `/<tool>/`), and one MCP endpoint aggregating every tool's.
 
 ## Roadmap
 

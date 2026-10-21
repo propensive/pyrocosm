@@ -27,6 +27,36 @@
     return meta ? "?session=" + encodeURIComponent(meta.getAttribute("content")) : "";
   }
 
+  // A local destination: a page of this application. Going to one tells the session where the
+  // tab now is and lets it change the panels, so the page is not reloaded; the address bar
+  // follows (keeping the query, which names the session), and the fragment is scrolled to once
+  // the patch which contains it has landed. Back and forward replay the same.
+  var pendingFragment = "";
+
+  function navigate(href, push) {
+    var url;
+    try { url = new URL(href, location.href); } catch (error) { return false; }
+    if (url.origin !== location.origin) return false;
+    var moved = url.pathname !== location.pathname;
+    if (push) history.pushState({}, "", url.pathname + location.search + url.hash);
+    if (moved) {
+      pendingFragment = url.hash ? url.hash.substring(1) : "";
+      send({ kind: "locate", id: "", text: url.pathname, caret: 0, index: 0 });
+    } else if (url.hash) {
+      var target = document.getElementById(url.hash.substring(1));
+      if (target) target.scrollIntoView();
+    }
+    return true;
+  }
+
+  function settle() {
+    if (!pendingFragment) return;
+    var target = document.getElementById(pendingFragment);
+    if (target) { target.scrollIntoView(); pendingFragment = ""; }
+  }
+
+  window.addEventListener("popstate", function () { navigate(location.href, false); });
+
   // A panel's drawings outlive its repaints: a figure keeps its holder current by its own
   // patches, so the holder the page already has is carried into the panel's new content in
   // place of the (identical or older) copy rendered there, and a transition under way is not
@@ -149,6 +179,7 @@
         restoreNodes(element, nodes);
         if (follow) element.scrollTop = element.scrollHeight;
         wire(element);
+        settle();
         if (/-decoration$/.test(patch.id)) {
           var editor = document.getElementById(patch.id.replace(/-decoration$/, ""));
           if (editor && editor.classList.contains("pyro-editor")) decorate(editor, element);
@@ -1286,6 +1317,17 @@
         var url = new URL(link.getAttribute("href"), location.href);
         if (url.hostname === "localhost" && location.hostname !== "localhost") { url.hostname = location.hostname; link.setAttribute("href", url.toString()); }
       } catch (error) { console.error(error); }
+    });
+
+    // A plain left click goes through the session; any other (a middle click, a modifier) is
+    // the browser's, from the anchor's real href.
+    root.querySelectorAll("a.pyro-locate").forEach(function (link) {
+      if (link.dataset.pyroWired) return;
+      link.dataset.pyroWired = "1";
+      link.addEventListener("click", function (event) {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (navigate(link.getAttribute("href"), true)) event.preventDefault();
+      });
     });
 
     root.querySelectorAll(".pyro-action, button.pyro-button").forEach(function (element) {

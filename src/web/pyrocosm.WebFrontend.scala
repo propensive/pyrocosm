@@ -167,6 +167,10 @@ extends pyrocosm.Frontend:
 
     // Presses an action of this interface, as a click on its element would.
     def press(action: Action): Unit = handle(Event.Pressed(action))
+
+    // Tells the application which page a tab opened or navigated to. The application answers,
+    // as to a press, by setting its cells; `/` is a page like any other.
+    def locate(path: Text): Unit = handle(Event.Located(path))
     private val tabs: juc.ConcurrentHashMap[Int, Tab] = juc.ConcurrentHashMap()
     private val published: Published = Published()
 
@@ -326,6 +330,11 @@ extends pyrocosm.Frontend:
               val decoration = field.decoration()
               tell(connection, Patch(t"verdict", field.input.id, Verdict(decoration.version, decoration.incomplete).in[Json].show))
 
+          // A click on a local link, or the browser's back and forward: the path is the
+          // application's own, so nothing checks it.
+          case t"locate" =>
+            handle(Event.Located(incoming.text))
+
           case t"toggle" =>
             interface.toggles.seek(_.toggle.id == incoming.id).let: toggle =>
               toggle.state() = !toggle.state()
@@ -429,11 +438,23 @@ extends pyrocosm.Frontend:
     candidates.iterator.map { session => WebFrontend.locate(session.interface.activities(), id).let((session, _)) }
     . collectFirst { case found: (Session, Action) @unchecked => found }.getOrElse(Unset)
 
+  private def navigating(request: Http.Request): Boolean =
+    request.textHeaders.exists { header => header.key.lower == t"accept" && header.value.contains(t"text/html") }
+
   private def serving(): Unit =
     presence.web() = port
 
     val service = SocketServer(port).handle:
       val path: Text = request.target.cut(t"?").at(Prim).or(t"/")
+
+      // The page at a path: the session is told where it is before the page is rendered, so
+      // that the first paint shows the right content, and the browser's own scroll to a
+      // fragment finds its target.
+      def page(path: Text): Http.Response =
+        sessionFor(request.target, fresh = true).lay(Http.Response(Http.NotFound)(t"No session")): session =>
+          session.locate(path)
+          val html: Text = t"<!DOCTYPE html>${session.page.markup.show}"
+          Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(html.in[Data]))
 
       path match
         // A link from another tool's card: presses the activity's action here, and sends the
@@ -447,10 +468,7 @@ extends pyrocosm.Frontend:
             val target: Text = if shared.present then t"/" else t"/?session=${session.id}"
             Http.Response(Http.SeeOther, location = target)()
 
-        case t"/" | t"/index.html" =>
-          sessionFor(request.target, fresh = true).lay(Http.Response(Http.NotFound)(t"No session")): session =>
-            val html: Text = t"<!DOCTYPE html>${session.page.markup.show}"
-            Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(html.in[Data]))
+        case t"/" | t"/index.html" => page(t"/")
 
         case t"/pyrocosm.js" =>
           Http.Ok(List(Http.Header(t"content-type", t"text/javascript; charset=utf-8")), Http.Body.Fixed(WebFrontend.script.in[Data]))
@@ -481,9 +499,16 @@ extends pyrocosm.Frontend:
               session.attach(id, ws.channel)
               ws.asInstanceOf[Websocket[Message, Unit]]
 
+        // Any other path is the fallback's; declined, it is a page of the application if a
+        // browser is navigating to it (which the `Accept` header says), as a local destination
+        // which was bookmarked, or reloaded, or opened in a new tab. What is not a page is for
+        // the application to say, in the content it shows. A request for anything else — a
+        // favicon, a crawler — is not found, and opens no session.
         case _ =>
           val request0: Http.Request = caps.unsafe.unsafeAssumePure(summon[Http.Request])
-          fallback(request0).or(Http.Response(Http.NotFound)(t"Not found"))
+
+          fallback(request0).or:
+            if navigating(request0) then page(path) else Http.Response(Http.NotFound)(t"Not found")
 
     try stopped.await()
     finally
