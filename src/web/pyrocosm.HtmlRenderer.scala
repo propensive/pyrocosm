@@ -102,11 +102,30 @@ class HtmlRenderer():
 
   def phrase(content: List[Inline]): Html of Phrasing = Html.Fragment(content.map(inline1)*)
 
+  // A linked token is an anchor carrying the token's own classes, so that it stays one element
+  // and the stylesheet and the editor see it as any other token.
   def token(token: Token): Html of Phrasing =
     val classes: List[Name[CssClass]] =
       val extra: List[Name[CssClass]] = if token.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
       accentClass(token.accent) :: extra
-    Span(`class` = classes)(token.text)
+
+    token.link.lay[Html of Phrasing](Span(`class` = classes)(token.text)): (link: Inline.Destination) =>
+      link match
+        case Inline.Destination.External(url)    => A(href = url, `class` = classes)(token.text)
+        case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = classes :+ cls(t"pyro-action"))(token.text)
+        case local: Inline.Destination.Local     => A(href = href(local), `class` = classes :+ cls(t"pyro-locate"))(token.text)
+
+  // The `href` of a local destination: its path, and its fragment. The one place a prefix would
+  // be put before every page of a tool, were several tools to share an origin.
+  private def href(local: Inline.Destination.Local): Text =
+    local.fragment.lay(local.path) { fragment => t"${local.path}#$fragment" }
+
+  // A label which leads somewhere: an anchor around it for a local or external destination, an
+  // action's anchor for an internal one.
+  private def lead(destination: Inline.Destination, label: Html of Phrasing): Html of Phrasing = destination match
+    case Inline.Destination.External(url)    => A(href = url, `class` = cls(t"pyro-link"))(label)
+    case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = List(cls(t"pyro-link"), cls(t"pyro-action")))(label)
+    case local: Inline.Destination.Local     => A(href = href(local), `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(label)
 
   def tokens(tokens: List[Token]): Html of Phrasing = Html.Fragment(tokens.map(token)*)
 
@@ -125,9 +144,7 @@ class HtmlRenderer():
     case Inline.Icon(source, alt) =>
       Img(src = source, alt = alt, title = alt, `class` = cls(t"pyro-icon"))
 
-    case Inline.Link(destination, content) => destination match
-      case Inline.Destination.External(url)   => A(href = url, `class` = cls(t"pyro-link"))(phrase(content))
-      case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = List(cls(t"pyro-link"), cls(t"pyro-action")))(phrase(content))
+    case Inline.Link(destination, content) => lead(destination, phrase(content))
 
     case Inline.Amount(value, units) =>
       val (number, unit) = Amounts.scaled(value, units)
@@ -163,11 +180,16 @@ class HtmlRenderer():
   def block(block: Block): Html of Flow = block match
     case Block.Paragraph(content) => P(phrase(content))
 
-    case Block.Heading(level, content) => level match
+    case Block.Heading(level, content, id) => id.lay[Html of Flow](level match
       case 1 => H1(phrase(content))
       case 2 => H2(phrase(content))
       case 3 => H3(phrase(content))
-      case _ => H4(phrase(content))
+      case _ => H4(phrase(content))):
+      id => level match
+        case 1 => H1(id = id)(phrase(content))
+        case 2 => H2(id = id)(phrase(content))
+        case 3 => H3(id = id)(phrase(content))
+        case _ => H4(id = id)(phrase(content))
 
     case Block.Listing(ordered, items) =>
       val entries = items.map(item)
@@ -269,13 +291,23 @@ class HtmlRenderer():
 
       Pre(`class` = List(cls(t"pyro-output"), if error then cls(t"pyro-output-stderr") else cls(t"pyro-output-stdout")))(rows*)
 
+  // An item with a destination and no action is a real link (which opens in a new tab as a
+  // link does): the anchor wraps its one paragraph's phrasing, since an anchor cannot hold
+  // blocks; an item of several blocks leads from its first paragraph.
   private def item(item: Block.Item): Html of "li" =
-    item.action.lay(Li(blocks(item.content))) { action => Li(id = action.id, `class` = cls(t"pyro-action"))(blocks(item.content)) }
+    item.action.lay(item.destination.lay(Li(blocks(item.content))) { destination => Li(`class` = cls(t"pyro-lead"))(leading(destination, item.content)*) }):
+      action => Li(id = action.id, `class` = cls(t"pyro-action"))(blocks(item.content))
+
+  private def leading(destination: Inline.Destination, content: List[Block]): List[Html of Flow] = content match
+    case Block.Paragraph(phrasing) :: rest => P(lead(destination, phrase(phrasing))) :: rest.map(block)
+    case other                             => other.map(block)
 
   // A collapsible node (one with `open` and children) is a `<details>` whose summary is its
   // label, named by its path for the script; any other node is its label and its children.
   private def treeNode(node: Block.TreeNode, path: Text): Html of "li" =
-    val label: Html of Phrasing = node.tone.lay(phrase(node.label)) { tone => Span(`class` = toneClass(tone))(phrase(node.label)) }
+    val toned: Html of Phrasing = node.tone.lay(phrase(node.label)) { tone => Span(`class` = toneClass(tone))(phrase(node.label)) }
+    val label: Html of Phrasing =
+      if node.action.present then toned else node.destination.lay(toned) { destination => lead(destination, toned) }
     val children: Html of Flow =
       if node.children.nil then Html.Fragment[Flow]()
       else Ul(node.children.indexed.map { (child: Block.TreeNode, index: Ordinal) => treeNode(child, t"$path.${index.n0}") }*)
@@ -512,7 +544,8 @@ class HtmlRenderer():
           Td(`class` = columnClasses(column))(row.cells.at(index).lay(Html.Fragment[Phrasing]()) { cell => phrase(cell.content) })
         }
         val classes: List[Name[CssClass]] = row.tone.lay(Nil: List[Name[CssClass]]) { tone => List(toneClass(tone)) }
-        row.action.lay(Tr(`class` = classes)(cells*)) { action => Tr(id = action.id, `class` = cls(t"pyro-action") :: classes)(cells*) }
+        row.action.lay(row.id.lay(Tr(`class` = classes)(cells*)) { id => Tr(id = id, `class` = classes)(cells*) }):
+          action => Tr(id = action.id, `class` = cls(t"pyro-action") :: classes)(cells*)
       }*)
 
     val captioned: List[Html of "caption"] = caption.lay(Nil: List[Html of "caption"]) { caption => List(Caption(phrase(caption))) }
@@ -668,6 +701,9 @@ class HtmlRenderer():
 
       case Inline.Destination.Internal(action) if origin.absent =>
         A(href = t"#", id = id, `class` = classes :+ cls(t"pyro-action"), `data-action` = action.id)(body)
+
+      case local: Inline.Destination.Local if origin.absent =>
+        A(href = href(local), id = id, `class` = classes :+ cls(t"pyro-locate"))(body)
 
       case _ =>
         Div(id = id, `class` = classes)(body)

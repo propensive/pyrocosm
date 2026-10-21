@@ -114,6 +114,11 @@ object WebStyles:
         + css"code.pyro-code, code.pyro-reference, .pyro-figure { font-size: var(--pyro-text-inline) }"
         + css"a { color: var(--pyro-link); text-decoration-thickness: 1px; text-underline-offset: 0.15em }"
         + css"a:hover { color: var(--pyro-tone-accent) }"
+        // A linked token keeps its token's colour, and shows that it leads somewhere only when
+        // pointed at; an anchor target clears the masthead when scrolled to.
+        + css"code a.pyro-locate, .pyro-codeblock a.pyro-locate { color: inherit; text-decoration: none }"
+        + css"code a.pyro-locate:hover, .pyro-codeblock a.pyro-locate:hover { text-decoration: underline dotted }"
+        + css"[id] { scroll-margin-top: var(--pyro-space-6) }"
         + css"h1, h2, h3, h4 { font-family: var(--pyro-font-title); font-weight: 400; line-height: 1.25; letter-spacing: 0.01em; margin: 0 0 var(--pyro-space-3) 0; color: var(--pyro-title) }"
         + css"h1 { font-size: 2.45rem } h2 { font-size: 1.75rem } h3 { font-size: 1.575rem } h4 { font-size: 1.4rem }"
         + css"h2:not(:first-child) { margin-top: var(--pyro-space-6) } h3:not(:first-child), h4:not(:first-child) { margin-top: var(--pyro-space-5) }"

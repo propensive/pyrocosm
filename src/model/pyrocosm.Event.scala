@@ -35,4 +35,5 @@ enum Event:
   case Toggled(toggle: Toggle, state: Boolean)
   case Key(keypress: Keypress)                          // a declared shortcut, or an unclaimed key in the terminal
   case Resized(columns: Int, rows: Int)
+  case Located(path: Text)                              // the page the browser opened or navigated to, by its path; the web only
   case Closed

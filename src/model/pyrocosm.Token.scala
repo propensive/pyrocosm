@@ -132,7 +132,13 @@ object Token:
 
       place(Nil, cut, 0)
 
-case class Token(text: Text, accent: Token.Accent, role: Optional[Token.Role] = Unset)
+// A token may link, as an identifier in a signature links to the page which documents it; a
+// renderer without links shows it as any other token.
+case class Token
+  ( text:   Text,
+    accent: Token.Accent,
+    role:   Optional[Token.Role]         = Unset,
+    link:   Optional[Inline.Destination] = Unset )
 
 // The language of a piece of code, which decides how it was tokenised and how it is labelled.
 // Open, so that an application can name a language the model has never heard of.
