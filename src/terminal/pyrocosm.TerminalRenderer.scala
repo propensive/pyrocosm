@@ -104,7 +104,10 @@ object TerminalRenderer:
     case Glyph.Winner  => Tone.Warning
     case _             => Unset
 
-class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
+// `justify` spreads each wrapped line of a paragraph to the width, as a typeset page does,
+// but for a paragraph's last line and any line whose slack would open rivers; off by default,
+// since a log or a board reads better ragged.
+class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val justify: Boolean = false)
   ( using metric:      Text is Measurable,
           hyphenation: Hyphenation,
           tableStyle:  TableStyle,
@@ -196,7 +199,28 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
         case other =>
           current = other :: current
 
-    (current.reverse :: done).reverse.bind { (line: List[Inline]) => Flow.wrap(phrase(line), width.max(1)) }
+    (current.reverse :: done).reverse.bind: (line: List[Inline]) =>
+      val rows: List[Teletype] = Flow.wrap(phrase(line), width.max(1)).to[List]
+      if !justify then rows else
+        rows.indexed.map: (row: Teletype, index: Ordinal) =>
+          if index.n0 == rows.size - 1 then row else justified(row, width)
+
+  // A row spread to `width` by widening its gaps evenly, the extra columns going to the
+  // leftmost gaps; a row with no gap, or short by more than a third of the width, is left as
+  // it is.
+  private def justified(row: Teletype, width: Int): Teletype =
+    val words: List[Teletype] = row.cut(t" ").filter(_.length > 0)
+    val gaps: Int = words.size - 1
+    val slack: Int = width - row.length
+
+    if gaps <= 0 || slack <= 0 || slack > width/3 then row else
+      val base: Int = slack/gaps
+      val extra: Int = slack%gaps
+
+      words.indexed.bind: (word: Teletype, index: Ordinal) =>
+        if index.n0 == gaps then List(word)
+        else List(word, Teletype(t" "*(1 + base + (if index.n0 < extra then 1 else 0))))
+      . fold(blank)(_ + _)
 
   private def indented(lines: List[Teletype], prefix: Teletype, continuation: Teletype): List[Teletype] =
     lines.indexed.map { (line: Teletype, index: Ordinal) => (if index.n0 == 0 then prefix else continuation).append(line) }
@@ -255,8 +279,21 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default)
           case Block.Side.Between => if ascii then t"-" else t"─"
         List(faint(Teletype(rule*width)))
 
-      case Block.Code(_, lines, notes, start, _) =>
-        code(lines, notes, start, width)
+      // An animated block is its slides in sequence, since a terminal cannot step them: each
+      // under a marker of its place and its label, with its own notes.
+      case Block.Code(_, lines, notes, start, animation) =>
+        animation.lay(code(lines, notes, start, width)): (animation: Block.Animation) =>
+          val count: Int = animation.slides.size
+
+          animation.slides.indexed.bind: (slide: Block.Slide, index: Ordinal) =>
+            val rows: List[Block.Line] =
+              animation.lines(index.n0).map: (atoms: List[Block.Atom]) =>
+                Block.Line(atoms.map { (atom: Block.Atom) => Token(atom.text, atom.accent, atom.role) })
+
+            val place: Teletype = faint(Teletype(t"step ${(index.n0 + 1).show} of ${count.show}"))
+            val heading: Teletype = if slide.label.nil then place else e"$place  ${bold(phrase(slide.label))}"
+            val separator: List[Teletype] = if index.n0 == 0 then Nil else List(blank)
+            separator + (heading :: code(rows, slide.notes, Unset, width))
 
       case Block.Table(columns, rows, caption) =>
         table(columns, rows, caption, width, selected)
