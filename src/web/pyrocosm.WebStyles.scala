@@ -171,6 +171,11 @@ object WebStyles:
         + css".pyro-connection { display: inline-flex; align-items: center; gap: var(--pyro-space-2); margin-left: auto; padding: 0.3rem 0.75rem; border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); font-size: var(--pyro-text-small); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); background-color: var(--pyro-bg) }"
         + css".pyro-connection::before { content: ''; width: 0.5em; height: 0.5em; border-radius: 50%; background-color: currentcolor }"
         + css".pyro-connection.pyro-online { color: var(--pyro-tone-success) } .pyro-connection.pyro-offline { color: var(--pyro-tone-warning) }"
+        // The mode button, beside the connection indicator and in its shape; the light page's
+        // gradient is off in the dark mode, whose page is one colour.
+        + css".pyro-mode { display: inline-flex; align-items: center; padding: 0.3rem 0.75rem; border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); background-color: var(--pyro-bg); cursor: pointer }"
+        + css".pyro-mode:hover { color: var(--pyro-fg); border-color: var(--pyro-fg) }"
+        + css"[data-mode='dark'] body { background-image: none }"
         + css".pyro-toolbar { list-style: none; gap: var(--pyro-space-2) var(--pyro-space-3); padding-top: var(--pyro-space-3); padding-bottom: var(--pyro-space-3); border-top: 1px solid var(--pyro-border) }"
         + css".pyro-toolbar > li { margin: 0; display: flex; align-items: center }"
 

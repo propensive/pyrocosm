@@ -913,6 +913,19 @@ tags:
       html.block(rich).show.contains(t"""<tr id="${run.id}" class="pyro-action pyro-tone-success">""")
     . assert(_ == true)
 
+    test(m"the stylesheet carries the three modes' colours"):
+      val css: Text = WebTheme.Ember.variables.show
+      (css.contains(t":root {"), css.contains(t"""[data-mode="light"] {"""), css.contains(t"""[data-mode="dark"] {"""), css.contains(t"--pyro-code-bg: #1b0121"), css.contains(t"--pyro-code-bg: #bce0dc"), css.contains(t"--pyro-bg: #0e1729"))
+    . assert(_ == (true, true, true, true, true, true))
+
+    test(m"a light mode's code accents keep their hue and read against the light ground"):
+      val ground: Chroma = WebTheme.Ember.lightCodeBackground
+      Token.Accent.values.foldLeft(true): (acc, accent) =>
+        val original: Chroma = WebTheme.Ember.codeAccent(accent)
+        val adapted: Chroma = WebTheme.Ember.lightCodeAccent(accent)
+        acc && WebTheme.contrast(adapted, ground) >= 4.5 && (WebTheme.contrast(original, ground) >= 4.5 || adapted != original)
+    . assert(_ == true)
+
     test(m"a tone renders as its class"):
       html.phrase(List(Inline.Toned(Tone.Failure, Inline.text(t"no")))).show
     . assert(_ == t"""<span class="pyro-tone-failure">no</span>""")
@@ -1304,7 +1317,7 @@ tags:
     val stylesheet: Text = WebStyles.css(WebTheme.default).show
 
     test(m"the stylesheet declares the palette as custom properties"):
-      stylesheet.contains(t"--pyro-bg: #f5f5f7") && stylesheet.contains(t"--pyro-tone-accent: #d9480f") && stylesheet.contains(t"--pyro-on-accent: #ffffff") && stylesheet.contains(t"--pyro-code-bg: #16131f") && stylesheet.contains(t"--pyro-code-accent-keyword: #ff6633") && stylesheet.contains(t"--pyro-button: #f5c518") && stylesheet.contains(t"--pyro-title: #120b08") && stylesheet.contains(t"--pyro-menubar: #16131f") && stylesheet.contains(t"--pyro-on-menubar: #ffffff")
+      stylesheet.contains(t"--pyro-bg: #f5f5f7") && stylesheet.contains(t"--pyro-tone-accent: #d9480f") && stylesheet.contains(t"--pyro-on-accent: #ffffff") && stylesheet.contains(t"--pyro-code-bg: #1b0121") && stylesheet.contains(t"--pyro-code-accent-keyword: #ff6633") && stylesheet.contains(t"--pyro-button: #f5c518") && stylesheet.contains(t"--pyro-title: #120b08") && stylesheet.contains(t"--pyro-menubar: #16131f") && stylesheet.contains(t"--pyro-on-menubar: #ffffff")
     . assert(_ == true)
 
     test(m"another theme is another root block"):
