@@ -237,7 +237,8 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
             ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
               Div(id = t"pyro-activities", `class` = cls(t"pyro-activities"))(renderer.activities(interface.activities())),
               Div(id = t"pyro-activities-remote", `class` = List(cls(t"pyro-activities"), cls(t"pyro-activities-remote")))(renderer.remoteActivities(presence.remote())) ),
-          Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
+          Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting"),
+          Button(id = t"pyro-mode", `type` = t"button", `class` = cls(t"pyro-mode"), title = t"Light, dark or mixed")(t"mixed") )
 
     val items = toolbarItems
     if items.nil then brand else Html.Fragment(brand, Menu(`class` = cls(t"pyro-toolbar"))(items*))
@@ -259,7 +260,12 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
         ( Link.Preconnect(href = t"https://fonts.googleapis.com"),
           Link.Preconnect(href = t"https://fonts.gstatic.com", crossorigin = Crossorigin.Anonymous) )
 
-    Html.Fragment[Metadata](fonts, Script(src = t"/pyrocosm.js", defer = true), named, super.head)
+    // The mode the reader chose (or the system's, failing one) is set before the first
+    // paint, so a dark page does not flash light.
+    val mode: Html of Metadata =
+      Script(t"document.documentElement.dataset.mode = localStorage.getItem('pyro-mode') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'mixed');")
+
+    Html.Fragment[Metadata](fonts, mode, Script(src = t"/pyrocosm.js", defer = true), named, super.head)
 
   // The fonts' import first, as CSS requires; then graffiti's rules; then this page's own.
   protected override def styles: Css = WebStyles.fonts + super.styles + WebStyles.rules(theme)
