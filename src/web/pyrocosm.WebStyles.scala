@@ -281,7 +281,7 @@ object WebStyles:
         + css".pyro-disclosure { margin: 0 0 var(--pyro-space-4) 0 } .pyro-disclosure summary { cursor: pointer; list-style: none; padding: var(--pyro-space-1) 0 }"
         + css".pyro-disclosure summary:hover { color: var(--pyro-tone-accent) } .pyro-disclosure[open] > summary { margin-bottom: var(--pyro-space-2) }"
         + css".pyro-disclosure summary::-webkit-details-marker, .pyro-node > summary::-webkit-details-marker { display: none }"
-        + css".pyro-disclosure summary::before, .pyro-node > summary::before { content: '◢'; display: inline-block; width: 1.25em; font-size: 1.1em; line-height: 1; text-align: center; color: var(--pyro-muted); transform: rotate(-45deg); transition: transform 120ms ease }"
+        + css".pyro-disclosure summary::before, .pyro-node > summary::before { content: '◢'; display: inline-block; width: 1.25em; font-size: 0.55em; vertical-align: 0.15em; line-height: 1; text-align: center; color: var(--pyro-muted); transform: rotate(-45deg); transition: transform 120ms ease }"
         + css".pyro-disclosure[open] > summary::before, .pyro-node[open] > summary::before { transform: rotate(45deg) }"
         + css".pyro-disclosure summary:hover::before { color: var(--pyro-tone-accent) }"
         // Each level of a tree indents by 1.5em: the marker's width and a little more.
@@ -289,7 +289,7 @@ object WebStyles:
         + css".pyro-tree { padding-left: 0; border-left: 0; margin: 0 0 var(--pyro-space-4) 0 }"
         + css".pyro-tree li { padding-left: 1.25em }"
         + css".pyro-node > summary { cursor: pointer; list-style: none; padding: var(--pyro-space-1) 0 }"
-        + css".pyro-node > summary::before { margin-left: -1.25em }"
+        + css".pyro-node > summary::before { margin-left: -2.273em }"
         + css".pyro-node > summary:hover { color: var(--pyro-tone-accent) } .pyro-node > summary:hover::before { color: var(--pyro-tone-accent) }"
         + css".pyro-graph { list-style: none; padding: 0; margin: 0 0 var(--pyro-space-4) 0 } .pyro-arrow { color: var(--pyro-muted) }"
         + css".pyro-listing:last-child, .pyro-record:last-child, .pyro-record-section:last-child, .pyro-notice:last-child, .pyro-tree:last-child, .pyro-graph:last-child, .pyro-disclosure:last-child, .pyro-quotation:last-child { margin-bottom: 0 }"
