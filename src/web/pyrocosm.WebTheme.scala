@@ -311,8 +311,7 @@ object WebTheme:
       case Token.Accent.Error    => codeError
       case Token.Accent.Unparsed => codeText
 
-  // Ember's dark mode: the same accents, brightened, on a deep blue page, with code on the
-  // same plum ground as the light page carries.
+  // Ember's dark mode: the same accents, brightened, on a deep blue page, with code on black.
   object Night extends WebTheme:
     private val abyss = Chroma(0x0e1729)
     private val deep = Chroma(0x172238)
@@ -370,7 +369,7 @@ object WebTheme:
       case Token.Accent.Unparsed => pale
       case Token.Accent.Command  => rust
 
-    override def codeBackground: Chroma = Ember.codeBackground
+    override def codeBackground: Chroma = Chroma(0x000000)   // full black on the dark page
     override def codeForeground: Chroma = Ember.codeForeground
     override def codeAccent(accent: Token.Accent): Chroma = Ember.codeAccent(accent)
     override def traceAccents: List[Chroma] = List(crimson, rust, gold, amber, leaf)
