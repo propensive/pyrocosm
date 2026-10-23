@@ -184,7 +184,7 @@ terminal *drops* at narrow widths the web *collapses*.
 
 One stylesheet, with the palette as CSS custom properties: `WebTheme.Ember` (the default: a
 light, warm page with flame accents) or `WebTheme.SolarizedDark`, the terminal's colours. The
-type is Marcellus for titles, Inter for text and IBM Plex Mono for code, from Google Fonts with
+type is Marcellus for titles, Yantramanav for text and Roboto Mono for code and labels, from Google Fonts with
 system fallbacks; text is one size but for small tracked labels and code. The spacing, radii,
 measures and shadows are custom properties too (`--pyro-space-*`, `--pyro-measure`), so every
 rule names a step of the scale. The masthead and its toolbar of global controls span the page;

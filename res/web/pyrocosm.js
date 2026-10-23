@@ -57,6 +57,29 @@
 
   window.addEventListener("popstate", function () { navigate(location.href, false); });
 
+  // The page's mode — light, dark or mixed — kept by the browser and cycled by the masthead's
+  // button; the head applied the kept one before the first paint.
+  var modes = ["light", "dark", "mixed"];
+
+  function applyMode(mode) {
+    document.documentElement.dataset.mode = mode;
+    var button = document.getElementById("pyro-mode");
+    if (button) button.textContent = mode;
+  }
+
+  function wireMode() {
+    var button = document.getElementById("pyro-mode");
+    if (!button || button.dataset.pyroWired) return;
+    button.dataset.pyroWired = "1";
+    applyMode(document.documentElement.dataset.mode || "mixed");
+    button.addEventListener("click", function () {
+      var current = document.documentElement.dataset.mode || "mixed";
+      var next = modes[(modes.indexOf(current) + 1) % modes.length];
+      try { localStorage.setItem("pyro-mode", next); } catch (error) {}
+      applyMode(next);
+    });
+  }
+
   // A panel's drawings outlive its repaints: a figure keeps its holder current by its own
   // patches, so the holder the page already has is carried into the panel's new content in
   // place of the (identical or older) copy rendered there, and a transition under way is not
@@ -1411,6 +1434,7 @@
   });
 
   wire(document);
+  wireMode();
   var first = document.querySelector(".pyro-editor");
   if (first) first.focus({ preventScroll: true });
   connect();

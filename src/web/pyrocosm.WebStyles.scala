@@ -33,10 +33,9 @@ import errorDiagnostics.emptyDiagnostics
 // properties too, declared in a `:root` block of their own, so a rule names a step of the
 // scale rather than a length.
 //
-// Type: Marcellus for titles, Yantramanav for prose, and Sono — a variable face with a `MONO` axis —
-// for code, at fixed width, and for the small tracked capitals of labels and buttons, at
-// variable width; fetched from Google Fonts by the `@import` that heads the sheet, with system
-// fallbacks. Text is one size, but for labels and code (a little smaller, as monospace reads
+// Type: Marcellus for titles, Yantramanav for prose, and Roboto Mono for code and for the small
+// tracked capitals of labels and buttons; fetched from Google Fonts by the `@import` that heads
+// the sheet, with system fallbacks. Text is one size, but for labels and code (a little smaller, as monospace reads
 // larger). Layout: the masthead and toolbar span the page; the matter beneath is
 // centred within a measure, wider when a side column is present, and every column stacks on a
 // narrow viewport.
@@ -44,7 +43,7 @@ object WebStyles:
   // The Google Fonts stylesheet declaring the three typefaces' `@font-face` rules; one node
   // built by hand, as cataclysm's typeface provisions would import it once per typeface.
   val fontsUrl: Text =
-    t"https://fonts.googleapis.com/css2?family=Yantramanav:wght@300;400;500;700&family=Marcellus&family=Sono:wght,MONO@200..800,0..1&display=swap"
+    t"https://fonts.googleapis.com/css2?family=Yantramanav:wght@300;400;500;700&family=Marcellus&family=Roboto+Mono:wght@400;500;600;700&display=swap"
 
   // The `@import` of the fonts' stylesheet, which must precede every other rule, so a page
   // that prepends other rules (graffiti's own) puts this before them: `fonts + … + rules`.
@@ -85,9 +84,9 @@ object WebStyles:
       List
         ( t":root { --pyro-font-body: \"Yantramanav\", system-ui, -apple-system, \"Segoe UI\", sans-serif;",
           t"--pyro-font-title: \"Marcellus\", Georgia, \"Times New Roman\", serif;",
-          t"--pyro-font-mono: \"Sono\", ui-monospace, SFMono-Regular, Menlo, monospace;",
-          t"--pyro-font-label: \"Sono\", \"Yantramanav\", system-ui, sans-serif;",
-          t"--pyro-rule: color-mix(in srgb, var(--pyro-fg) 10%, transparent);",
+          t"--pyro-font-mono: \"Roboto Mono\", ui-monospace, SFMono-Regular, Menlo, monospace;",
+          t"--pyro-font-label: \"Roboto Mono\", ui-monospace, SFMono-Regular, Menlo, monospace;",
+          t"--pyro-rule: color-mix(in srgb, var(--pyro-fg) 10%, transparent); --pyro-inline-border: color-mix(in srgb, var(--pyro-fg) 18%, transparent);",
           t"--pyro-space-1: 0.25rem; --pyro-space-2: 0.5rem; --pyro-space-3: 0.75rem; --pyro-space-4: 1rem;",
           t"--pyro-space-5: 1.5rem; --pyro-space-6: 2rem; --pyro-space-7: 3rem;",
           t"--pyro-radius: 3px; --pyro-radius-card: 3px;",
@@ -107,7 +106,7 @@ object WebStyles:
       css"*, *::before, *::after { box-sizing: border-box }"
         + css"html { text-size-adjust: 100% }"
         + css"body { margin: 0; min-height: 100vh; background-color: var(--pyro-bg); background-image: var(--pyro-page-face); background-repeat: no-repeat; color: var(--pyro-fg); font-family: var(--pyro-font-body); font-size: var(--pyro-text-body); font-weight: 400; line-height: 1.55 }"
-        + css"code, kbd, pre, .pyro-figure, .pyro-reference, .pyro-sparkline, .pyro-editor, .pyro-placeholder, .pyro-output, .pyro-completions { font-family: var(--pyro-font-mono); font-variation-settings: 'MONO' 1; font-size: var(--pyro-text-mono) }"
+        + css"code, kbd, pre, .pyro-figure, .pyro-reference, .pyro-sparkline, .pyro-editor, .pyro-placeholder, .pyro-output, .pyro-completions { font-family: var(--pyro-font-mono); font-size: var(--pyro-text-mono) }"
         + css"pre code, code code, kbd kbd { font-size: 1em }"
         // Inline code, references, figures and mathematics sit within prose, whose face is
         // larger on the body than theirs, so they take a size of their own to match it.
@@ -145,11 +144,11 @@ object WebStyles:
     val menubar: Css =
       css"nav.graffiti-top-menu { display: block; gap: 0; background-color: var(--pyro-menubar); color: var(--pyro-on-menubar) }"
         + css".pyro-menubar-inner { max-width: var(--pyro-measure-wide); margin: 0 auto; padding: 0 var(--pyro-gutter); display: flex; align-items: stretch; gap: var(--pyro-space-5); min-height: 2.5rem }"
-        + css".pyro-menubar a { display: inline-flex; align-items: center; color: var(--pyro-on-menubar); text-decoration: none; font-family: var(--pyro-font-label); font-variation-settings: 'MONO' 0; font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 2px solid transparent }"
+        + css".pyro-menubar a { display: inline-flex; align-items: center; color: var(--pyro-on-menubar); text-decoration: none; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 2px solid transparent }"
         + css".pyro-menubar a:hover { color: var(--pyro-on-menubar); border-bottom-color: var(--pyro-button) }"
         + css".pyro-wordmark { font-weight: 700 } .pyro-menubar-link { margin-left: auto }"
         + css".pyro-menubar-tools { display: flex; align-items: stretch; gap: var(--pyro-space-4); overflow-x: auto }"
-        + css".pyro-menubar-tools span.pyro-menubar-tool { display: inline-flex; align-items: center; color: var(--pyro-on-menubar); opacity: 0.55; font-family: var(--pyro-font-label); font-variation-settings: 'MONO' 0; font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap }"
+        + css".pyro-menubar-tools span.pyro-menubar-tool { display: inline-flex; align-items: center; color: var(--pyro-on-menubar); opacity: 0.55; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap }"
         + css".pyro-menubar a.pyro-menubar-tool { white-space: nowrap } .pyro-menubar a.pyro-menubar-current { border-bottom-color: var(--pyro-button) }"
 
     // The masthead spans the page as a band; its rows are centred to the wide measure.
@@ -165,18 +164,26 @@ object WebStyles:
         + css".pyro-activity-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }"
         + css".pyro-activity-state { color: var(--pyro-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis } .pyro-activity-state:empty { display: none }"
         + css".pyro-activity-remote { border-style: dashed }"
-        + css".pyro-activity-origin { font-family: var(--pyro-font-label); font-variation-settings: 'MONO' 0; font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }"
+        + css".pyro-activity-origin { font-family: var(--pyro-font-label); font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }"
         + css".pyro-activity .pyro-gauge { margin: 0 } .pyro-activity .pyro-progress { width: 100% }"
         + css".pyro-activity .pyro-steps { display: flex; flex-wrap: wrap; gap: var(--pyro-space-1) var(--pyro-space-3); margin: 0; padding: 0 } .pyro-activity .pyro-steps li { padding: 0 }"
         + css".pyro-connection { display: inline-flex; align-items: center; gap: var(--pyro-space-2); margin-left: auto; padding: 0.3rem 0.75rem; border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); font-size: var(--pyro-text-small); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); background-color: var(--pyro-bg) }"
         + css".pyro-connection::before { content: ''; width: 0.5em; height: 0.5em; border-radius: 50%; background-color: currentcolor }"
         + css".pyro-connection.pyro-online { color: var(--pyro-tone-success) } .pyro-connection.pyro-offline { color: var(--pyro-tone-warning) }"
+        // The mode button, beside the connection indicator and in its shape; the light page's
+        // gradient is off in the dark mode, whose page is one colour.
+        + css".pyro-mode { display: inline-flex; align-items: center; padding: 0.3rem 0.75rem; border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); background-color: var(--pyro-bg); cursor: pointer }"
+        + css".pyro-mode:hover { color: var(--pyro-fg); border-color: var(--pyro-fg) }"
+        + css"[data-mode='dark'] body { background-image: none }"
         + css".pyro-toolbar { list-style: none; gap: var(--pyro-space-2) var(--pyro-space-3); padding-top: var(--pyro-space-3); padding-bottom: var(--pyro-space-3); border-top: 1px solid var(--pyro-border) }"
         + css".pyro-toolbar > li { margin: 0; display: flex; align-items: center }"
 
     val phrasing: Css =
       css"em { font-weight: 600; font-style: normal }"
         + css".pyro-key { display: inline-block; padding: 0.05em 0.45em; border: 1px solid var(--pyro-border); border-bottom-width: 2px; border-radius: var(--pyro-radius); background-color: var(--pyro-surface); font-size: 0.85em; line-height: 1.4; color: var(--pyro-fg) }"
+        // Inline code takes the light mode's code ground in the mixed mode and the block's in the
+        // others, within a faint border, so it reads as code without the block's dark ground.
+        + css"code.pyro-code { background-color: var(--pyro-inline-bg); border: 1px solid var(--pyro-inline-border); border-radius: var(--pyro-radius); padding: 0.05em 0.3em }"
         + css".pyro-reference { color: var(--pyro-reference) }"
         + css".pyro-figure { color: var(--pyro-figure); font-variant-numeric: tabular-nums }"
         + css".pyro-units { color: var(--pyro-units); font-size: var(--pyro-text-units) }"
@@ -189,8 +196,8 @@ object WebStyles:
     // The small, tracked capitals that label things: table headers, record keys, the labels
     // of toggles, the connection pill and the buttons.
     val label: Css =
-      css".pyro-table th, .pyro-record dt, .pyro-series dt, .pyro-disclosure summary { font-family: var(--pyro-font-label); font-variation-settings: 'MONO' 0; font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pyro-muted) }"
-        + css".pyro-connection, .pyro-control label, .pyro-button { font-family: var(--pyro-font-label); font-variation-settings: 'MONO' 0 }"
+      css".pyro-table th, .pyro-record dt, .pyro-series dt, .pyro-disclosure summary { font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pyro-muted) }"
+        + css".pyro-connection, .pyro-control label, .pyro-button { font-family: var(--pyro-font-label) }"
 
     val flow: Css =
       // The block's text aligns with the prose around it: its ground extends a gutter's
@@ -244,7 +251,7 @@ object WebStyles:
         // reaching beyond it as a code block among prose does.
         + css".pyro-diagnostic { border: 1px solid var(--pyro-border); border-left: 4px solid var(--pyro-border); padding: var(--pyro-space-3) var(--pyro-space-4); margin: 0 0 var(--pyro-space-4) 0; background-color: var(--pyro-surface); border-radius: var(--pyro-radius) }"
         + css".pyro-diagnostic:last-child { margin-bottom: 0 }"
-        + css".pyro-diagnostic > header { display: flex; flex-wrap: wrap; gap: 0 var(--pyro-space-2); align-items: baseline; margin-bottom: var(--pyro-space-2); font-family: var(--pyro-font-mono); font-variation-settings: 'MONO' 1; font-size: var(--pyro-text-mono) }"
+        + css".pyro-diagnostic > header { display: flex; flex-wrap: wrap; gap: 0 var(--pyro-space-2); align-items: baseline; margin-bottom: var(--pyro-space-2); font-family: var(--pyro-font-mono); font-size: var(--pyro-text-mono) }"
         + css".pyro-diagnostic > header .pyro-location { font-size: 1em; font-weight: 700 }"
         + css".pyro-diagnostic .pyro-message p { hyphens: auto; overflow-wrap: break-word }"
         + css".pyro-diagnostic .pyro-codeblock { margin-left: 0; margin-right: 0 }"
@@ -271,15 +278,20 @@ object WebStyles:
         + css".pyro-notice header { margin-bottom: var(--pyro-space-1); font-family: var(--pyro-font-title); font-size: 1.47rem; letter-spacing: 0.01em }"
         + css".pyro-notice header strong { font-weight: 400 }"
         + css".pyro-quotation { border-left: 3px solid var(--pyro-border); margin: 0 0 var(--pyro-space-4) 0; padding: var(--pyro-space-1) 0 var(--pyro-space-1) var(--pyro-space-4); color: var(--pyro-muted) }"
-        + css".pyro-disclosure { margin: 0 0 var(--pyro-space-4) 0 } .pyro-disclosure summary { cursor: pointer; padding: var(--pyro-space-1) 0 }"
+        // A disclosure and a tree node open and close by the same marker: a `◢`, turned to
+        // point right when closed and down when open, in place of the browser's own.
+        + css".pyro-disclosure { margin: 0 0 var(--pyro-space-4) 0 } .pyro-disclosure summary { cursor: pointer; list-style: none; padding: var(--pyro-space-1) 0 }"
         + css".pyro-disclosure summary:hover { color: var(--pyro-tone-accent) } .pyro-disclosure[open] > summary { margin-bottom: var(--pyro-space-2) }"
-        + css".pyro-tree, .pyro-tree ul { list-style: none; padding-left: var(--pyro-space-5); margin: 0; border-left: 1px solid var(--pyro-border) }"
+        + css".pyro-disclosure summary::-webkit-details-marker, .pyro-node > summary::-webkit-details-marker { display: none }"
+        + css".pyro-disclosure summary::before, .pyro-node > summary::before { content: '◢'; display: inline-block; width: 1.25em; font-size: 0.55em; vertical-align: 0.15em; margin-right: 0.909em; line-height: 1; text-align: center; color: var(--pyro-muted); transform: rotate(-45deg); transition: transform 120ms ease }"
+        + css".pyro-disclosure[open] > summary::before, .pyro-node[open] > summary::before { transform: rotate(45deg) }"
+        + css".pyro-disclosure summary:hover::before { color: var(--pyro-tone-accent) }"
+        // Each level of a tree indents by 1.5em: the marker's width and a little more.
+        + css".pyro-tree, .pyro-tree ul { list-style: none; padding-left: 0.25em; margin: 0; border-left: 1px solid var(--pyro-border) }"
         + css".pyro-tree { padding-left: 0; border-left: 0; margin: 0 0 var(--pyro-space-4) 0 }"
-        + css".pyro-tree li { padding-left: var(--pyro-space-4) }"
+        + css".pyro-tree li { padding-left: 1.25em }"
         + css".pyro-node > summary { cursor: pointer; list-style: none; padding: var(--pyro-space-1) 0 }"
-        + css".pyro-node > summary::-webkit-details-marker { display: none }"
-        + css".pyro-node > summary::before { content: '▸'; display: inline-block; width: var(--pyro-space-4); margin-left: calc(-1 * var(--pyro-space-4)); color: var(--pyro-muted); transition: transform 120ms ease }"
-        + css".pyro-node[open] > summary::before { transform: rotate(90deg) }"
+        + css".pyro-node > summary::before { margin-left: -3.182em }"
         + css".pyro-node > summary:hover { color: var(--pyro-tone-accent) } .pyro-node > summary:hover::before { color: var(--pyro-tone-accent) }"
         + css".pyro-graph { list-style: none; padding: 0; margin: 0 0 var(--pyro-space-4) 0 } .pyro-arrow { color: var(--pyro-muted) }"
         + css".pyro-listing:last-child, .pyro-record:last-child, .pyro-record-section:last-child, .pyro-notice:last-child, .pyro-tree:last-child, .pyro-graph:last-child, .pyro-disclosure:last-child, .pyro-quotation:last-child { margin-bottom: 0 }"
@@ -335,7 +347,7 @@ object WebStyles:
     // A repeated name, a plumbing frame and an inlining row recede; the quoted source is the
     // first column to go when the viewport narrows (see `responsive`).
     val trace: Css =
-      css".pyro-trace { font-family: var(--pyro-font-mono); font-variation-settings: 'MONO' 1; font-size: var(--pyro-text-mono); margin: 0 0 var(--pyro-space-4) 0; overflow-x: auto; line-height: 1.4 }"
+      css".pyro-trace { font-family: var(--pyro-font-mono); font-size: var(--pyro-text-mono); margin: 0 0 var(--pyro-space-4) 0; overflow-x: auto; line-height: 1.4 }"
         + css".pyro-trace:last-child { margin-bottom: 0 }"
         + css".pyro-trace-heading { margin-bottom: var(--pyro-space-1); white-space: nowrap }"
         + css".pyro-trace-class { font-size: 1em } .pyro-trace-class em { font-style: italic; font-weight: 400 } .pyro-trace-class strong { font-weight: 700 }"
@@ -350,7 +362,7 @@ object WebStyles:
         + css".pyro-frames .pyro-prefix { opacity: 0.6 }"
         + css".pyro-frames .pyro-repeat, .pyro-frames .pyro-plumbing > td, .pyro-frames .pyro-inlined > td { opacity: 0.6 }"
         + css".pyro-frames .pyro-repeat strong { font-weight: 400 }"
-        + css".pyro-caused-by { margin: var(--pyro-space-2) 0 var(--pyro-space-1) 0; font-family: var(--pyro-font-mono); font-variation-settings: 'MONO' 1; font-size: var(--pyro-text-mono) }"
+        + css".pyro-caused-by { margin: var(--pyro-space-2) 0 var(--pyro-space-1) 0; font-family: var(--pyro-font-mono); font-size: var(--pyro-text-mono) }"
 
     val panels: Css =
       css".pyro-panel { background-color: var(--pyro-surface); border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius-card); box-shadow: var(--pyro-shadow-card); padding: var(--pyro-space-5); margin: 0 0 var(--pyro-space-5) 0; overflow: auto }"
