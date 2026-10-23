@@ -918,6 +918,12 @@ tags:
       (css.contains(t":root {"), css.contains(t"""[data-mode="light"] {"""), css.contains(t"""[data-mode="dark"] {"""), css.contains(t"--pyro-code-bg: #1b0121"), css.contains(t"--pyro-code-bg: #bce0dc"), css.contains(t"--pyro-bg: #0e1729"))
     . assert(_ == (true, true, true, true, true, true))
 
+    test(m"inline code takes the light ground in the mixed and light modes and the block's in the dark"):
+      val css: Text = WebTheme.Ember.variables.show
+      val dark: Text = css.cut(t"""[data-mode="dark"] {""").at(Sec).or(t"")
+      (css.cut(t"--pyro-inline-bg: #bce0dc").size, dark.contains(t"--pyro-inline-bg: #000000"))
+    . assert(_ == (3, true))
+
     test(m"a light mode's code accents keep their hue and read against the light ground"):
       val ground: Chroma = WebTheme.Ember.lightCodeBackground
       Token.Accent.values.foldLeft(true): (acc, accent) =>
@@ -1327,8 +1333,9 @@ tags:
 
     test(m"the stylesheet begins by importing the fonts, and names all three"):
       ( stylesheet.starts(t"@import url(\"https://fonts.googleapis.com/css2?family=Yantramanav"),
-        stylesheet.contains(t"\"Marcellus\""), stylesheet.contains(t"\"Yantramanav\""), stylesheet.contains(t"\"Sono\"") )
-    . assert(_ == (true, true, true, true))
+        stylesheet.contains(t"\"Marcellus\""), stylesheet.contains(t"\"Yantramanav\""), stylesheet.contains(t"\"Roboto Mono\""),
+        stylesheet.contains(t"Sono"), stylesheet.contains(t"font-variation-settings") )
+    . assert(_ == (true, true, true, true, false, false))
 
     test(m"the page's whole sheet, graffiti's rules included, still begins with the import"):
       PyrocosmPage(repl, html, WebTheme.default).css.show.starts(t"@import url(")

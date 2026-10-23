@@ -87,6 +87,10 @@ trait WebTheme:
   def lightCodeForeground: Chroma = foreground
   def lightCodeAccent(accent: Token.Accent): Chroma = WebTheme.contrasting(codeAccent(accent), lightCodeBackground)
 
+  // Inline code sits among prose, so in the mixed mode it takes the light ground rather than
+  // the block's dark one; a dark theme sets it to its block's ground.
+  def inlineCodeBackground: Chroma = lightCodeBackground
+
   // Every colour of this theme, by the custom property it sets.
   def colours: List[(Text, Chroma)] =
     val roles: List[(Text, Chroma)] =
@@ -108,7 +112,7 @@ trait WebTheme:
       List(t"trace-file" -> traceFile, t"trace-method" -> traceMethod, t"trace-line" -> traceLine)
       + traceAccents.indexed.map { (chroma, index) => t"trace-accent-${index.n1}" -> chroma }
 
-    roles + tones + accents + codeColours
+    roles + tones + accents + codeColours + List(t"inline-bg" -> inlineCodeBackground)
 
   // A code block's colours alone: its ground, its text and its token accents.
   def codeColours: List[(Text, Chroma)] =
@@ -117,7 +121,7 @@ trait WebTheme:
 
   // The light mode's code colours, on the light ground.
   def lightCodeColours: List[(Text, Chroma)] =
-    List(t"code-bg" -> lightCodeBackground, t"code-fg" -> lightCodeForeground)
+    List(t"code-bg" -> lightCodeBackground, t"code-fg" -> lightCodeForeground, t"inline-bg" -> lightCodeBackground)
     + Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]) { (acc, accent0) => acc :+ (t"code-accent-${accent0.toString.tt.lower}" -> lightCodeAccent(accent0)) }
 
   // The `:root` block, which is the mixed mode, and the light and dark modes' blocks, keyed
@@ -370,6 +374,7 @@ object WebTheme:
       case Token.Accent.Command  => rust
 
     override def codeBackground: Chroma = Chroma(0x000000)   // full black on the dark page
+    override def inlineCodeBackground: Chroma = codeBackground
     override def codeForeground: Chroma = Ember.codeForeground
     override def codeAccent(accent: Token.Accent): Chroma = Ember.codeAccent(accent)
     override def traceAccents: List[Chroma] = List(crimson, rust, gold, amber, leaf)
