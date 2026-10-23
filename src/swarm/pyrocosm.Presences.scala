@@ -43,9 +43,12 @@ object Presences:
     swarm.activities.bindWake { () => presence.remote() = incoming(swarm, swarm.activities()) }
     swarm.nodes.bindWake { () => presence.peers() = origins(swarm, swarm.nodes()) }
 
-  // An activity as it travels: an internal destination becomes the relative URL which opens it.
+  // An activity as it travels: an internal destination becomes the relative URL which opens it,
+  // and a local one its page's relative URL; `incoming` makes either absolute at the other end.
   private def outgoing(activity: Activity): Activity = activity.destination match
     case Inline.Destination.Internal(_) => activity.copy(destination = Inline.Destination.External(opener(activity.id)))
+    case Inline.Destination.Local(path, fragment) =>
+      activity.copy(destination = Inline.Destination.External(fragment.lay(path) { fragment => t"$path#$fragment" }))
     case _                              => activity
 
   private def opener(id: Text): Text = t"/open?activity=$id"

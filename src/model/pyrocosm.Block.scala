@@ -78,12 +78,21 @@ object Block:
 
   case class Line(tokens: List[Token])
 
+  // A row's `id`, like a heading's, is an anchor: the fragment of a local destination which
+  // targets it, verbatim, so it must not look like a handle or a `pyro-` id. A row with an
+  // action is identified by the action, and the anchor is ignored.
   case class Row
     ( cells:  List[Cell],
       tone:   Optional[Tone]   = Unset,
-      action: Optional[Action] = Unset )
+      action: Optional[Action] = Unset,
+      id:     Optional[Text]   = Unset )
 
-  case class Item(content: List[Block], action: Optional[Action] = Unset)
+  // An item either acts (a press the application handles) or leads to a destination; the
+  // action wins when both are given.
+  case class Item
+    ( content:     List[Block],
+      action:      Optional[Action]             = Unset,
+      destination: Optional[Inline.Destination] = Unset )
 
   case class Entry(key: List[Inline], value: List[Block])
 
@@ -374,11 +383,12 @@ object Block:
   // `open`, when present, makes a node with children collapsible, and says whether it starts
   // open or closed; a frontend with no way to toggle (the terminal) shows every node.
   case class TreeNode
-    ( label:    List[Inline],
-      children: List[TreeNode]    = Nil,
-      tone:     Optional[Tone]    = Unset,
-      action:   Optional[Action]  = Unset,
-      open:     Optional[Boolean] = Unset )
+    ( label:       List[Inline],
+      children:    List[TreeNode]              = Nil,
+      tone:        Optional[Tone]              = Unset,
+      action:      Optional[Action]            = Unset,
+      open:        Optional[Boolean]           = Unset,
+      destination: Optional[Inline.Destination] = Unset )
 
   // A node of a graph, identified by `id`, and an edge between two ids. A graph is stored as
   // its vertices and edges (which serialise plainly); `Graph.of` and `Graph#dag` convert to and
@@ -495,7 +505,7 @@ object Block:
 
 enum Block:
   case Paragraph(content: List[Inline])
-  case Heading(level: Int, content: List[Inline])
+  case Heading(level: Int, content: List[Inline], id: Optional[Text] = Unset)  // `id`: an anchor, as `Row.id`
   case Listing(ordered: Boolean, items: List[Block.Item])
   case Quotation(content: List[Block])
   // A rule stands between what precedes and follows it, or marks an edge: `Above` is drawn

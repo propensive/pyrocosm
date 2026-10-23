@@ -226,7 +226,7 @@ tags:
       val exhibit: Block = Parser.parse(t"# Title\n\nSome *emphasis* here.").exhibit
 
       exhibit match
-        case Block.Group(Block.Heading(1, _) :: Block.Paragraph(content) :: Nil) =>
+        case Block.Group(Block.Heading(1, _, _) :: Block.Paragraph(content) :: Nil) =>
           content.exists:
             case Inline.Emphasis(_) => true
             case _                  => false
@@ -483,6 +483,8 @@ tags:
                   Inline.Strong(Inline.text(t"strong")),
                   Inline.Toned(Tone.Success, Inline.text(t"ok")),
                   Inline.Link(Inline.Destination.Internal(run), Inline.text(t"again")),
+                  Inline.Link(Inline.Destination.Local(t"/api/gossamer.Text", t"length"), Inline.text(t"length")),
+                  Inline.Code(Language.Scala, List(Token(t"Text", Token.Accent.Typal, Unset, Inline.Destination.Local(t"/api/gossamer.Text")))),
                   Inline.Math(unsafely(Ergo.parse(t"(x↗2 + y↗2)"))),
                   Inline.Symbol(Glyph.Check),
                   Inline.Reference(t"a1b2c3"),
@@ -494,7 +496,9 @@ tags:
               ( List
                   ( Block.Column(Inline.text(t"Name")),
                     Block.Column(Inline.text(t"Time"), Block.Alignment.End, Block.Sizing.Rigid, true) ),
-                List(Block.Row(List(Block.Cell(Inline.text(t"parse")), Block.Cell(List(Inline.Amount(0.5, t"s")))), Tone.Success, run)),
+                List
+                  ( Block.Row(List(Block.Cell(Inline.text(t"parse")), Block.Cell(List(Inline.Amount(0.5, t"s")))), Tone.Success, run),
+                    Block.Row(List(Block.Cell(Inline.text(t"length")), Block.Cell(Nil)), Unset, Unset, t"length") ),
                 Inline.text(t"Benchmarks") ),
             Block.Code(Language.Scala, List(Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" x")))),
                 List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"a keyword"), 0)), 3),
@@ -511,10 +515,11 @@ tags:
             Block.Gauge(Status.Reckoning(3, 10), Inline.text(t"progress")),
             Block.Gauge(Status.Elapsed.of(1.5*Second)),
             Block.Gauge(Status.Steps(List(Step(Inline.text(t"compile"), Standing.Running)))),
-            Block.Listing(true, List(Block.Item(List(Block.paragraph(t"one")), run))),
+            Block.Listing(true, List(Block.Item(List(Block.paragraph(t"one")), run), Block.Item(List(Block.paragraph(t"two")), Unset, Inline.Destination.Local(t"/two")))),
+            Block.Heading(3, Inline.text(t"Members"), t"members"),
             Block.Record(List(Block.Entry(Inline.text(t"key"), List(Block.paragraph(t"value")))), Inline.text(t"R")),
             Block.Disclosure(Inline.text(t"more"), List(Block.Image(t"x.png", t"an image"), Block.Figure(figure)), true),
-            Block.Tree(List(Block.TreeNode(Inline.text(t"root"), List(Block.TreeNode(Inline.text(t"leaf"))), open = true))),
+            Block.Tree(List(Block.TreeNode(Inline.text(t"root"), List(Block.TreeNode(Inline.text(t"leaf"), destination = Inline.Destination.Local(t"/leaf"))), open = true))),
             Block.Chart(Block.Chart.Kind.Sparkline, List(Block.Series(Inline.text(t"s"), List(1.0, 2.0)))),
             trace )
 
@@ -911,6 +916,30 @@ tags:
     test(m"a tone renders as its class"):
       html.phrase(List(Inline.Toned(Tone.Failure, Inline.text(t"no")))).show
     . assert(_ == t"""<span class="pyro-tone-failure">no</span>""")
+
+    test(m"a local link is an anchor to its path and fragment, for the script to follow"):
+      html.phrase(List(Inline.Link(Inline.Destination.Local(t"/api/gossamer.Text", t"length"), Inline.text(t"length")))).show
+    . assert(_ == t"""<a href="/api/gossamer.Text#length" class="pyro-link pyro-locate">length</a>""")
+
+    test(m"a linked token is an anchor carrying its accent"):
+      html.tokens(List(Token(t"Text", Token.Accent.Typal, Unset, Inline.Destination.Local(t"/api/gossamer.Text")))).show
+    . assert(_ == t"""<a href="/api/gossamer.Text" class="pyro-accent-typal pyro-locate">Text</a>""")
+
+    test(m"a heading with an id is an anchor target"):
+      html.block(Block.Heading(3, Inline.text(t"Members"), t"members")).show
+    . assert(_ == t"""<h3 id="members">Members</h3>""")
+
+    test(m"a row with an id and no action is an anchor target"):
+      html.block(rich).show.contains(t"""<tr id="length">""")
+    . assert(_ == true)
+
+    test(m"an item with a destination leads from its paragraph"):
+      html.block(Block.Listing(false, List(Block.Item(List(Block.paragraph(t"two")), Unset, Inline.Destination.Local(t"/two"))))).show
+    . assert(_ == t"""<ul class="pyro-listing"><li class="pyro-lead"><p><a href="/two" class="pyro-link pyro-locate">two</a></p></li></ul>""")
+
+    test(m"a tree node with a destination links its label"):
+      html.block(Block.Tree(List(Block.TreeNode(Inline.text(t"leaf"), destination = Inline.Destination.Local(t"/leaf"))))).show.contains(t"""<a href="/leaf" class="pyro-link pyro-locate">leaf</a>""")
+    . assert(_ == true)
 
     test(m"a numbered code block renders its numbers apart from the code"):
       html.block(Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"a")))), Nil, 7)).show

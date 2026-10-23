@@ -160,6 +160,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       destination match
         case Inline.Destination.External(_)  => tint(theme.link)(text)
         case Inline.Destination.Internal(_)  => tint(theme.tone(Tone.Accent))(text)
+        case Inline.Destination.Local(_, _)  => tint(theme.link)(text)
 
     case Inline.Symbol(symbol) =>
       val text = Teletype(glyph(symbol))
@@ -247,7 +248,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       case Block.Paragraph(content) =>
         wrapped(content, width)
 
-      case Block.Heading(level, content) =>
+      case Block.Heading(level, content, _) =>
         val text = phrase(content)
         if level <= 1 then List(bold(e"$Underline($text)"))
         else if level == 2 then List(bold(text))

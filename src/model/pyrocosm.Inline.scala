@@ -34,10 +34,15 @@ import dysasymptotics.linearSize
 // keystrokes, highlighted code, mathematics, quantities, references and semantic symbols — so
 // that a renderer can give each the treatment its medium affords.
 object Inline:
-  // Where a link leads: out to a URL, or inward to an action the application handles.
+  // Where a link leads: out to a URL, inward to an action the application handles, or to a
+  // page of this application by its root-absolute path, and a place on it. A local destination
+  // is stable across processes, as an action's handle is not, so it can be bookmarked and
+  // opened directly; the frontend tells the application which page was opened as an
+  // `Event.Located`.
   enum Destination:
     case External(url: Text)
     case Internal(action: Action)
+    case Local(path: Text, fragment: Optional[Text] = Unset)
 
   // Plain text as a one-element phrase, the commonest case.
   def text(text: Text): List[Inline] = List(Textual(text))
