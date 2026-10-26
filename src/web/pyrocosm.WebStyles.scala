@@ -116,7 +116,10 @@ object WebStyles:
         // A linked token keeps its token's colour, and shows that it leads somewhere only when
         // pointed at; an anchor target clears the masthead when scrolled to.
         + css"code a.pyro-locate, .pyro-codeblock a.pyro-locate { color: inherit; text-decoration: none }"
-        + css"code a.pyro-locate:hover, .pyro-codeblock a.pyro-locate:hover { text-decoration: underline dotted }"
+        + css"code a.pyro-locate:hover, .pyro-codeblock a.pyro-locate:hover { text-decoration: underline }"
+        // A qualified name: pointing at a segment underlines the name up to it, which is the
+        // span the segment's link is a direct child of (as Amok's API pages did).
+        + css".pyro-qualified:has(> a.pyro-locate:hover) { text-decoration: underline }"
         + css"[id] { scroll-margin-top: var(--pyro-space-6) }"
         + css"h1, h2, h3, h4 { font-family: var(--pyro-font-title); font-weight: 400; line-height: 1.25; letter-spacing: 0.01em; margin: 0 0 var(--pyro-space-3) 0; color: var(--pyro-title) }"
         + css"h1 { font-size: 2.45rem } h2 { font-size: 1.75rem } h3 { font-size: 1.575rem } h4 { font-size: 1.4rem }"

@@ -98,7 +98,10 @@ derived definition by the type's simple name, so two types of one name cannot bo
 A `Local` destination is a page of the application by its root-absolute path, and a place on
 it: stable across processes, as an action's handle is not, so it can be bookmarked and opened
 directly. A `Token` may carry one too, so that an identifier in a signature links to what it
-names; an `Item` and a `TreeNode` may lead to one instead of acting.
+names; an `Item` and a `TreeNode` may lead to one instead of acting. A `chained` token continues
+the qualified name the tokens before it began, so that `com.example.Foo` is three links, and the
+web renderer nests each linked segment's prefix around it (`pyro-qualified`), as Amok's API pages
+did: pointing at `example` underlines `com.example`, and at `Foo`, the whole name.
 
 `Tone` (Success, Failure, Warning, Muted, Accent, Info) and `Glyph` are the semantic hooks that
 replace direct use of colours, weights and box characters.
