@@ -318,6 +318,14 @@ tags:
 
     val animatedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, animation)
 
+    test(m"the terminal renders a deck as its slides in sequence, each under a marker"):
+      def leaf(text: Text): Block.Leaf = Block.Leaf(List(Block.paragraph(text)))
+      val deck: Block = Block.Deck(List(leaf(t"one"), leaf(t"two")))
+
+      TerminalRenderer().block(deck, 40).map(_.plain).filter(_ != t"")
+
+    . assert(_ == List(t"slide 1 of 2", t"one", t"slide 2 of 2", t"two"))
+
     test(m"the terminal renders an animated block as its slides in sequence"):
       val rows: List[Text] = TerminalRenderer().block(animatedBlock, 60).map(_.plain)
       (rows.count(_.starts(t"step ")), rows.has(t"step 3 of 3"), rows.has(t"valx=y"))
@@ -994,6 +1002,53 @@ tags:
       val code: Block = Block.Code(Language.Scala, List(Block.Line(qualifiedName)))
       val page: Page = Page(List(code))
       (code.in[Tel].show.read[Tel].as[Block] == code, Pages.roundTrip(page) == page)
+
+    . assert(_ == (true, true))
+
+    val deckOfTwo: Block =
+      Block.Deck
+        ( List
+            ( Block.Leaf(List(Block.Heading(1, Inline.text(t"Effects")), Block.paragraph(t"so"))),
+              Block.Leaf(List(animatedBlock)) ) )
+
+    test(m"a deck shows its first slide, its others hidden, with a counter"):
+      val shown: Text = html.block(deckOfTwo).show
+      val first: Text = t"""<section class="pyro-leaf pyro-current"><h1>Effects</h1>"""
+
+      ( shown.starts(t"""<div class="pyro-deck" tabindex="0">""" + first),
+        shown.contains(t"""<section class="pyro-leaf"><div class="pyro-animated""""),
+        shown.contains(t"""<span class="pyro-deck-counter">1 / 2</span>""") )
+
+    . assert(_ == (true, true, true))
+
+    test(m"a staged interface's page is its primary panel's content alone"):
+      val slides: Live[List[Block]] = Live(List(deckOfTwo))
+      val priority: Panel.Priority = Panel.Priority.Essential
+      val panel: Panel = Panel(Panel.Id(t"slides"), Panel.Role.Primary, Unset, slides, priority)
+
+      val stageHints: Hints = Hints(hints.web.Stage)
+      val staged: Interface = Interface(Inline.text(t"Talk"), List(panel), hints = stageHints)
+      val framed: Interface = Interface(Inline.text(t"Talk"), List(panel))
+      val page: Text = PyrocosmPage(staged, HtmlRenderer(), WebTheme.default).markup.show
+      val usual: Text = PyrocosmPage(framed, HtmlRenderer(), WebTheme.default).markup.show
+
+      val stage: Text = t"""class="pyro-stage"><div class="pyro-stage-content">"""
+
+      ( page.contains(stage + t"""<div id="pyro-panel-slides-content""""),
+        page.contains(t"pyro-masthead") || page.contains(t"pyro-menubar"),
+        usual.contains(t"pyro-masthead") )
+
+    . assert(_ == (true, false, true))
+
+    test(m"the stylesheet sets a deck on a stage as a 16:9 canvas sized to the window"):
+      val canvas: Text = t"--pyro-canvas: min(100vw, calc(100vh * 16 / 9))"
+      WebStyles.css(WebTheme.default).show.contains(canvas)
+
+    . assert(_ == true)
+
+    test(m"a deck round-trips through TEL and BinTEL"):
+      val page: Page = Page(List(deckOfTwo))
+      (deckOfTwo.in[Tel].show.read[Tel].as[Block] == deckOfTwo, Pages.roundTrip(page) == page)
 
     . assert(_ == (true, true))
 

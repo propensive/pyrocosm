@@ -108,6 +108,14 @@ replace direct use of colours, weights and box characters.
 
 ### Block
 
+`Deck` holds slides (`Leaf`s of blocks) shown one at a time: on the web the arrow, space and
+page keys step through them, an animated block on a slide stepping through its frames before
+the deck moves on (and a slide entered backwards showing its last frame); the terminal shows the
+slides in sequence. Fuel's presentations are decks. An interface hinted `hints.web.Stage` is
+shown as a stage: its primary panels alone, filling the window, with no masthead, menu or
+panel around them; a deck on a stage is a 16:9 canvas, as large as the window allows, sized in
+`em` against the canvas so that it scales with the screen, and `f` toggles full screen.
+
 `Paragraph`, `Heading` (with an optional `id`, an anchor a local destination's fragment
 targets; a `Row` may have one too), `Listing` (items may carry an `Action` or a destination),
 `Quotation`, `Rule`, `Code`

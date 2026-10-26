@@ -102,6 +102,25 @@ object WebStyles:
       . join(t" ")
       . read[Css]
 
+    // A stage: the primary panel alone, and a deck on it a 16:9 canvas, as large as the
+    // window allows and centred in it, everything on it sized in `em` against the canvas so
+    // that a slide scales with the screen as one picture. Read from text, as the scale is, for
+    // its custom properties.
+    val stage: Css =
+      List
+        ( t"body.pyro-stage { margin: 0; height: 100vh; overflow: hidden; background-image: none; display: flex; align-items: center; justify-content: center }",
+          t".pyro-stage-content { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center }",
+          t".pyro-stage .pyro-deck { --pyro-canvas: min(100vw, calc(100vh * 16 / 9)); position: relative; width: var(--pyro-canvas); height: calc(var(--pyro-canvas) * 9 / 16); font-size: calc(var(--pyro-canvas) / 48); --pyro-text-body: 1em; --pyro-text-inline: 0.9em; --pyro-text-mono: 0.85em; --pyro-text-small: 0.6em }",
+          t".pyro-stage .pyro-leaf { min-height: 0; height: 100%; box-sizing: border-box; padding: 3em 4em; font-size: 1em; overflow: hidden }",
+          t".pyro-stage .pyro-leaf.pyro-current { display: flex; flex-direction: column; justify-content: center }",
+          t".pyro-stage .pyro-leaf h1 { font-size: 3em; margin: 0 0 0.4em 0 } .pyro-stage .pyro-leaf h2 { font-size: 2.2em; margin: 0 0 0.4em 0 } .pyro-stage .pyro-leaf h3 { font-size: 1.6em }",
+          t".pyro-stage .pyro-leaf p, .pyro-stage .pyro-leaf li { font-size: 1.2em; line-height: 1.4 }",
+          t".pyro-stage .pyro-leaf .pyro-codeblock { font-size: 1.1em; margin: 0.5em 0; padding: 0.8em 1.1em }",
+          t".pyro-stage .pyro-deck-controls { position: absolute; right: 1em; bottom: 0.6em; opacity: 0; transition: opacity 0.3s ease }",
+          t".pyro-stage .pyro-deck:hover .pyro-deck-controls { opacity: 0.7 }" )
+      . join(t" ")
+      . read[Css]
+
     val base: Css =
       css"*, *::before, *::after { box-sizing: border-box }"
         + css"html { text-size-adjust: 100% }"
@@ -239,6 +258,16 @@ object WebStyles:
         + css".pyro-animated .pyro-line { display: block; min-height: 1.5em }"
         + css".pyro-animated .pyro-codeblock { will-change: height }"
         + css".pyro-animation-data { display: none }"
+        // A deck: one slide at a time, large, with its controls beneath; an animated block on a
+        // slide steps with the deck, so its own controls give way to its label.
+        + css".pyro-deck { outline: none }"
+        + css".pyro-leaf { display: none; min-height: 60vh; padding: var(--pyro-space-6) 0; font-size: 1.35rem }"
+        + css".pyro-leaf.pyro-current { display: block }"
+        + css".pyro-leaf h1 { font-size: 3rem } .pyro-leaf h2 { font-size: 2.2rem }"
+        + css".pyro-leaf .pyro-codeblock { font-size: 1.1rem }"
+        + css".pyro-deck .pyro-animation-controls button, .pyro-deck .pyro-animation-counter { display: none }"
+        + css".pyro-deck-controls { display: flex; gap: var(--pyro-space-2); align-items: center; justify-content: center; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); color: var(--pyro-muted) }"
+        + css".pyro-deck-controls button { font: inherit; line-height: 1; padding: 0 var(--pyro-space-2); border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius); background-color: transparent; color: inherit; cursor: pointer }"
         + css".pyro-animation-controls { display: flex; gap: var(--pyro-space-2); align-items: center; margin: calc(-1 * var(--pyro-space-3)) 0 var(--pyro-space-4) 0; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small) }"
         + css".pyro-animation-controls button { font: inherit; line-height: 1; padding: 0 var(--pyro-space-2); border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius); background-color: transparent; color: inherit; cursor: pointer }"
         + css".pyro-animation-controls button:disabled { opacity: 0.4; cursor: default }"
@@ -431,5 +460,5 @@ object WebStyles:
     val accents: Css = Token.Accent.values.foldLeft(Css(Nil)) { (acc, accent0) => acc + accent(accent0) }
     val traceAccents: Css = (1 to 5).foldLeft(Css(Nil)) { (acc, index) => acc + traceAccent(index) }
 
-    theme.variables + scale + base + layout + menubar + masthead + phrasing + label + flow + trace
+    theme.variables + scale + stage + base + layout + menubar + masthead + phrasing + label + flow + trace
     + charts + panels + controls + responsive + tones + accents + traceAccents

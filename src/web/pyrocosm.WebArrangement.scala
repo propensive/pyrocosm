@@ -275,6 +275,17 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   // sheet itself is `css`, which the frontend serves at `/pyrocosm.css`.
   // The body says which side columns the page has, so the sheet can widen its measure for them.
   def markup: Html of "html" =
+    if interface.hints.has[hints.web.Stage.type] then staged else framed
+
+  // A stage: the primary panels' content alone, each in the element its patches replace.
+  private def staged: Html of "html" =
+    val shown: List[Html of Flow] = plan.primary.map(panelContent)
+    val stage: Html of Flow = Div(`class` = cls(t"pyro-stage-content"))(shown*)
+    val sheet: Html of Metadata = Link.Stylesheet(href = t"/pyrocosm.css")
+    val head0: Html of "head" = Head(Title(pageTitle), sheet, head)
+    Html(head0, Body(dir = direction.show, `class` = cls(t"pyro-stage"))(stage))
+
+  private def framed: Html of "html" =
     val verso: List[Name[CssClass]] = if plan.navigation.nil then Nil else List(cls(t"pyro-has-verso"))
     val recto: List[Name[CssClass]] = if plan.detail.nil then Nil else List(cls(t"pyro-has-recto"))
     val sides: List[Name[CssClass]] = verso + recto

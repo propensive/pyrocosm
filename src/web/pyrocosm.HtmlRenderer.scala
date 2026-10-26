@@ -298,6 +298,9 @@ class HtmlRenderer():
 
       Figure(id = figure.id, `class` = cls(t"pyro-drawing"))(holder, Figcaption(phrase(figure.alt)))
 
+    case Block.Deck(leaves) =>
+      deck(leaves)
+
     case Block.Tree(roots) =>
       Ul(`class` = cls(t"pyro-tree"))(roots.indexed.map { (root: Block.TreeNode, index: Ordinal) => treeNode(root, t"${index.n0}") }*)
 
@@ -421,6 +424,24 @@ class HtmlRenderer():
   // slide's annotations and label and in its language; its controls; and the animation as
   // JSON in a hidden element the script reads. Slide 0 is what a page without the script
   // shows.
+  // A deck: every slide a section, the first current, which is what a page without the script
+  // shows; and its controls. The script shows one slide at a time and steps through them.
+  def deck(leaves: List[Block.Leaf]): Html of Flow =
+    val slides: List[Html of Flow] =
+      leaves.indexed.map: (leaf: Block.Leaf, index: Ordinal) =>
+        val current: List[Name[CssClass]] =
+          if index.n0 == 0 then List(cls(t"pyro-current")) else Nil
+
+        Section(`class` = cls(t"pyro-leaf") :: current)(blocks(leaf.content))
+
+    val controls: Html of Flow =
+      Div(`class` = cls(t"pyro-deck-controls"))
+        ( Button(`class` = cls(t"pyro-deck-prev"), `type` = t"button")(t"‹"),
+          Span(`class` = cls(t"pyro-deck-counter"))(t"1 / ${leaves.size.toString.tt}"),
+          Button(`class` = cls(t"pyro-deck-next"), `type` = t"button")(t"›") )
+
+    Div(`class` = cls(t"pyro-deck"), tabindex = t"0")(Html.Fragment(slides*), controls)
+
   def animatedCode(language: pyrocosm.Language, animation: Block.Animation): Html of Flow =
     val first: Optional[Block.Slide] = animation.slides.prim
     val shown: pyrocosm.Language = first.let(_.language).or(language)

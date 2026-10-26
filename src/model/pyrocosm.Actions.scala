@@ -47,6 +47,7 @@ object Actions:
     case Block.Notice(_, _, content)     => of(content)
     case Block.Disclosure(_, content, _) => of(content)
     case Block.Group(content)            => of(content)
+    case Block.Deck(leaves)              => leaves.bind { (leaf: Block.Leaf) => of(leaf.content) }
     case Block.Record(entries, _)        => entries.bind { (entry: Block.Entry) => of(entry.value) }
     case _                               => Nil
 
