@@ -907,6 +907,19 @@
     var timer = null;
     var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+    // When any frame has a label, the label keeps its line in every frame (a space where the
+    // frame has none), so that the block's height does not jump as labels come and go.
+    var labelled = data.slides.some(function (slide) { return !!slide.label; });
+    function labelOf(index) { return (data.slides[index] && data.slides[index].label) || (labelled ? "&nbsp;" : ""); }
+    function hasLabel(index) { return !!(data.slides[index] && data.slides[index].label); }
+
+    // Where a token is within the block: positions measured so are unaffected by the block
+    // itself moving, as it does when its height changes in a container which centres it.
+    function place(span) {
+      var outer = pre.getBoundingClientRect(), inner = span.getBoundingClientRect();
+      return { left: inner.left - outer.left, top: inner.top - outer.top };
+    }
+
     function spanFor(id) {
       if (nodes[id]) return nodes[id];
       var atom = atoms[id];
@@ -1043,10 +1056,10 @@
         nodes[id].classList.add("pyro-marked", "pyro-marked-" + covered[id].style);
       });
       code.querySelectorAll(".pyro-marker").forEach(function (row) { row.style.transition = ""; row.style.opacity = ""; });
-      if (label) { label.innerHTML = (data.slides[index] && data.slides[index].label) || ""; label.style.opacity = ""; }
+      if (label) { label.innerHTML = labelOf(index); label.style.opacity = ""; }
       var language = (data.slides[index] && data.slides[index].language) || data.language;
       pre.className = pre.className.replace(/\bpyro-language-\S+/, "pyro-language-" + language);
-      return Object.keys(covered).length > 0 || code.querySelector(".pyro-marker") !== null || (label && label.innerHTML !== "");
+      return Object.keys(covered).length > 0 || code.querySelector(".pyro-marker") !== null || (!!label && hasLabel(index));
     }
 
     // Timings, in milliseconds; the stylesheet's fades match. A step is a fade out, then a
@@ -1130,12 +1143,12 @@
       // unseen, until the rebuild, so that their going is part of the measured move.
       var marked = code.querySelectorAll(".pyro-marked");
       var rows = code.querySelectorAll(".pyro-marker");
-      var labelled = label && label.innerHTML !== "";
+      var named = !!label && hasLabel(frame);
       var undress = Promise.resolve();
-      if (marked.length || rows.length || labelled) {
+      if (marked.length || rows.length || named) {
         marked.forEach(function (span) { span.className = span.className.replace(/ ?pyro-marked\S*/g, ""); });
         rows.forEach(function (row) { row.style.opacity = "0"; });
-        if (labelled) label.style.opacity = "0";
+        if (named) label.style.opacity = "0";
         undress = after(FADE);
       }
 
@@ -1153,7 +1166,7 @@
         // so the gaps are real. The block itself goes from its old height to its new over
         // the same time, so lines appearing or vanishing open and close it smoothly.
         var first = {};
-        if (!fading) Object.keys(present).forEach(function (id) { if (current[id]) first[id] = current[id].getBoundingClientRect(); });
+        if (!fading) Object.keys(present).forEach(function (id) { if (current[id]) first[id] = place(current[id]); });
         var before = pre.getBoundingClientRect().height;
         departing.forEach(function (id) { current[id].remove(); delete nodes[id]; });
         rebuild();
@@ -1175,7 +1188,7 @@
         var moves = [];
         Object.keys(first).forEach(function (id) {
           var span = nodes[id];
-          var last = span.getBoundingClientRect();
+          var last = place(span);
           var dx = first[id].left - last.left, dy = first[id].top - last.top;
           if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moves.push({ span: span, id: id, dx: dx, dy: dy });
         });
