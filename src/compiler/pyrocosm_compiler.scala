@@ -93,7 +93,7 @@ given markupPresentable: List[Markup] is Presentable in Inline = markup =>
   Inline.Phrase(markup.map(markupInline))
 
 private def highlighted(text: Text, context: Scala.Context): Inline =
-  Inline.Code(Language.Scala, Scala.highlight(text, context).flattened)
+  Inline.Snippet(Language.Scala, Scala.highlight(text, context).flattened)
 
 private def markupInline(markup: Markup): Inline = markup match
   case Markup.Textual(text)               => Inline.Textual(text)

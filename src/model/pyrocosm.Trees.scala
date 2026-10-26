@@ -45,7 +45,7 @@ object Trees:
   :   Block.TreeNode =
 
     val open: Optional[Boolean] = if children.nil then Unset else depth <= openDepth
-    Block.TreeNode(List(Inline.Code(language, tokens)), children, tone, Unset, open)
+    Block.TreeNode(List(Inline.Snippet(language, tokens)), children, tone, Unset, open)
 
   private def term(text: Text): Token = Token(text, Token.Accent.Term)
   private def typal(text: Text): Token = Token(text, Token.Accent.Typal)

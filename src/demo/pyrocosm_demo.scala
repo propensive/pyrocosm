@@ -81,7 +81,7 @@ object Samples:
             ( List
                 ( Block.Cell(Inline.text(benchmark.name)),
                   Block.Cell(List(Inline.Amount(benchmark.mean, t"s"))),
-                  Block.Cell(List(Inline.Figure(benchmark.ratio, 1))) ),
+                  Block.Cell(List(Inline.Numeral(benchmark.ratio, 1))) ),
               if benchmark.ratio == 1.0 then Tone.Success else Unset,
               action ),
         Inline.text(t"Select a row with Up, Down and Enter") )
@@ -99,7 +99,7 @@ object Samples:
 
   val suites: List[(Suite, Action)] = suiteSamples.map { (suite: Suite) => suite -> Action(suite.name) }
 
-  private def inlineCode(text: Text, accent: Token.Accent): Inline = Inline.Code(Language.Scala, List(Token(text, accent)))
+  private def inlineCode(text: Text, accent: Token.Accent): Inline = Inline.Snippet(Language.Scala, List(Token(text, accent)))
 
   // Three frames of one definition: a body filled in, then a parameter added and a line
   // inserted before the body, so that tokens move across lines as well as along them. Each
@@ -210,7 +210,7 @@ object Samples:
               Inline.Textual(t", a symbol "),
               Inline.Symbol(Glyph.Check),
               Inline.Textual(t" and some code "),
-              Inline.Code(Language.Scala, List(Token(t"val", Token.Accent.Keyword), Token.plain(t" "), Token(t"x", Token.Accent.Term))),
+              Inline.Snippet(Language.Scala, List(Token(t"val", Token.Accent.Keyword), Token.plain(t" "), Token(t"x", Token.Accent.Term))),
               Inline.Textual(t".") ),
         results,
         Block.Code
@@ -259,7 +259,7 @@ object Samples:
               Inline.Textual(t" and "),
               Inline.Amount(0.0123, t"s"),
               Inline.Textual(t" are scaled to a unit; a figure "),
-              Inline.Figure(3.14159, 2),
+              Inline.Numeral(3.14159, 2),
               Inline.Textual(t" keeps its precision; and mathematics "),
               Inline.Math(unsafely(Ergo.parse(t"(x↗2 + y↗2)"))),
               Inline.Textual(t" is set in a mathematical face.") ),
@@ -308,7 +308,7 @@ object Samples:
             Block.Row
               ( List
                   ( Block.Cell(Inline.text(suite.name)),
-                    Block.Cell(List(Inline.Figure(suite.tests.toDouble, 0))),
+                    Block.Cell(List(Inline.Numeral(suite.tests.toDouble, 0))),
                     Block.Cell(List(Inline.Amount(suite.seconds, t"s"))),
                     Block.Cell(List(suite.tone.lay(Inline.Textual(suite.outcome)) { tone => toned(tone, suite.outcome) })) ),
                 suite.tone,
@@ -597,7 +597,7 @@ object Samples:
     val scope: List[Inline] = bindings.indexed.bind: (name: Text, index: Ordinal) =>
       val comma: List[Inline] = if index.n0 == 0 then Nil else List(Inline.Textual(t", "))
       val binding: List[Inline] =
-        List(Inline.Code(Language.Scala, List(Token(name, Token.Accent.Term, Token.Role.Binding),
+        List(Inline.Snippet(Language.Scala, List(Token(name, Token.Accent.Term, Token.Role.Binding),
             Token(t": ", Token.Accent.Symbol), Token(t"Int", Token.Accent.Typal))))
 
       comma + binding
@@ -723,7 +723,7 @@ class GallerySession():
           ( Block.Record
               ( List
                   ( Block.Entry(Inline.text(t"suite"), List(Block.paragraph(suite.name))),
-                    Block.Entry(Inline.text(t"tests"), List(Block.Paragraph(List(Inline.Figure(suite.tests.toDouble, 0))))),
+                    Block.Entry(Inline.text(t"tests"), List(Block.Paragraph(List(Inline.Numeral(suite.tests.toDouble, 0))))),
                     Block.Entry(Inline.text(t"time"), List(Block.Paragraph(List(Inline.Amount(suite.seconds, t"s"))))),
                     Block.Entry(Inline.text(t"outcome"), List(Block.Paragraph(List(outcome)))) ),
                 Inline.text(suite.name) ) )

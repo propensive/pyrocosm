@@ -75,12 +75,25 @@ is an edge detail of the web frontend. Several model shapes follow from being se
   the lone singleton cases `Inline.Break`, `Block.Rule` and `Status.Indeterminate` are fieldless
   products for now, and the derivations run in a sibling object with the companions holding
   only aliases.
+- The model is written as BinTEL under the schema derived from its type (`value.bintel`), so
+  every type with a hand-written codec declares the schema of what that codec writes: a scalar
+  for the singleton enums, `Keypress` and `Math`, and a figure's snapshot for `Figure`. The
+  sums (`Inline`, `Block`, `Destination`, `Status`, `Transition.Kind`) are typed at a member
+  position as TEL's specification types a sum there — a struct holding a `SelectRef` — where
+  stratiform's derivation writes a `Reference`, which is invalid (E217); that wrapping goes once
+  stratiform derives the member form itself (propensive/soundness#2319). Each sum's derivation
+  is an object of its own (`pyrocosm_schemas.scala`), as two in one class exceed a class's size.
 
 ### Inline
 
-`Textual`, `Phrase`, `Emphasis` (one kind), `Toned(tone, …)`, `Code(language, tokens)`,
+`Textual`, `Phrase`, `Emphasis` (one kind), `Toned(tone, …)`, `Snippet(language, tokens)`,
 `Keystroke(keypress)`, `Link(External | Internal(action) | Local(path, fragment), …)`, `Math`,
-`Symbol(glyph)`, `Reference(id)`, `Amount(value, units)`, `Figure(value, precision)`, `Break`.
+`Symbol(glyph)`, `Reference(id)`, `Amount(value, units)`, `Numeral(value, precision)`, `Break`.
+
+`Snippet` and `Numeral` were `Code` and `Figure`, renamed apart from `Block.Code` and
+`Block.Figure`: a TEL schema has one namespace of definition names, and stratiform names a
+derived definition by the type's simple name, so two types of one name cannot both be in it
+(propensive/soundness#2319).
 
 A `Local` destination is a page of the application by its root-absolute path, and a place on
 it: stable across processes, as an action's handle is not, so it can be bookmarked and opened

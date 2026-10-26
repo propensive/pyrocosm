@@ -135,7 +135,7 @@ class HtmlRenderer():
     case Inline.Emphasis(content)     => Em(phrase(content))
     case Inline.Strong(content)       => Strong(phrase(content))
     case Inline.Toned(tone, content)  => Span(`class` = toneClass(tone))(phrase(content))
-    case Inline.Code(_, tokens0)      => Code(`class` = cls(t"pyro-code"))(tokens(tokens0))
+    case Inline.Snippet(_, tokens0)      => Code(`class` = cls(t"pyro-code"))(tokens(tokens0))
     case Inline.Keystroke(keypress)   => Kbd(`class` = cls(t"pyro-key"))(keyText(keypress))
     case Inline.Reference(id)         => Code(`class` = cls(t"pyro-reference"))(id)
     case Inline.Break()               => Br
@@ -151,7 +151,7 @@ class HtmlRenderer():
       Span(`class` = cls(t"pyro-amount"), title = t"${value.toString} $units")
         ( Span(`class` = cls(t"pyro-figure"))(number), t" ", Span(`class` = cls(t"pyro-units"))(unit) )
 
-    case Inline.Figure(value, precision) =>
+    case Inline.Numeral(value, precision) =>
       Span(`class` = cls(t"pyro-figure"))(Amounts.figure(value, precision))
 
   // A keypress without the brackets clavichord's rendering puts around each key: a keycap is

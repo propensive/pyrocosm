@@ -484,12 +484,12 @@ tags:
                   Inline.Toned(Tone.Success, Inline.text(t"ok")),
                   Inline.Link(Inline.Destination.Internal(run), Inline.text(t"again")),
                   Inline.Link(Inline.Destination.Local(t"/api/gossamer.Text", t"length"), Inline.text(t"length")),
-                  Inline.Code(Language.Scala, List(Token(t"Text", Token.Accent.Typal, Unset, Inline.Destination.Local(t"/api/gossamer.Text")))),
+                  Inline.Snippet(Language.Scala, List(Token(t"Text", Token.Accent.Typal, Unset, Inline.Destination.Local(t"/api/gossamer.Text")))),
                   Inline.Math(unsafely(Ergo.parse(t"(x↗2 + y↗2)"))),
                   Inline.Symbol(Glyph.Check),
                   Inline.Reference(t"a1b2c3"),
                   Inline.Amount(0.0123, t"s"),
-                  Inline.Figure(3.5, 2),
+                  Inline.Numeral(3.5, 2),
                   Inline.Icon(t"/icon.svg", t"an icon"),
                   Inline.Break() ),
             Block.Table
@@ -526,6 +526,10 @@ tags:
     test(m"a block with every node round-trips as TEL"):
       rich.in[Tel].show.read[Tel].as[Block]
     . assert(_ == rich)
+
+    test(m"a block with every node round-trips as BinTEL, under the schema derived from its type"):
+      Pages.roundTrip(Page(List(rich)))
+    . assert(_ == Page(List(rich)))
 
     test(m"a graph converts to a dag and back"):
       val graph: Block.Graph = Block.Graph

@@ -76,7 +76,7 @@ object Presentable extends Presentable2:
 
     private def numeric(cells: List[List[Inline]]): Boolean =
       !cells.nil && cells.all:
-        case Inline.Figure(_, _) :: Nil => true
+        case Inline.Numeral(_, _) :: Nil => true
         case Inline.Amount(_, _) :: Nil => true
         case _                          => false
 
@@ -98,9 +98,9 @@ object Presentable extends Presentable2:
   given inline: Inline is Presentable in Inline = identity(_)
   given block: Block is Presentable in Block = identity(_)
   given text: Text is Presentable in Inline = Inline.Textual(_)
-  given int: Int is Presentable in Inline = int => Inline.Figure(int.toDouble, 0)
-  given long: Long is Presentable in Inline = long => Inline.Figure(long.toDouble, 0)
-  given double: Double is Presentable in Inline = Inline.Figure(_)
+  given int: Int is Presentable in Inline = int => Inline.Numeral(int.toDouble, 0)
+  given long: Long is Presentable in Inline = long => Inline.Numeral(long.toDouble, 0)
+  given double: Double is Presentable in Inline = Inline.Numeral(_)
   given keypress: Keypress is Presentable in Inline = Inline.Keystroke(_)
 
   // Inline, so that the units are known where the given is summoned. A lambda rather than an
@@ -151,7 +151,7 @@ object Presentable extends Presentable2:
     case Prose.Textual(text)       => Inline.Textual(text)
     case Prose.Emphasis(children*) => Inline.Emphasis(phrasing(List.from(children)))
     case Prose.Strong(children*)   => Inline.Strong(phrasing(List.from(children)))
-    case Prose.Code(code)          => Inline.Code(Language.Plain, List(Token.plain(code)))
+    case Prose.Code(code)          => Inline.Snippet(Language.Plain, List(Token.plain(code)))
     case Prose.Softbreak           => Inline.Textual(" ")
     case Prose.Linebreak           => Inline.Break()
     case Prose.HtmlInline(_)       => Inline.Textual("")
