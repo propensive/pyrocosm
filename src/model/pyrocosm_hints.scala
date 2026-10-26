@@ -49,6 +49,10 @@ object web:
   case class Span(columns: Int) extends Hint                     // grid columns a card may occupy
   case object Card extends Hint
   case object Sticky extends Hint
+
+  // An interface shown as a stage: its primary panels alone, filling the viewport, with no
+  // masthead, menu or panel around them — a presentation, whose deck is scaled to the screen.
+  case object Stage extends Hint
   enum Side extends Hint:
     case Verso, Recto
   case class Icon(name: anticipation.Text) extends Hint

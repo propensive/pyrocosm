@@ -1473,6 +1473,9 @@
     var backward = ["ArrowLeft", "ArrowUp", "PageUp"];
     if (forward.indexOf(event.key) >= 0) deck.pyroDeck.advance(1);
     else if (backward.indexOf(event.key) >= 0) deck.pyroDeck.advance(-1);
+    else if (event.key === "f" && document.documentElement.requestFullscreen) {
+      if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen();
+    }
     else if (event.key === "Home") deck.pyroDeck.go(0);
     else if (event.key === "End") deck.pyroDeck.go(deck.pyroDeck.count - 1);
     else return;

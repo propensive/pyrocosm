@@ -1021,6 +1021,31 @@ tags:
 
     . assert(_ == (true, true, true))
 
+    test(m"a staged interface's page is its primary panel's content alone"):
+      val slides: Live[List[Block]] = Live(List(deckOfTwo))
+      val priority: Panel.Priority = Panel.Priority.Essential
+      val panel: Panel = Panel(Panel.Id(t"slides"), Panel.Role.Primary, Unset, slides, priority)
+
+      val stageHints: Hints = Hints(hints.web.Stage)
+      val staged: Interface = Interface(Inline.text(t"Talk"), List(panel), hints = stageHints)
+      val framed: Interface = Interface(Inline.text(t"Talk"), List(panel))
+      val page: Text = PyrocosmPage(staged, HtmlRenderer(), WebTheme.default).markup.show
+      val usual: Text = PyrocosmPage(framed, HtmlRenderer(), WebTheme.default).markup.show
+
+      val stage: Text = t"""class="pyro-stage"><div class="pyro-stage-content">"""
+
+      ( page.contains(stage + t"""<div id="pyro-panel-slides-content""""),
+        page.contains(t"pyro-masthead") || page.contains(t"pyro-menubar"),
+        usual.contains(t"pyro-masthead") )
+
+    . assert(_ == (true, false, true))
+
+    test(m"the stylesheet sets a deck on a stage as a 16:9 canvas sized to the window"):
+      val canvas: Text = t"--pyro-canvas: min(100vw, calc(100vh * 16 / 9))"
+      WebStyles.css(WebTheme.default).show.contains(canvas)
+
+    . assert(_ == true)
+
     test(m"a deck round-trips through TEL and BinTEL"):
       val page: Page = Page(List(deckOfTwo))
       (deckOfTwo.in[Tel].show.read[Tel].as[Block] == deckOfTwo, Pages.roundTrip(page) == page)

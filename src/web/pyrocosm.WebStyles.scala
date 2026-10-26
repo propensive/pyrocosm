@@ -102,6 +102,25 @@ object WebStyles:
       . join(t" ")
       . read[Css]
 
+    // A stage: the primary panel alone, and a deck on it a 16:9 canvas, as large as the
+    // window allows and centred in it, everything on it sized in `em` against the canvas so
+    // that a slide scales with the screen as one picture. Read from text, as the scale is, for
+    // its custom properties.
+    val stage: Css =
+      List
+        ( t"body.pyro-stage { margin: 0; height: 100vh; overflow: hidden; background-image: none; display: flex; align-items: center; justify-content: center }",
+          t".pyro-stage-content { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center }",
+          t".pyro-stage .pyro-deck { --pyro-canvas: min(100vw, calc(100vh * 16 / 9)); position: relative; width: var(--pyro-canvas); height: calc(var(--pyro-canvas) * 9 / 16); font-size: calc(var(--pyro-canvas) / 48); --pyro-text-body: 1em; --pyro-text-inline: 0.9em; --pyro-text-mono: 0.85em; --pyro-text-small: 0.6em }",
+          t".pyro-stage .pyro-leaf { min-height: 0; height: 100%; box-sizing: border-box; padding: 3em 4em; font-size: 1em; overflow: hidden }",
+          t".pyro-stage .pyro-leaf.pyro-current { display: flex; flex-direction: column; justify-content: center }",
+          t".pyro-stage .pyro-leaf h1 { font-size: 3em; margin: 0 0 0.4em 0 } .pyro-stage .pyro-leaf h2 { font-size: 2.2em; margin: 0 0 0.4em 0 } .pyro-stage .pyro-leaf h3 { font-size: 1.6em }",
+          t".pyro-stage .pyro-leaf p, .pyro-stage .pyro-leaf li { font-size: 1.2em; line-height: 1.4 }",
+          t".pyro-stage .pyro-leaf .pyro-codeblock { font-size: 1.1em; margin: 0.5em 0; padding: 0.8em 1.1em }",
+          t".pyro-stage .pyro-deck-controls { position: absolute; right: 1em; bottom: 0.6em; opacity: 0; transition: opacity 0.3s ease }",
+          t".pyro-stage .pyro-deck:hover .pyro-deck-controls { opacity: 0.7 }" )
+      . join(t" ")
+      . read[Css]
+
     val base: Css =
       css"*, *::before, *::after { box-sizing: border-box }"
         + css"html { text-size-adjust: 100% }"
@@ -441,5 +460,5 @@ object WebStyles:
     val accents: Css = Token.Accent.values.foldLeft(Css(Nil)) { (acc, accent0) => acc + accent(accent0) }
     val traceAccents: Css = (1 to 5).foldLeft(Css(Nil)) { (acc, index) => acc + traceAccent(index) }
 
-    theme.variables + scale + base + layout + menubar + masthead + phrasing + label + flow + trace
+    theme.variables + scale + stage + base + layout + menubar + masthead + phrasing + label + flow + trace
     + charts + panels + controls + responsive + tones + accents + traceAccents
