@@ -127,7 +127,45 @@ class HtmlRenderer():
     case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = List(cls(t"pyro-link"), cls(t"pyro-action")))(label)
     case local: Inline.Destination.Local     => A(href = href(local), `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(label)
 
-  def tokens(tokens: List[Token]): Html of Phrasing = Html.Fragment(tokens.map(token)*)
+  def tokens(tokens: List[Token]): Html of Phrasing =
+    Html.Fragment(qualified(tokens.map { (token: Token) => (token, this.token(token)) })*)
+
+  // Each run of chained tokens as Amok rendered a qualified name: every linked segment after the
+  // first wraps everything before it, its separators and itself in a `pyro-qualified` span, and
+  // the first is wrapped alone, so that each link is a direct child of exactly the span which
+  // holds the name up to it — which the stylesheet underlines while that link is pointed at:
+  // `com`, then `com.example`, then `com.example.Foo`. A run of one token is the token alone.
+  private def qualified(items: List[(Token, Html of Phrasing)]): List[Html of Phrasing] =
+    val qualifiedClass: Name[CssClass] = cls(t"pyro-qualified")
+    var done: List[Html of Phrasing] = Nil
+    var current: Optional[Html of Phrasing] = Unset
+    var first: Optional[(Token, Html of Phrasing)] = Unset
+    var pending: List[Html of Phrasing] = Nil
+
+    def flush(): Unit =
+      first.let { (_, html) => done = html :: done }
+      current.let { (html: Html of Phrasing) => done = html :: done }
+      done = pending + done
+      first = Unset
+      current = Unset
+      pending = Nil
+
+    items.each: (token: Token, html: Html of Phrasing) =>
+      if !token.chained || (first.absent && current.absent) then
+        flush()
+        first = (token, html)
+      else if token.link.absent then pending = html :: pending
+      else
+        val before: Html of Phrasing = current.or:
+          first.lay(Html.Fragment[Phrasing]()): (token0: Token, html0: Html of Phrasing) =>
+            if token0.link.present then Span(`class` = qualifiedClass)(html0) else html0
+
+        first = Unset
+        current = Span(`class` = qualifiedClass)(before, Html.Fragment(pending.reverse*), html)
+        pending = Nil
+
+    flush()
+    done.reverse
 
   private def inline1(node: Inline): Html of Phrasing = node match
     case Inline.Textual(text)         => text
@@ -498,12 +536,13 @@ class HtmlRenderer():
     // Each token, cut at the boundaries where a segment begins or ends inside it, with a
     // running offset into the line.
     var offset: Int = 0
-    var pieces: List[Html of Phrasing] = Nil
+    var rendered: List[(Token, Html of Phrasing)] = Nil
 
     line.tokens.each: (token: Token) =>
       val end = offset + token.text.length
       val ends: List[Int] = ranges.bind { (range: (Int, Int, Block.Note)) => List(range(0), range(1)) }
       val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
+      var pieces: List[Html of Phrasing] = Nil
 
       cuts.zip(cuts.tail).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
@@ -518,9 +557,11 @@ class HtmlRenderer():
 
         pieces = styled :: pieces
 
+      // The token's pieces as one element, so that a qualified name chains whole tokens.
+      rendered = (token, Html.Fragment(pieces.reverse*)) :: rendered
       offset = end
 
-    val ordered: List[Html of Phrasing] = pieces.reverse
+    val ordered: List[Html of Phrasing] = qualified(rendered.reverse)
 
     Span(`class` = cls(t"pyro-line"))(Html.Fragment(ordered*), if last then Html.Fragment[Phrasing]() else t"\n")
 
