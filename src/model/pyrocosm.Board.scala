@@ -29,7 +29,7 @@ import soundness.*
 
 // The board a run shows while it works: a primary panel of the run's content, following the
 // newest of it, and its progress as the interface's one activity. Fume shows a test run on
-// one, flair a lint run; the shape is the same, so it lives here, and each application only
+// one, flare a lint run; the shape is the same, so it lives here, and each application only
 // decides what the blocks are.
 //
 // A frontend paints the board; the run feeds it, either by `refresh` — rebuilding the content
