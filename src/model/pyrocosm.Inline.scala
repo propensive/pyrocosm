@@ -75,14 +75,14 @@ enum Inline:
   case Emphasis(content: List[Inline])              // stress: italic where the medium has it
   case Strong(content: List[Inline])                // importance: bold
   case Toned(tone: Tone, content: List[Inline])
-  case Code(language: Language, tokens: List[Token])
+  case Snippet(language: Language, tokens: List[Token])
   case Keystroke(keypress: Keypress)
   case Link(destination: Inline.Destination, content: List[Inline])
   case Math(math: archimedes.Math)
   case Symbol(glyph: Glyph)
   case Reference(id: Text)                          // an identifier or hash, e.g. a test id
   case Amount(value: Double, units: Text)           // a quantity in base units; the renderer scales it
-  case Figure(value: Double, precision: Optional[Int] = Unset)
+  case Numeral(value: Double, precision: Optional[Int] = Unset)
   // A small image set in the line with the text, by URL; `alt` is what a medium without images
   // shows, and what a plain rendering says.
   case Icon(source: Text, alt: Text)
@@ -98,13 +98,13 @@ enum Inline:
     case Emphasis(content)    => Inline.plain(content)
     case Strong(content)      => Inline.plain(content)
     case Toned(_, content)    => Inline.plain(content)
-    case Code(_, tokens)      => tokens.map { (token: Token) => token.text }.join
+    case Snippet(_, tokens)   => tokens.map { (token: Token) => token.text }.join
     case Keystroke(keypress)  => keypress.show
     case Link(_, content)     => Inline.plain(content)
     case Math(_)              => "…"
     case Symbol(glyph)        => glyph.toString.tt
     case Reference(id)        => id
     case Amount(value, units) => t"${value.toString} $units"
-    case Figure(value, _)     => value.toString.tt
+    case Numeral(value, _)    => value.toString.tt
     case Icon(_, alt)         => alt
     case Break()              => "\n"

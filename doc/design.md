@@ -78,9 +78,14 @@ is an edge detail of the web frontend. Several model shapes follow from being se
 
 ### Inline
 
-`Textual`, `Phrase`, `Emphasis` (one kind), `Toned(tone, …)`, `Code(language, tokens)`,
+`Textual`, `Phrase`, `Emphasis` (one kind), `Toned(tone, …)`, `Snippet(language, tokens)`,
 `Keystroke(keypress)`, `Link(External | Internal(action) | Local(path, fragment), …)`, `Math`,
-`Symbol(glyph)`, `Reference(id)`, `Amount(value, units)`, `Figure(value, precision)`, `Break`.
+`Symbol(glyph)`, `Reference(id)`, `Amount(value, units)`, `Numeral(value, precision)`, `Break`.
+
+`Snippet` and `Numeral` were `Code` and `Figure`, renamed apart from `Block.Code` and
+`Block.Figure`: a TEL schema has one namespace of definition names, and stratiform names a
+derived definition by the type's simple name, so two types of one name cannot both be in it
+(propensive/soundness#2319).
 
 A `Local` destination is a page of the application by its root-absolute path, and a place on
 it: stable across processes, as an action's handle is not, so it can be bookmarked and opened

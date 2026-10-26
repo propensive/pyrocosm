@@ -148,7 +148,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     case Inline.Emphasis(content)     => e"$Italic(${phrase(content)})"
     case Inline.Strong(content)       => bold(phrase(content))
     case Inline.Toned(tone, content)  => toned(tone)(phrase(content))
-    case Inline.Code(_, tokens0)      => tokens(tokens0)
+    case Inline.Snippet(_, tokens0)      => tokens(tokens0)
     case Inline.Keystroke(keypress)   => bold(tint(theme.key)(Teletype(keypress.show)))
     case Inline.Reference(id)         => tint(theme.reference)(Teletype(id))
     case Inline.Break()               => Teletype(t"\n")
@@ -170,7 +170,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       val (number, unit) = scaled(value, units)
       e"${tint(theme.figure)(Teletype(number))} ${tint(theme.units)(Teletype(unit))}"
 
-    case Inline.Figure(value, precision) =>
+    case Inline.Numeral(value, precision) =>
       tint(theme.figure)(Teletype(figure(value, precision)))
 
   // ── Blocks ────────────────────────────────────────────────────────────────────────────────
