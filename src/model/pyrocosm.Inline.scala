@@ -69,6 +69,10 @@ object Inline:
   given telEncodable: Inline is Tel.Encodable = Codecs.inlineEncodable
   given telDecodable: Inline is Tel.Decodable = Codecs.inlineDecodable
 
+  // The schema BinTEL is written under, anchored here as the codecs are, so that a consumer's
+  // derivation finds it rather than deriving the model itself, which it cannot.
+  given telSchematic: Inline is stratiform.TelSchematic over Tels.Type = inlineTelSchematic
+
 enum Inline:
   case Textual(text: Text)
   case Phrase(content: List[Inline])                // a run of phrasing which belongs together

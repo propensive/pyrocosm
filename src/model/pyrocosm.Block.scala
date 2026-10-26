@@ -503,6 +503,9 @@ object Block:
   given telEncodable: Block is Tel.Encodable = Codecs.blockEncodable
   given telDecodable: Block is Tel.Decodable = Codecs.blockDecodable
 
+  // The schema BinTEL is written under, anchored here as the codecs are (see `Inline`).
+  given telSchematic: Block is stratiform.TelSchematic over Tels.Type = blockTelSchematic
+
 enum Block:
   case Paragraph(content: List[Inline])
   case Heading(level: Int, content: List[Inline], id: Optional[Text] = Unset)  // `id`: an anchor, as `Row.id`
