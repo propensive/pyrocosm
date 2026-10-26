@@ -176,7 +176,8 @@ object settings:
     "exoskeleton-completions", "exoskeleton-manpage", "ethereal-core", "ambience-core",
     "galilei-jvm", "serpentine-core", "stratiform-core", "revolution-core", "parasite-core",
     "eucalyptus-core", "guillotine-core",
-    "telekinesis-core", "telekinesis-jvm", "urticose-core", "gastronomy-core", "aviation-core")  // the upgrade check
+    "telekinesis-core", "telekinesis-jvm", "urticose-core", "gastronomy-core", "aviation-core",  // the upgrade check
+    "escapade-core", "iridescence-core", "escritoire-core")  // `about`'s banner and tables
   . map(component(soundness))
 
   // Connections between tools on different machines: TLS sockets (coaxial), content digests
@@ -223,6 +224,15 @@ object settings:
 
       val dirty: Boolean = os.proc("git", "status", "--porcelain").call(cwd = root).out.text().trim.nonEmpty
       s"$nextVersion-${tree.take(12)}${if dirty then "-dirty" else ""}"
+
+  // The date a build of a tool was released, written beside its version as
+  // `META-INF/pyrocosm/<name>/date` (`<name> about`): `PYROCOSM_RELEASE_DATE` when it is set,
+  // and otherwise the date of HEAD's commit, as `YYYY-MM-DD`, so that the same commit always
+  // builds the same jar.
+  def buildDate(env: Map[String, String]): String =
+    env.get("PYROCOSM_RELEASE_DATE").filter(_.nonEmpty).getOrElse:
+      val root = mill.api.BuildCtx.workspaceRoot
+      os.proc("git", "log", "-1", "--format=%cs").call(cwd = root).out.text().trim
 
 // Exposes the fork compiler's `release/lib` jars (from a local build via `settings.scalaHome`, or
 // downloaded from the `settings.scalaRelease` GitHub release) as a Maven-layout repository,
@@ -534,10 +544,12 @@ object pyrocosm extends Project:
 
     // The gallery's own version, as `gallery about` reports it: see `settings.buildVersion`.
     def buildVersion = Task.Input(settings.buildVersion(Task.env))
+    def buildDate = Task.Input(settings.buildDate(Task.env))
 
     override def resources = Task:
-      val file = Task.dest / "META-INF" / "pyrocosm" / "gallery" / "version"
-      os.write.over(file, buildVersion() + "\n", createFolders = true)
+      val directory = Task.dest / "META-INF" / "pyrocosm" / "gallery"
+      os.write.over(directory / "version", buildVersion() + "\n", createFolders = true)
+      os.write.over(directory / "date", buildDate() + "\n", createFolders = true)
       super.resources() ++ Seq(PathRef(Task.dest))
 
   object test extends Component(model, compiler, media, terminal, web, notes, cli, remote, bus, swarm):

@@ -29,6 +29,7 @@ import soundness.*
 
 import charsets.utf8Charset
 import codepages.utf8Codepage
+import dysasymptotics.linearSize
 import errorDiagnostics.stackTracesDiagnostics
 import filesystemBackends.javaBaseFilesystem
 import httpBackends.javaNetHttp
@@ -119,7 +120,7 @@ object Tool:
   // The standard subcommands and flags, in an object so that `Install` does not shadow
   // `exoskeleton.Install`, the error type, for the rest of this one.
   object ui:
-    val About = Subcommand("about", "show this tool's name, version and daemon")
+    val About = Subcommand("about", "show this tool's name, version, runtime and swarm")
     val Install = Subcommand("install", "install shell tab-completions and the manpage")
     val Quit = Subcommand("quit", "stop the background daemon, and any web front-end it serves")
 
@@ -321,21 +322,72 @@ object Tool:
     val minutes: Long = seconds%3600/60
     t"${hours.show}h ${minutes.show}m ${(seconds%60).show}s"
 
+  private def mebibytes(bytes: Long): Text = t"${(bytes/(1024*1024)).show} MiB"
+
+  // One row of a table in `about`: a key, and its value. A row whose value is unknown is
+  // left out, rather than shown empty.
+  private case class Fact(key: Text, value: Text)
+
+  private def facts(rows: (Text, Optional[Text])*): List[Fact] =
+    val all: List[(Text, Optional[Text])] = List(rows*)
+    all.bind: (key, value) => value.let(Fact(key, _)).lay(Nil: List[Fact])(List(_))
+
+  // The faint, right-aligned keys of `about`'s tables, beside their values.
+  private val faint: Chroma = Chroma(0x808080)
+
+  // Each section of `about` as a table, its keys padded to the widest key of every section, so
+  // that the values of all of them line up. The keys never wrap; a value too long for the line
+  // wraps. With no title row and no rules at all: a blank line between the tables is all that
+  // sets one section apart from the next.
+  private def tables(sections: List[List[Fact]], width: Int): List[List[Teletype]] =
+    import tableStyles.minimalTableStyle
+    import textMetrics.uniformMetric
+    import columnAttenuation.ignoreAttenuation
+
+    val facts: List[Fact] = sections.bind(identity(_))
+    val keyWidth: Int = facts.map(_.key.length).fold(0)(_.max(_))
+
+    def key(fact: Fact): Teletype = e"${Fg(faint)}(${fact.key.pad(keyWidth, Rtl)})"
+    def value(fact: Fact): Teletype = e"${fact.value}"
+
+    val scaffold: Scaffold[Fact, Teletype] =
+      Scaffold[Fact]
+        ( Column(e"", TextAlignment.Right, sizing = columnar.Fixed(keyWidth))(key),
+          Column(e"")(value) )
+
+    // A grid's first section is its title row, which escritoire always lays out; it is dropped.
+    sections.map: facts =>
+      val grid: Grid[Teletype] = scaffold.tabulate(facts).grid(width)
+
+      val rows: List[TableSection[Teletype]] = grid.sections match
+        case _ :: rows => rows
+        case _         => Nil
+
+      Grid(rows, grid.style).render.to[List]
+
   extension (tool: Tool)
     // The version this build of the tool was published as, from the `META-INF/pyrocosm/<name>/
     // version` resource its build writes (see the tool's build.mill): a release's `X.Y.Z`, a
-    // snapshot's `X.Y.Z-<hex>`, or a development build's tree hash. Read through the thread's
-    // context classloader, which is the loader that sees the tool's own jar under Burdock.
-    // `unknown` if no build wrote one.
-    def version: Text =
-      val resource: String = t"META-INF/pyrocosm/${tool.name}/version".s
+    // snapshot's `X.Y.Z-<hex>`, or a development build's tree hash; `unknown` if no build wrote
+    // one.
+    def version: Text = tool.resource(t"version").or(t"unknown")
+
+    // The date this build was released, `YYYY-MM-DD`, from the `META-INF/pyrocosm/<name>/date`
+    // resource its build writes beside the version: the release's date, or for any other build
+    // the date of the commit it was built from. `Unset` if no build wrote one.
+    def releaseDate: Optional[Text] = tool.resource(t"date")
+
+    // The trimmed contents of the `META-INF/pyrocosm/<name>/<file>` resource its build wrote,
+    // read through the thread's context classloader, which is the loader that sees the tool's
+    // own jar under Burdock. `Unset` if there is no such resource.
+    private def resource(file: Text): Optional[Text] =
+      val path: String = t"META-INF/pyrocosm/${tool.name}/$file".s
 
       val loader: ClassLoader =
         Optional(Thread.currentThread.nn.getContextClassLoader).or(classOf[Tool].getClassLoader.nn)
 
-      Optional(loader.getResourceAsStream(resource)).let: stream =>
+      Optional(loader.getResourceAsStream(path)).let: stream =>
         try String(stream.readAllBytes(), "UTF-8").trim.nn.tt finally stream.close()
-      . or(t"unknown")
 
     // The version as a `Semver`, which only a release's (or a snapshot's) version is: `Unset`
     // for a development build, whose version is a tree hash.
@@ -725,19 +777,80 @@ object Tool:
 
       given Stdio = invocation.stdio
 
-      val repo: Text = tool.repoFile(directory).let(_.encode).or(t"none at or above $directory")
+      val repo: Text = tool.repoFile(directory).let(_.encode).or(t"none")
 
       val user: Text = tool.userFile.let: file =>
         if file.existent() then file.encode else t"${file.encode} (absent)"
       . or(t"unknown")
 
-      Out.println(t"${tool.name} ${tool.version}")
-      Out.println(t"")
-      Out.println(t"executable   ${service.executable.encode}")
-      Out.println(t"daemon pid   ${java.lang.ProcessHandle.current.nn.pid.show}")
-      Out.println(t"uptime       ${Tool.uptime(service.startTime)}")
-      Out.println(t"repo config  $repo")
-      Out.println(t"user config  $user")
+      val upgrade: Optional[Text] = tool.available.let: release =>
+        t"${release.version} is available; run `${tool.name} upgrade`"
+
+      val build: Optional[Text] = if service.buildId > 0 then service.buildId.show else Unset
+
+      val facts: List[Tool.Fact] =
+        Tool.facts
+          ( t"Tool"     -> tool.name,
+            t"Version"  -> tool.version,
+            t"Released" -> tool.releaseDate,
+            t"Website"  -> t"https://propensive.dev/pyrocosm/${tool.name}",
+            t"Platform" -> Release.platform,
+            t"Build"    -> build,
+            t"Upgrade"  -> upgrade,
+            t"Licence"  -> t"Apache 2.0" )
+
+      val runtime: java.lang.Runtime = java.lang.Runtime.getRuntime.nn
+      val used: Long = runtime.totalMemory - runtime.freeMemory
+
+      val memory: Text =
+        t"${Tool.mebibytes(used)} used of ${Tool.mebibytes(runtime.totalMemory)} allocated, " +
+          t"${Tool.mebibytes(runtime.maxMemory)} at most"
+
+      val swarm: Optional[Swarm] = Swarm.of(tool.name)
+      val absent: Text = t"not started"
+
+      val nodes: Optional[Text] = swarm.let: swarm =>
+        val all: List[Advert] = swarm.nodes()
+        val local: Int = all.count(_.node.shares(swarm.node))
+        t"${all.size.show} (${local.show} on this machine, ${(all.size - local).show} elsewhere)"
+
+      val links: Optional[Text] = swarm.let: swarm =>
+        val kept: List[Swarm.Connection] = swarm.connections
+
+        if kept.nil then t"none" else kept.map: connection =>
+          val linked: Boolean = connection.standing.heard.present
+          t"${connection.machine.name} (${if linked then t"linked" else t"trying"})"
+
+        . join(t", ")
+
+      val gateway: Optional[Text] = swarm.let: swarm =>
+        swarm.listening.lay(t"no"): port => t"accepting other machines on port ${port.show}"
+
+      val details: List[Tool.Fact] =
+        Tool.facts
+          ( t"PID"         -> java.lang.ProcessHandle.current.nn.pid.show,
+            t"Uptime"      -> Tool.uptime(service.startTime),
+            t"Memory"      -> memory,
+            t"Threads"     -> java.lang.Thread.activeCount.show,
+            t"Java"        -> Optional(java.lang.System.getProperty("java.version")).let(_.tt),
+            t"Executable"  -> service.executable.encode,
+            t"User config" -> user,
+            t"Machine"     -> swarm.let(_.node.machine).or(absent),
+            t"Swarm nodes" -> nodes.or(absent),
+            t"Gateway"     -> gateway.or(absent),
+            t"Links"       -> links.or(absent),
+            t"Linked from" -> swarm.let(_.visitors.size.show).or(absent) )
+
+      // What depends on where the tool was invoked, apart from the tool and the machine.
+      val here: List[Tool.Fact] = Tool.facts(t"Directory" -> directory, t"Repo config" -> repo)
+      val width: Int = invocation.termcap.width.min(120)
+
+      Banner.lines(tool.name).each(Out.println(_))
+
+      Tool.tables(List(facts, details, here), width).each: table =>
+        Out.println(t"")
+        table.each(Out.println(_))
+
       Exit.Ok
 
     // Installs the tool's shell tab-completions and its manpage. `Completions.ensure` writes the
