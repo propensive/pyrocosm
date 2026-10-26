@@ -948,6 +948,55 @@ tags:
       html.tokens(List(Token(t"Text", Token.Accent.Typal, Unset, Inline.Destination.Local(t"/api/gossamer.Text")))).show
     . assert(_ == t"""<a href="/api/gossamer.Text" class="pyro-accent-typal pyro-locate">Text</a>""")
 
+    // `com.example.Foo` as a qualified name, each segment linked, and a trailing space.
+    def segment(text: Text, accent: Token.Accent, path: Text, chained: Boolean): Token =
+      Token(text, accent, Unset, Inline.Destination.Local(path), chained)
+
+    val dot: Token = Token(t".", Token.Accent.Symbol, Unset, Unset, true)
+
+    val qualifiedName: List[Token] =
+      List
+        ( segment(t"com", Token.Accent.Term, t"/api/com", false),
+          dot,
+          segment(t"example", Token.Accent.Term, t"/api/com.example", true),
+          dot,
+          segment(t"Foo", Token.Accent.Typal, t"/api/com.example.Foo", true),
+          Token.plain(t" ") )
+
+    def link(path: Text, accent: Text, text: Text): Text =
+      t"""<a href="$path" class="pyro-accent-$accent pyro-locate">$text</a>"""
+
+    val span: Text = t"""<span class="pyro-qualified">"""
+    val symbol: Text = t"""<span class="pyro-accent-symbol">.</span>"""
+    val space: Text = t"""<span class="pyro-accent-unparsed"> </span>"""
+
+    test(m"a qualified name nests each segment's prefix around it, as Amok's pages did"):
+      html.tokens(qualifiedName).show
+
+    . assert:
+        _ == span + span + span + link(t"/api/com", t"term", t"com") + t"</span>" + symbol +
+          link(t"/api/com.example", t"term", t"example") + t"</span>" + symbol +
+          link(t"/api/com.example.Foo", t"typal", t"Foo") + t"</span>" + space
+
+    test(m"a linked token which no other continues is not wrapped"):
+      html.tokens(qualifiedName.keep(1) + qualifiedName.skip(5)).show
+
+    . assert(_ == link(t"/api/com", t"term", t"com") + space)
+
+    test(m"a qualified name is nested in a line of code too"):
+      val line: Text = html.codeLine(Block.Line(qualifiedName), Nil, true).show
+      val opening: Text = t"""<span class="pyro-line">""" + span + span + span
+      line.contains(opening + link(t"/api/com", t"term", t"com"))
+
+    . assert(_ == true)
+
+    test(m"a chained token round-trips through TEL and BinTEL"):
+      val code: Block = Block.Code(Language.Scala, List(Block.Line(qualifiedName)))
+      val page: Page = Page(List(code))
+      (code.in[Tel].show.read[Tel].as[Block] == code, Pages.roundTrip(page) == page)
+
+    . assert(_ == (true, true))
+
     test(m"a heading with an id is an anchor target"):
       html.block(Block.Heading(3, Inline.text(t"Members"), t"members")).show
     . assert(_ == t"""<h3 id="members">Members</h3>""")

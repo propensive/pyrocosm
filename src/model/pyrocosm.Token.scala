@@ -133,12 +133,16 @@ object Token:
       place(Nil, cut, 0)
 
 // A token may link, as an identifier in a signature links to the page which documents it; a
-// renderer without links shows it as any other token.
+// renderer without links shows it as any other token. A `chained` token continues the
+// qualified name the tokens before it began — `.` and `example` and `.` and `Foo`, after
+// `com` — so that a renderer can show each segment as a link of its own and the name up to it
+// as one thing, as `com.example` is when `example` is pointed at.
 case class Token
-  ( text:   Text,
-    accent: Token.Accent,
-    role:   Optional[Token.Role]         = Unset,
-    link:   Optional[Inline.Destination] = Unset )
+  ( text:    Text,
+    accent:  Token.Accent,
+    role:    Optional[Token.Role]         = Unset,
+    link:    Optional[Inline.Destination] = Unset,
+    chained: Boolean                      = false )
 
 // The language of a piece of code, which decides how it was tokenised and how it is labelled.
 // Open, so that an application can name a language the model has never heard of.
