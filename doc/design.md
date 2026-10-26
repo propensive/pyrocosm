@@ -546,7 +546,7 @@ root-absolute now, so that is a prefix on the page — `HtmlRenderer.href` is th
   one word aligned on the colon; the web is a section and a frame table with `pyro-trace-*`
   classes and `--pyro-trace-*` theme variables, its source column folding on a narrow viewport.
   `Throwable` exhibits through it.
-- **M6d Diagnostics** (done): one way to report an error at a place, for Flair's findings,
+- **M6d Diagnostics** (done): one way to report an error at a place, for Flare's findings,
   Fever's and Fuel's compile errors, Fury's and every tool's TEL errors, and later Fume's
   failing test bodies. `Block.Diagnostic` (tone, `Location`, message, excerpt, detail);
   `Block.Code.start` numbers an excerpt from its line in the file; a `Note` may span lines, is

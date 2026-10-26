@@ -6,7 +6,7 @@ agent must follow when working in this repository.
 ## Dependencies are pinned in `etc/refs`
 
 Pyrocosm compiles against Soundness, pinned in `etc/refs`. Pyrocosm is itself pinned the same
-way by fume, flame and flair, so a change here that they need before the next release is
+way by fume, flame and flare, so a change here that they need before the next release is
 published to them with `make snapshot` (see below).
 
 `etc/refs` is tab-separated, one upstream per line: `repository`, `version`, and for a snapshot
@@ -39,7 +39,7 @@ version it declares for its next release. The build reads the file through the `
    `release.sh`, …) run here, and a bump is a deliberate one-line change. Set
    `PROPENSIVE_GITHUB=/path/to/a/.github/checkout` to test a change to the scripts themselves.
 
-### Publishing a snapshot for fume, flame or flair
+### Publishing a snapshot for fume, flame or flare
 
 `make snapshot` requires a clean working tree at a commit that is already on GitHub. It stages
 the library jars (`release.modules` in build.mill) at `<next version>-<hex>`, the next version being the patch after the
@@ -78,7 +78,7 @@ added as `doc/notes/<version>.md`, which is optional and ungated.
 What this repository *runs* — fume, to run its tests — is pinned in `etc/tools`, not in
 `etc/refs`. A tool is always a release, never a snapshot; it is not walked transitively and does
 not gate a release, because a release of it exists by definition. That distinction is what keeps
-the release graph free of cycles (Soundness runs flair, flair depends on Pyrocosm, Pyrocosm
+the release graph free of cycles (Soundness runs flare, flare depends on Pyrocosm, Pyrocosm
 depends on Soundness). `make tools` installs the pinned commands. Never pin a tool in `etc/refs`
 to get an unreleased build of it: release the tool instead.
 
