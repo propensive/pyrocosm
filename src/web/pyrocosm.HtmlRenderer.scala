@@ -185,6 +185,13 @@ class HtmlRenderer():
 
     case Inline.Link(destination, content) => lead(destination, phrase(content))
 
+    // The note is in the element, after the content, so that it is read by what has no hover
+    // (a screen reader, a text browser); the stylesheet shows it only when pointed at or
+    // focused, which the tabindex allows from the keyboard.
+    case Inline.Annotated(content, note) =>
+      Span(`class` = cls(t"pyro-annotated"), tabindex = t"0")
+        ( phrase(content), Span(`class` = cls(t"pyro-annotation"))(phrase(note)) )
+
     case Inline.Amount(value, units) =>
       val (number, unit) = Amounts.scaled(value, units)
       Span(`class` = cls(t"pyro-amount"), title = t"${value.toString} $units")
@@ -237,9 +244,9 @@ class HtmlRenderer():
     case Block.Quotation(content) => Blockquote(`class` = cls(t"pyro-quotation"))(blocks(content))
     case Block.Rule(side)         => Hr(`class` = cls(t"pyro-rule-${side.toString.tt.lower}"))
 
-    case Block.Code(language, lines, notes, start, animation) =>
-      animation.lay(plainCode(language, lines, notes, start)): (animation: Block.Animation) =>
-        animatedCode(language, animation)
+    case Block.Code(language, lines, notes, start, animation, id) =>
+      animation.lay(plainCode(language, lines, notes, start, id)): (animation: Block.Animation) =>
+        animatedCode(language, animation, id)
 
     case Block.Table(columns, rows, caption) => table(columns, rows, caption)
 
@@ -412,13 +419,19 @@ class HtmlRenderer():
     Span(`class` = List(cls(t"pyro-marker"), cls(t"pyro-marker-${note.style.toString.tt.lower}")))
       (margin, t" "*pad, Span(`class` = cls(t"pyro-marks"))(marks), caption)
 
-  def plainCode(language: pyrocosm.Language, lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int])
+  def plainCode
+    ( language: pyrocosm.Language,
+      lines:    List[Block.Line],
+      notes:    List[Block.Note],
+      start:    Optional[Int],
+      id:       Optional[Text] = Unset )
   :   Html of Flow =
 
     val numbered: List[Name[CssClass]] = if start.present then List(cls(t"pyro-numbered")) else Nil
     val classes: List[Name[CssClass]] = cls(t"pyro-codeblock") :: cls(t"pyro-language-${language.name}") :: numbered
+    val code: Html of Phrasing = Code(codeRows(lines, notes, start)*)
 
-    Pre(`class` = classes)(Code(codeRows(lines, notes, start)*))
+    id.lay(Pre(`class` = classes)(code)) { (id: Text) => Pre(id = id, `class` = classes)(code) }
 
   // An animated block: its first slide as lines of atoms, each carrying its id, with that
   // slide's annotations and label and in its language; its controls; and the animation as
@@ -442,7 +455,7 @@ class HtmlRenderer():
 
     Div(`class` = cls(t"pyro-deck"), tabindex = t"0")(Html.Fragment(slides*), controls)
 
-  def animatedCode(language: pyrocosm.Language, animation: Block.Animation): Html of Flow =
+  def animatedCode(language: pyrocosm.Language, animation: Block.Animation, id: Optional[Text] = Unset): Html of Flow =
     val first: Optional[Block.Slide] = animation.slides.prim
     val shown: pyrocosm.Language = first.let(_.language).or(language)
     val classes: List[Name[CssClass]] = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}"))
@@ -457,10 +470,14 @@ class HtmlRenderer():
           Button(`class` = cls(t"pyro-animation-play"), `type` = t"button")(t"▶"),
           Span(`class` = cls(t"pyro-animation-label"))(phrase(first.lay(Nil)(_.label))) )
 
-    Div(`class` = cls(t"pyro-animated"), tabindex = t"0")
-      ( Pre(`class` = classes)(Code(rows*)),
-        controls,
-        Pre(`class` = cls(t"pyro-animation-data"))(animationJson(language, animation)) )
+    val parts: List[Html of Flow] =
+      List
+        ( Pre(`class` = classes)(Code(rows*)),
+          controls,
+          Pre(`class` = cls(t"pyro-animation-data"))(animationJson(language, animation)) )
+
+    id.lay(Div(`class` = cls(t"pyro-animated"), tabindex = t"0")(parts*)): (id: Text) =>
+      Div(id = id, `class` = cls(t"pyro-animated"), tabindex = t"0")(parts*)
 
   // One slide's lines as rows of atoms — block-level lines (the stylesheet's rule), so no
   // newline stands between them — with the frame's notes laid over them: an atom any part of

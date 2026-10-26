@@ -154,6 +154,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     case Inline.Break()               => Teletype(t"\n")
     case Inline.Math(math)            => Teletype(safely(Ergo.serialize(math)).or(t"…"))
     case Inline.Icon(_, _)            => blank   // a terminal has no images; `plain` says the alt
+    case Inline.Annotated(content, _) => phrase(content)   // a terminal has no hover; the note is for the page
 
     case Inline.Link(destination, content) =>
       val text = e"$Underline(${phrase(content)})"
@@ -282,7 +283,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
       // An animated block is its slides in sequence, since a terminal cannot step them: each
       // under a marker of its place and its label, with its own notes.
-      case Block.Code(_, lines, notes, start, animation) =>
+      case Block.Code(_, lines, notes, start, animation, _) =>
         animation.lay(code(lines, notes, start, width)): (animation: Block.Animation) =>
           val count: Int = animation.slides.size
 

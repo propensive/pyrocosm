@@ -522,13 +522,15 @@ enum Block:
   // `start`, when present, is the source line number (from one) of the first line: the lines
   // are then numbered in the margin, as an excerpt of a file is and a sample is not.
   // `animation`, when present, is the block as a sequence of slides, of which `lines` is the
-  // first, so a renderer that cannot animate shows a correct block.
+  // first, so a renderer that cannot animate shows a correct block. `id` is an anchor, as a
+  // heading's: what a local destination's fragment names to lead to the block.
   case Code
     ( language:  Language,
       lines:     List[Block.Line],
       notes:     List[Block.Note]          = Nil,
       start:     Optional[Int]             = Unset,
-      animation: Optional[Block.Animation] = Unset )
+      animation: Optional[Block.Animation] = Unset,
+      id:        Optional[Text]            = Unset )
   case Table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] = Unset)
   case Record(entries: List[Block.Entry], title: Optional[List[Inline]] = Unset)
   case Notice(tone: Tone, title: Optional[List[Inline]], content: List[Block])

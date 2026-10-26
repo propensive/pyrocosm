@@ -202,6 +202,11 @@ object WebStyles:
 
     val phrasing: Css =
       css"em { font-weight: 600; font-style: normal }"
+        // An annotated phrase: dotted beneath, as an abbreviation is, with its note laid over
+        // the text when pointed at or focused.
+        + css".pyro-annotated { position: relative; text-decoration: underline dotted; text-underline-offset: 0.15em; cursor: help }"
+        + css".pyro-annotation { display: none; position: absolute; left: 0; top: 1.5em; z-index: 10; min-width: 16em; max-width: 32em; padding: var(--pyro-space-2) var(--pyro-space-3); border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); background-color: var(--pyro-surface); color: var(--pyro-fg); font-size: var(--pyro-text-small); line-height: 1.4; text-decoration: none; box-shadow: var(--pyro-shadow-card) }"
+        + css".pyro-annotated:hover > .pyro-annotation, .pyro-annotated:focus > .pyro-annotation { display: block }"
         + css".pyro-key { display: inline-block; padding: 0.05em 0.45em; border: 1px solid var(--pyro-border); border-bottom-width: 2px; border-radius: var(--pyro-radius); background-color: var(--pyro-surface); font-size: 0.85em; line-height: 1.4; color: var(--pyro-fg) }"
         // Inline code takes the light mode's code ground in the mixed mode and the block's in the
         // others, within a faint border, so it reads as code without the block's dark ground.

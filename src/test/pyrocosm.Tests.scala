@@ -427,6 +427,19 @@ tags:
       emptyCells.in[Tel].show.read[Tel].as[Block]
     . assert(_ == emptyCells)
 
+    val annotated: Block =
+      Block.Paragraph(List(Inline.Annotated(Inline.text(t"monad"), List(Inline.Textual(t"a "), Inline.Emphasis(Inline.text(t"monoid"))))))
+
+    test(m"an annotated phrase round-trips as TEL text, and is plain by its content"):
+      (annotated.in[Tel].show.read[Tel].as[Block], Inline.plain(List(Inline.Annotated(Inline.text(t"monad"), Inline.text(t"x")))))
+    . assert(_ == (annotated, t"monad"))
+
+    val anchored: Block = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"x")))), Nil, Unset, Unset, t"setup")
+
+    test(m"a code block's anchor round-trips as TEL text and is its element's id"):
+      (anchored.in[Tel].show.read[Tel].as[Block], HtmlRenderer().block(anchored).show.contains(t"id=\"setup\""))
+    . assert(_ == (anchored, true))
+
     // The derivation tutorial's own example of a type that "cannot be derived in place": direct
     // recursion, with no collection or `Optional` between the sum and itself.
     val direct: Direct = Direct.Branch(Direct.Leaf, 1, Direct.Branch(Direct.Leaf, 2, Direct.Leaf))
@@ -560,7 +573,7 @@ tags:
     test(m"highlighted source exhibits as a code block"):
       val exhibit: Block = Scala.highlight(t"val x = 1").exhibit
       exhibit match
-        case Block.Code(Language.Scala, lines, _, _, _) => lines.at(Prim).let(_.tokens.at(Prim)).let(_.accent) == Token.Accent.Keyword
+        case Block.Code(Language.Scala, lines, _, _, _, _) => lines.at(Prim).let(_.tokens.at(Prim)).let(_.accent) == Token.Accent.Keyword
         case _                                       => false
     . assert(_ == true)
 
@@ -574,7 +587,7 @@ tags:
       val diagnostic = Notices.diagnostic(notice, Notices.lines(t"val a = 1\nval b = x\nval c = 3"))
 
       diagnostic match
-        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(_, lines, List(note), start, _)), _) =>
+        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(_, lines, List(note), start, _, _)), _) =>
           (location.let(_.text), lines.size, note.line, note.start, note.end, start)
 
         case _ =>
@@ -596,7 +609,7 @@ tags:
       val error = Tel.Error(Tel.Error.Reason.TooManyAtoms, Tel.Error.spanAt(4, 9, 4))
 
       Block.Diagnostic.of(error, t"contacts.tel", source) match
-        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(Language.Tel, lines, List(note), start, _)), _) =>
+        case Block.Diagnostic(Tone.Failure, location, _, List(Block.Code(Language.Tel, lines, List(note), start, _, _)), _) =>
           (location.let(_.text), lines.size, note.line, note.start, note.end, start)
 
         case _ =>

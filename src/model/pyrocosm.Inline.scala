@@ -90,6 +90,10 @@ enum Inline:
   // A small image set in the line with the text, by URL; `alt` is what a medium without images
   // shows, and what a plain rendering says.
   case Icon(source: Text, alt: Text)
+  // A phrase with a note shown beside it on demand — a gloss, an abbreviation's expansion, a
+  // term's definition — as a tooltip where the medium has one; a plain rendering is the
+  // content alone.
+  case Annotated(content: List[Inline], note: List[Inline])
 
   // A fieldless product, not a singleton: deriving the TEL decoder for this enum with a singleton
   // case fails under capture checking (see the `Min` reproduction in the Soundness issue). Revert
@@ -111,4 +115,5 @@ enum Inline:
     case Amount(value, units) => t"${value.toString} $units"
     case Numeral(value, _)    => value.toString.tt
     case Icon(_, alt)         => alt
+    case Annotated(content, _) => Inline.plain(content)
     case Break()              => "\n"
