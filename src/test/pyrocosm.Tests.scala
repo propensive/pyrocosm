@@ -527,6 +527,10 @@ tags:
       rich.in[Tel].show.read[Tel].as[Block]
     . assert(_ == rich)
 
+    test(m"a block with every node round-trips as BinTEL, under the schema derived from its type"):
+      Pages.roundTrip(Page(List(rich)))
+    . assert(_ == Page(List(rich)))
+
     test(m"a graph converts to a dag and back"):
       val graph: Block.Graph = Block.Graph
         ( List(Block.Vertex(t"a", Inline.text(t"A")), Block.Vertex(t"b", Inline.text(t"B"))),

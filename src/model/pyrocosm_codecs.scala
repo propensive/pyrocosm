@@ -26,6 +26,8 @@ import scala.caps
 
 import soundness.*
 
+import stratiform.TelSchematic
+
 // TEL codecs for the two leaf types with no serial form of their own. Each is a scalar: a
 // keypress is its rendering (`[⌃]+[C]`), and a mathematical expression is its Ergo shorthand.
 // Named, at package level, because their subjects are owned elsewhere; the anchored `Inline`
@@ -94,6 +96,9 @@ object Codecs:
   val snapshotDecodable: Figure.Snapshot is Tel.Decodable =
     Tel.DecodableDerivation.derived[Figure.Snapshot]
 
+  val snapshotSchematic: Figure.Snapshot is TelSchematic over Tels.Type =
+    stratiform.TelsDerivation.derived[Figure.Snapshot]
+
 // A figure serialises as its snapshot — id, alt and the whole current drawing — and reads back
 // as a figure with the same id, so a round trip compares equal.
 given figureTelEncodable: Figure is Tel.Encodable =
@@ -144,6 +149,112 @@ private def byName[value](values: scala.Array[value])(text: Text): Optional[valu
     index += 1
 
   found
+
+// The schemas of the types above whose codecs are scalars, as stratiform declares its own
+// primitives', so that a derived schema — which BinTEL is written under — reaches every leaf
+// of the model as the codecs write it: a word, not a structure.
+private def scalarSchema[value]: value is TelSchematic over Tels.Type =
+  () => Tels.Scalar(Array.empty)
+
+given keypressTelSchematic: Keypress is TelSchematic over Tels.Type = scalarSchema
+given mathTelSchematic: archimedes.Math is TelSchematic over Tels.Type = scalarSchema
+given sideTelSchematic: Block.Side is TelSchematic over Tels.Type = scalarSchema
+given toneTelSchematic: Tone is TelSchematic over Tels.Type = scalarSchema
+given glyphTelSchematic: Glyph is TelSchematic over Tels.Type = scalarSchema
+given standingTelSchematic: Standing is TelSchematic over Tels.Type = scalarSchema
+given accentTelSchematic: Token.Accent is TelSchematic over Tels.Type = scalarSchema
+given roleTelSchematic: Token.Role is TelSchematic over Tels.Type = scalarSchema
+given alignmentTelSchematic: Block.Alignment is TelSchematic over Tels.Type = scalarSchema
+given noteStyleTelSchematic: Block.Note.Style is TelSchematic over Tels.Type = scalarSchema
+given chartKindTelSchematic: Block.Chart.Kind is TelSchematic over Tels.Type = scalarSchema
+given sizingTelSchematic: Block.Sizing is TelSchematic over Tels.Type = scalarSchema
+
+// A figure is written as its snapshot, so its schema is the snapshot's, in every part.
+given figureTelSchematic: Figure is TelSchematic over Tels.Type =
+  val snapshot: Figure.Snapshot is TelSchematic over Tels.Type = Codecs.snapshotSchematic
+
+  new TelSchematic:
+    type Self = Figure
+    def schema(): Tels.Type = snapshot.schema()
+    override def fieldType: Tels.Type = snapshot.fieldType
+    override def selectDefinitions: List[Tels.SelectDefinition] = snapshot.selectDefinitions
+
+    override def definitions(seen: scala.collection.immutable.Set[Text])
+    :   TelSchematic.Definitions =
+
+      snapshot.definitions(seen)
+
+    override def layers(seen: scala.collection.immutable.Set[Text]): List[Tels.Layer] =
+      snapshot.layers(seen)
+
+// The model's sums, each with the schema stratiform derives, but typed at a member position as
+// TEL's specification types a sum there: a struct holding a `SelectRef` to it (§20.3), which is
+// how the derived codecs write a sum-typed field — its keyword, with one variant beneath it.
+// Stratiform's derivation types such a member as a `Reference` to the select instead, which
+// type assignment rejects as a kind mismatch (E217; propensive/soundness#2319). These go once
+// stratiform derives the member form itself.
+given inlineTelSchematic: Inline is TelSchematic over Tels.Type = atMember(InlineSchema.derived)
+given blockTelSchematic: Block is TelSchematic over Tels.Type = atMember(BlockSchema.derived)
+given statusTelSchematic: Status is TelSchematic over Tels.Type = atMember(StatusSchema.derived)
+
+given destinationTelSchematic: Inline.Destination is TelSchematic over Tels.Type =
+  atMember(DestinationSchema.derived)
+
+given transitionKindTelSchematic: Block.Transition.Kind is TelSchematic over Tels.Type =
+  atMember(TransitionKindSchema.derived)
+
+// A sum's type at a member position: a struct holding a `SelectRef` to it.
+private def selectMember(name: Text): Tels.Type =
+  val reference = Tels.SelectRef(Tels.Polarity.Implicit, Tels.Polarity.Implicit, name)
+  Tels.Struct(Array(reference), Array.empty)
+
+// Definitions with each member typed as a `Reference` to one of their selects retyped as the
+// member form: this reaches the members a sum's own derivation types for itself (a recursive
+// `List[Inline]` within `Inline`), where the wrapping givens above are not consulted.
+private def membered(definitions: TelSchematic.Definitions): TelSchematic.Definitions =
+  val selects: List[Text] = definitions.selects.map(_.name)
+
+  def retyped(member: Tels.Member): Tels.Member = member match
+    case field: Tels.Field => field.fieldType match
+      case Tels.Reference(name) if selects.has(name) => field.copy(fieldType = selectMember(name))
+      case _                                         => field
+
+    case other =>
+      other
+
+  val records: List[Tels.RecordDefinition] =
+    definitions.records.map: (record: Tels.RecordDefinition) =>
+      record.copy(members = Array.from(record.members.stdlib.toList.map(retyped)))
+
+  TelSchematic.Definitions(records, definitions.selects)
+
+// A derived sum's schematic, typed at a member position as the member form.
+private def atMember[value](derived: => value is TelSchematic over Tels.Type)
+:   value is TelSchematic over Tels.Type =
+
+  caps.unsafe.unsafeAssumePure:
+    new TelSchematic:
+      type Self = value
+      private lazy val inner: value is TelSchematic over Tels.Type = derived
+
+      def schema(): Tels.Type = inner.schema()
+
+      override def fieldType: Tels.Type = inner.schema() match
+        case Tels.Reference(name) => selectMember(name)
+        case other                => other
+
+      override def polarity: Tels.Polarity = inner.polarity
+      override def repeatable: Tels.Polarity = inner.repeatable
+      override def selectDefinitions: List[Tels.SelectDefinition] = inner.selectDefinitions
+
+      override def definitions(seen: scala.collection.immutable.Set[Text])
+      :   TelSchematic.Definitions =
+
+        membered(inner.definitions(seen))
+
+      override def layers(seen: scala.collection.immutable.Set[Text]): List[Tels.Layer] =
+        inner.layers(seen)
+
 
 given sideTelEncodable: Block.Side is Tel.Encodable = scalar(kebab)
 given sideTelDecodable: Block.Side is Tel.Decodable = parsed("side")(byName(Block.Side.values))

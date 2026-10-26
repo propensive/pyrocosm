@@ -75,6 +75,14 @@ is an edge detail of the web frontend. Several model shapes follow from being se
   the lone singleton cases `Inline.Break`, `Block.Rule` and `Status.Indeterminate` are fieldless
   products for now, and the derivations run in a sibling object with the companions holding
   only aliases.
+- The model is written as BinTEL under the schema derived from its type (`value.bintel`), so
+  every type with a hand-written codec declares the schema of what that codec writes: a scalar
+  for the singleton enums, `Keypress` and `Math`, and a figure's snapshot for `Figure`. The
+  sums (`Inline`, `Block`, `Destination`, `Status`, `Transition.Kind`) are typed at a member
+  position as TEL's specification types a sum there — a struct holding a `SelectRef` — where
+  stratiform's derivation writes a `Reference`, which is invalid (E217); that wrapping goes once
+  stratiform derives the member form itself (propensive/soundness#2319). Each sum's derivation
+  is an object of its own (`pyrocosm_schemas.scala`), as two in one class exceed a class's size.
 
 ### Inline
 
