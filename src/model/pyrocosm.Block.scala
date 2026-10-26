@@ -380,6 +380,9 @@ object Block:
 
       Diagnostic(Tone.Failure, location, message, excerpt)
 
+  // One slide of a deck: the blocks it shows at once.
+  case class Leaf(content: List[Block])
+
   // `open`, when present, makes a node with children collapsible, and says whether it starts
   // open or closed; a frontend with no way to toggle (the terminal) shows every node.
   case class TreeNode
@@ -533,6 +536,11 @@ enum Block:
   case Image(source: Text, alt: Text)
   case Figure(figure: pyrocosm.Figure)                  // a live drawing, revised in place
   case Tree(roots: List[Block.TreeNode])
+
+  // Slides, shown one at a time and stepped through: on the web, by the arrow keys, space and
+  // the page keys, an animated block on a slide stepping through its frames before the deck
+  // moves on; in the terminal, one after another.
+  case Deck(leaves: List[Block.Leaf])
   case Graph(vertices: List[Block.Vertex], edges: List[Block.Edge])
   case Chart(kind: Block.Chart.Kind, series: List[Block.Series])
   case Gauge(status: Status, caption: Optional[List[Inline]] = Unset)

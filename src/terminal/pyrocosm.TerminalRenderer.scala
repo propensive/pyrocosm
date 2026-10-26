@@ -349,6 +349,15 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       case Block.Figure(figure) =>
         List(faint(e"$Italic([${Inline.plain(figure.alt)}])"))
 
+      // A terminal cannot step, so a deck is its slides in sequence, each under a marker.
+      case Block.Deck(leaves) =>
+        val count: Int = leaves.size
+
+        leaves.indexed.bind: (leaf: Block.Leaf, index: Ordinal) =>
+          val place: Teletype = faint(Teletype(t"slide ${(index.n0 + 1).show} of ${count.show}"))
+          val separator: List[Teletype] = if index.n0 == 0 then Nil else List(blank)
+          separator + (place :: blank :: blocks(leaf.content, width, tick, selected))
+
       case Block.Tree(roots) =>
         val diagram = TreeDiagram.by[Block.TreeNode](_.children)(roots*)
         val style = roundedTreeStyle[Teletype]

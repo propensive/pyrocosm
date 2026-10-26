@@ -239,6 +239,16 @@ object WebStyles:
         + css".pyro-animated .pyro-line { display: block; min-height: 1.5em }"
         + css".pyro-animated .pyro-codeblock { will-change: height }"
         + css".pyro-animation-data { display: none }"
+        // A deck: one slide at a time, large, with its controls beneath; an animated block on a
+        // slide steps with the deck, so its own controls give way to its label.
+        + css".pyro-deck { outline: none }"
+        + css".pyro-leaf { display: none; min-height: 60vh; padding: var(--pyro-space-6) 0; font-size: 1.35rem }"
+        + css".pyro-leaf.pyro-current { display: block }"
+        + css".pyro-leaf h1 { font-size: 3rem } .pyro-leaf h2 { font-size: 2.2rem }"
+        + css".pyro-leaf .pyro-codeblock { font-size: 1.1rem }"
+        + css".pyro-deck .pyro-animation-controls button, .pyro-deck .pyro-animation-counter { display: none }"
+        + css".pyro-deck-controls { display: flex; gap: var(--pyro-space-2); align-items: center; justify-content: center; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); color: var(--pyro-muted) }"
+        + css".pyro-deck-controls button { font: inherit; line-height: 1; padding: 0 var(--pyro-space-2); border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius); background-color: transparent; color: inherit; cursor: pointer }"
         + css".pyro-animation-controls { display: flex; gap: var(--pyro-space-2); align-items: center; margin: calc(-1 * var(--pyro-space-3)) 0 var(--pyro-space-4) 0; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small) }"
         + css".pyro-animation-controls button { font: inherit; line-height: 1; padding: 0 var(--pyro-space-2); border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius); background-color: transparent; color: inherit; cursor: pointer }"
         + css".pyro-animation-controls button:disabled { opacity: 0.4; cursor: default }"

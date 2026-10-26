@@ -108,6 +108,11 @@ replace direct use of colours, weights and box characters.
 
 ### Block
 
+`Deck` holds slides (`Leaf`s of blocks) shown one at a time: on the web the arrow, space and
+page keys step through them, an animated block on a slide stepping through its frames before
+the deck moves on (and a slide entered backwards showing its last frame); the terminal shows the
+slides in sequence. Fuel's presentations are decks.
+
 `Paragraph`, `Heading` (with an optional `id`, an anchor a local destination's fragment
 targets; a `Row` may have one too), `Listing` (items may carry an `Action` or a destination),
 `Quotation`, `Rule`, `Code`

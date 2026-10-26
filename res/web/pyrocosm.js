@@ -1306,6 +1306,7 @@
     if (next) next.addEventListener("click", function () { manual(1); });
     if (play) play.addEventListener("click", function () { timeline.pause(); toggle(); });
     block.addEventListener("keydown", function (event) {
+      if (block.closest(".pyro-deck")) return;   // a deck steps its blocks itself
       if (event.key === "ArrowRight") { manual(1); event.preventDefault(); }
       else if (event.key === "ArrowLeft") { manual(-1); event.preventDefault(); }
       else if (event.key === " ") { timeline.pause(); toggle(); event.preventDefault(); event.stopPropagation(); }
@@ -1325,12 +1326,62 @@
     };
   }
 
+  // A deck shows one slide at a time. Stepping forward steps the last animated block on the
+  // slide through its frames, then moves to the next slide; stepping back does the reverse,
+  // and a slide entered backwards shows its blocks' last frames.
+  function wireDeck(deck) {
+    var leaves = Array.prototype.slice.call(deck.querySelectorAll(":scope > .pyro-leaf"));
+    var counter = deck.querySelector(":scope > .pyro-deck-controls .pyro-deck-counter");
+    var index = 0;
+
+    function players(leaf) {
+      return Array.prototype.slice.call(leaf.querySelectorAll(".pyro-animated"))
+        .map(function (block) { return block.pyroPlayer; }).filter(Boolean);
+    }
+
+    function go(target, backward) {
+      if (target < 0 || target >= leaves.length || target === index) return;
+      leaves[index].classList.remove("pyro-current");
+      index = target;
+      leaves[index].classList.add("pyro-current");
+      players(leaves[index]).forEach(function (player) {
+        player.stop();
+        player.show(backward ? player.data.slides.length - 1 : 0, false);
+      });
+      if (counter) counter.textContent = (index + 1) + " / " + leaves.length;
+    }
+
+    function advance(delta) {
+      var animated = players(leaves[index]);
+      var player = animated.length ? animated[animated.length - 1] : null;
+      if (player) {
+        if (player.busy()) return;
+        var frame = player.frame();
+        if (delta > 0 && frame < player.data.slides.length - 1) { player.show(frame + 1, true); return; }
+        if (delta < 0 && frame > 0) { player.show(frame - 1, true); return; }
+      }
+      go(index + delta, delta < 0);
+    }
+
+    var prev = deck.querySelector(":scope > .pyro-deck-controls .pyro-deck-prev");
+    var next = deck.querySelector(":scope > .pyro-deck-controls .pyro-deck-next");
+    if (prev) prev.addEventListener("click", function () { advance(-1); });
+    if (next) next.addEventListener("click", function () { advance(1); });
+    deck.pyroDeck = { advance: advance, go: function (target) { go(target, false); }, count: leaves.length };
+  }
+
   function wire(root) {
+    root.querySelectorAll(".pyro-deck").forEach(function (deck) {
+      if (deck.dataset.pyroWired) return;
+      deck.dataset.pyroWired = "1";
+      wireDeck(deck);
+    });
+
     root.querySelectorAll(".pyro-animated").forEach(function (block) {
       if (block.dataset.pyroWired) return;
       block.dataset.pyroWired = "1";
       var player = animate(block);
-      if (player) timeline.register(player);
+      if (player) { block.pyroPlayer = player; timeline.register(player); }
     });
     timeline.refresh();
 
@@ -1412,6 +1463,23 @@
 
   // Declared shortcuts arrive as keypresses in clavichord's rendering, e.g. "[⌃]+[L]"; only
   // chords with a modifier are reported, so ordinary typing is never intercepted.
+  // The deck on the page, if there is one, takes the arrow, page and space keys, wherever the
+  // focus is but in something which edits text.
+  document.addEventListener("keydown", function (event) {
+    var deck = document.querySelector(".pyro-deck");
+    if (!deck || !deck.pyroDeck || event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.target && event.target.closest && event.target.closest(".pyro-editor, input, textarea, select, [contenteditable]")) return;
+    var forward = ["ArrowRight", "ArrowDown", "PageDown", " "];
+    var backward = ["ArrowLeft", "ArrowUp", "PageUp"];
+    if (forward.indexOf(event.key) >= 0) deck.pyroDeck.advance(1);
+    else if (backward.indexOf(event.key) >= 0) deck.pyroDeck.advance(-1);
+    else if (event.key === "Home") deck.pyroDeck.go(0);
+    else if (event.key === "End") deck.pyroDeck.go(deck.pyroDeck.count - 1);
+    else return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  });
+
   document.addEventListener("keydown", function (event) {
     if (event.key !== " " || !timeline.shown()) return;
     if (event.target && event.target.closest && event.target.closest(".pyro-animated, .pyro-editor, input, textarea, select, button, [contenteditable]")) return;

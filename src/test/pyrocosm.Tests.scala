@@ -318,6 +318,14 @@ tags:
 
     val animatedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, animation)
 
+    test(m"the terminal renders a deck as its slides in sequence, each under a marker"):
+      def leaf(text: Text): Block.Leaf = Block.Leaf(List(Block.paragraph(text)))
+      val deck: Block = Block.Deck(List(leaf(t"one"), leaf(t"two")))
+
+      TerminalRenderer().block(deck, 40).map(_.plain).filter(_ != t"")
+
+    . assert(_ == List(t"slide 1 of 2", t"one", t"slide 2 of 2", t"two"))
+
     test(m"the terminal renders an animated block as its slides in sequence"):
       val rows: List[Text] = TerminalRenderer().block(animatedBlock, 60).map(_.plain)
       (rows.count(_.starts(t"step ")), rows.has(t"step 3 of 3"), rows.has(t"valx=y"))
@@ -994,6 +1002,28 @@ tags:
       val code: Block = Block.Code(Language.Scala, List(Block.Line(qualifiedName)))
       val page: Page = Page(List(code))
       (code.in[Tel].show.read[Tel].as[Block] == code, Pages.roundTrip(page) == page)
+
+    . assert(_ == (true, true))
+
+    val deckOfTwo: Block =
+      Block.Deck
+        ( List
+            ( Block.Leaf(List(Block.Heading(1, Inline.text(t"Effects")), Block.paragraph(t"so"))),
+              Block.Leaf(List(animatedBlock)) ) )
+
+    test(m"a deck shows its first slide, its others hidden, with a counter"):
+      val shown: Text = html.block(deckOfTwo).show
+      val first: Text = t"""<section class="pyro-leaf pyro-current"><h1>Effects</h1>"""
+
+      ( shown.starts(t"""<div class="pyro-deck" tabindex="0">""" + first),
+        shown.contains(t"""<section class="pyro-leaf"><div class="pyro-animated""""),
+        shown.contains(t"""<span class="pyro-deck-counter">1 / 2</span>""") )
+
+    . assert(_ == (true, true, true))
+
+    test(m"a deck round-trips through TEL and BinTEL"):
+      val page: Page = Page(List(deckOfTwo))
+      (deckOfTwo.in[Tel].show.read[Tel].as[Block] == deckOfTwo, Pages.roundTrip(page) == page)
 
     . assert(_ == (true, true))
 
