@@ -820,6 +820,12 @@ tags:
       renderer.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work")), 50).at(Prim).let(_.length)
     . assert(_ == 50)
 
+    test(m"a captioned bar fills the width, however wide, with its caption at the end"):
+      List(50, 160).map: (width: Int) =>
+        renderer.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work")), width).at(Prim).lay(false): line =>
+          line.length == width && line.plain.ends(t" work")
+    . assert(_ == List(true, true))
+
     test(m"code notes leave the text intact"):
       val code = Block.Code(Language.Scala, List(Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" xs = 1")))),
           List(Block.Note(0, 2, 6, Block.Note.Style.Erroneous)))

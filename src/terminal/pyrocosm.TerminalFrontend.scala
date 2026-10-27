@@ -208,7 +208,7 @@ extends Frontend:
           val fixture = register(PassiveFixture(() => interface.activities().map(Activity.block), renderer, session, false), Unset, interface.activities)
           Pane.Widget(Sizing(0.0), fixture).weight(0.0)
 
-      val pane = TerminalArrangement.build(interface, plan, title, toolbar, activities, widget, () => session.hiding)
+      val pane = TerminalArrangement.build(interface, plan, title, toolbar, activities, widget, () => session.hiding, spaced = inlined)
 
       // Whether the current inline cycle is ending to commit transcript entries. The cycle is
       // ended by this sentinel on the spool, which the frontend's iterator stops at: stopping
