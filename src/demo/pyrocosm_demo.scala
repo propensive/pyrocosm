@@ -246,6 +246,9 @@ object Samples:
               Inline.Link(Inline.Destination.External(t"https://propensive.dev/pyrocosm/"), Inline.text(t"the website")),
               Inline.Textual(t" and one which "),
               Inline.Link(Inline.Destination.Internal(link), Inline.text(t"acts within the page")),
+              Inline.Textual(t"; an "),
+              Inline.Annotated(Inline.text(t"annotated term"), Inline.text(t"a phrase whose note is shown when it is pointed at")),
+              Inline.Textual(t" carries its note"),
               Inline.Textual(t". Keystrokes such as "),
               Inline.Keystroke(Keypress.Ctrl('C')),
               Inline.Textual(t", "),
@@ -786,7 +789,7 @@ object Repl:
           field.history.append(text)
           val marks = Samples.decorate(text, text.length).marks
           val code = Samples.code(text) match
-            case Block.Code(language, lines, _, _, _) => Block.Code(language, lines, marks)
+            case Block.Code(language, lines, _, _, _, _) => Block.Code(language, lines, marks)
             case other                          => other
 
           val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))))

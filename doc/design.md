@@ -88,7 +88,9 @@ is an edge detail of the web frontend. Several model shapes follow from being se
 
 `Textual`, `Phrase`, `Emphasis` (one kind), `Toned(tone, …)`, `Snippet(language, tokens)`,
 `Keystroke(keypress)`, `Link(External | Internal(action) | Local(path, fragment), …)`, `Math`,
-`Symbol(glyph)`, `Reference(id)`, `Amount(value, units)`, `Numeral(value, precision)`, `Break`.
+`Symbol(glyph)`, `Reference(id)`, `Amount(value, units)`, `Numeral(value, precision)`,
+`Annotated(content, note)` (a phrase with a note shown on demand: a tooltip on the web, the
+content alone in a terminal), `Break`.
 
 `Snippet` and `Numeral` were `Code` and `Figure`, renamed apart from `Block.Code` and
 `Block.Figure`: a TEL schema has one namespace of definition names, and stratiform names a
