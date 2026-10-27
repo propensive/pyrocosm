@@ -33,11 +33,11 @@ import textMetrics.uniformMetric
 object Banner:
   private val pyrocosm: scala.List[Text] =
     scala.List
-      ( t"▄───▄",
-        t"█   █ ▄  ▄ ▄──▄ ▄──▄ ▄──▄ ▄──▄ ▄──▄ ▄──▄──▄",
-        t"█───▀ █  █ █    █  █ █    █  █ ▀──▄ █  █  █",
-        t"▀     ▀──█ ▀    ▀──▀ ▀──▀ ▀──▀ ▀──▀ ▀  ▀  ▀",
-        t"      ▀──▀" )
+      ( t"▄▄──▄▄",
+        t"██  ██ ▄▄ ▄▄ ▄▄─▄▄ ▄▄─▄▄ ▄▄─▄▄ ▄▄─▄▄ ▄▄─▄▄ ▄▄─▄▄─▄▄",
+        t"██──▀▀ ██ ██ ██    ██ ██ ██    ██ ██ ▀▀─▄▄ ██ ██ ██",
+        t"▀▀     ▀▀─██ ▀▀    ▀▀─▀▀ ▀▀─▀▀ ▀▀─▀▀ ▀▀─▀▀ ▀▀ ▀▀ ▀▀",
+        t"       ▀▀─▀▀" )
 
   // The letters of the tools' names, three rows each, in the wordmark's style.
   private val letters: scala.collection.immutable.Map[Char, scala.List[Text]] =
