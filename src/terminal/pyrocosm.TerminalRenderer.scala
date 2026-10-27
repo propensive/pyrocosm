@@ -507,7 +507,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       val ends: List[Int] = ranges.bind { (range: (Int, Int, Block.Note.Style)) => List(range(0), range(1)) }
       val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
-      cuts.zip(cuts.tail).each: (from: Int, to: Int) =>
+      cuts.zip(cuts.tail.or(Nil)).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
 

@@ -312,7 +312,7 @@ object Tool:
 
   // Offers the configured machines' names at the argument after a swarm subcommand.
   private def suggestMachines(rest: List[Argument], known: List[Machine])(using Cli): Unit =
-    rest.prim.let: argument =>
+    rest.head.let: argument =>
       val names: List[Suggestion] = known.map: machine => Suggestion(machine.name)
       summon[Cli].suggest(argument, names, t"", t"")
 
@@ -427,7 +427,7 @@ object Tool:
       val declared: List[Credential] =
         Credential.resolve(List(tool.repoConfig(directory), tool.userConfig, Credential.shared))
 
-      (declared + Credential.defaults).filter(_.name == name).prim.let(_.obtain())
+      (declared + Credential.defaults).filter(_.name == name).head.let(_.obtain())
 
     // The configuration files as one source for the `Setting` cascade, the repository's file
     // taking priority over the user's. The caller composes the properties and the environment

@@ -148,7 +148,7 @@ object Samples:
               List(Block.Note(0, 22, 27, Block.Note.Style.Highlight, Inline.text(t"the new parameter"))) ) )
 
     val animation: Block.Animation = Block.Animation.of(frames, details)
-    Block.Code(Language.Scala, frames.prim.or(Nil), animation.slides.prim.lay(Nil)(_.notes), Unset, animation)
+    Block.Code(Language.Scala, frames.head.or(Nil), animation.slides.head.lay(Nil)(_.notes), Unset, animation)
 
   // Two values trading shapes at once: one spreading over lines, the other recombining; timed
   // after the definition above, so the page's clock steps both.
@@ -161,7 +161,7 @@ object Samples:
     val details: List[Block.Slide.Detail] =
       List(Block.Slide.Detail(at = 16.0), Block.Slide.Detail(at = 21.0))
 
-    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames, details))
+    Block.Code(Language.Scala, frames.head.or(Nil), Nil, Unset, Block.Animation.of(frames, details))
 
   // One line spread over several, arrived at by a fade rather than a morph: the slide goes
   // and the next appears, with no token moving.
@@ -174,7 +174,7 @@ object Samples:
     val details: List[Block.Slide.Detail] =
       List(Block.Slide.Detail(), Block.Slide.Detail(transition = Block.Transition.Kind.Fade))
 
-    Block.Code(Language.Scala, frames.prim.or(Nil), Nil, Unset, Block.Animation.of(frames, details))
+    Block.Code(Language.Scala, frames.head.or(Nil), Nil, Unset, Block.Animation.of(frames, details))
 
   // Every case of an enum, as a list, through its `Enumerable` evidence.
   private def cases[enumeration <: scala.reflect.Enum: Enumerable as enumerable]: List[enumeration] =

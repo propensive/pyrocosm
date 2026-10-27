@@ -56,10 +56,10 @@ object Presences:
   // Where a node's web front-end is, as seen from here: `localhost` for a node of this machine,
   // and the nearest of its addresses otherwise.
   private def url(swarm: Swarm, advert: Advert): Optional[Text] =
-    advert.services.filter(_.name == t"serve").prim.let: service =>
+    advert.services.filter(_.name == t"serve").head.let: service =>
       val host: Text =
         if advert.node.shares(swarm.node) then t"localhost"
-        else Machine.ordered(advert.node.hosts).prim.or(advert.node.machine)
+        else Machine.ordered(advert.node.hosts).head.or(advert.node.machine)
 
       located(host, service.port)
 
@@ -81,7 +81,7 @@ object Presences:
 
     def named(origin: Origin, advert: Advert): Origin =
       val twins: Int = all.count { (other, _) => other.tool == origin.tool && other.machine == origin.machine }
-      val port: Optional[Int] = advert.services.filter(_.name == t"serve").prim.let(_.port)
+      val port: Optional[Int] = advert.services.filter(_.name == t"serve").head.let(_.port)
       if twins > 1 then port.lay(origin) { port => origin.copy(tool = t"${origin.tool}:${port.show}") } else origin
 
     val labelled: scala.List[Origin] = all.map(named(_, _))

@@ -68,8 +68,8 @@ object Credential:
         val atoms: List[Text] = child.atomTexts.to[List].filter(_ != t"")
 
         child.keyword match
-          case t"env"     => atoms.prim.let(Source.Env(_)).let(List(_)).or(Nil)
-          case t"file"    => atoms.prim.let(Source.File(_)).let(List(_)).or(Nil)
+          case t"env"     => atoms.head.let(Source.Env(_)).let(List(_)).or(Nil)
+          case t"file"    => atoms.head.let(Source.File(_)).let(List(_)).or(Nil)
           case t"command" => if atoms.nil then Nil else List(Source.Command(atoms))
           case _          => Nil
 

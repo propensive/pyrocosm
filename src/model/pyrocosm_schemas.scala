@@ -26,7 +26,7 @@ import soundness.*
 
 import stratiform.TelSchematic
 
-// The derived schemas of the model's sums, which the member-position givens in
+// The derived schemas of the model's sums, which the givens in
 // `pyrocosm_codecs.scala` wrap. Each is an object of its own, since a derivation inlines the
 // whole of its type, and two in one class (or these with the codecs) exceed what a class may
 // hold; each is lazy, since the sums are recursive through the givens which wrap them.

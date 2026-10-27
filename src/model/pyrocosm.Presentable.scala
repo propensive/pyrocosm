@@ -170,7 +170,7 @@ object Presentable extends Presentable2:
     case Layout.HtmlBlock(_, html)        => Block.Code(Language("html"), lines(html))
 
     case Layout.CodeBlock(_, info, content) =>
-      Block.Code(info.prim.lay(Language.Plain)(Language(_)), lines(content))
+      Block.Code(info.head.lay(Language.Plain)(Language(_)), lines(content))
 
     case Layout.BulletList(_, _, items*) =>
       Block.Listing(false, List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) }))

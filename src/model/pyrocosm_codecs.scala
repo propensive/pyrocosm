@@ -170,90 +170,57 @@ given chartKindTelSchematic: Block.Chart.Kind is TelSchematic over Tels.Type = s
 given sizingTelSchematic: Block.Sizing is TelSchematic over Tels.Type = scalarSchema
 
 // A figure is written as its snapshot, so its schema is the snapshot's, in every part.
-given figureTelSchematic: Figure is TelSchematic over Tels.Type =
-  val snapshot: Figure.Snapshot is TelSchematic over Tels.Type = Codecs.snapshotSchematic
+given figureTelSchematic: Figure is TelSchematic over Tels.Type = forwarded(Codecs.snapshotSchematic)
 
-  new TelSchematic:
-    type Self = Figure
-    def schema(): Tels.Type = snapshot.schema()
-    override def fieldType: Tels.Type = snapshot.fieldType
-    override def selectDefinitions: List[Tels.SelectDefinition] = snapshot.selectDefinitions
-
-    override def definitions(seen: scala.collection.immutable.Set[Text])
-    :   TelSchematic.Definitions =
-
-      snapshot.definitions(seen)
-
-    override def layers(seen: scala.collection.immutable.Set[Text]): List[Tels.Layer] =
-      snapshot.layers(seen)
-
-// The model's sums, each with the schema stratiform derives, but typed at a member position as
-// TEL's specification types a sum there: a struct holding a `SelectRef` to it (§20.3), which is
-// how the derived codecs write a sum-typed field — its keyword, with one variant beneath it.
-// Stratiform's derivation types such a member as a `Reference` to the select instead, which
-// type assignment rejects as a kind mismatch (E217; propensive/soundness#2319). These go once
-// stratiform derives the member form itself.
-given inlineTelSchematic: Inline is TelSchematic over Tels.Type = atMember(InlineSchema.derived)
-given blockTelSchematic: Block is TelSchematic over Tels.Type = atMember(BlockSchema.derived)
-given statusTelSchematic: Status is TelSchematic over Tels.Type = atMember(StatusSchema.derived)
+// The model's sums, each with the schema stratiform derives. The derivations are recursive
+// through these givens, so each defers to its derivation, made the first time it is asked for.
+given inlineTelSchematic: Inline is TelSchematic over Tels.Type = forwarded(InlineSchema.derived)
+given blockTelSchematic: Block is TelSchematic over Tels.Type = forwarded(BlockSchema.derived)
+given statusTelSchematic: Status is TelSchematic over Tels.Type = forwarded(StatusSchema.derived)
 
 given destinationTelSchematic: Inline.Destination is TelSchematic over Tels.Type =
-  atMember(DestinationSchema.derived)
+  forwarded(DestinationSchema.derived)
 
 given transitionKindTelSchematic: Block.Transition.Kind is TelSchematic over Tels.Type =
-  atMember(TransitionKindSchema.derived)
+  forwarded(TransitionKindSchema.derived)
 
-// A sum's type at a member position: a struct holding a `SelectRef` to it.
-private def selectMember(name: Text): Tels.Type =
-  val reference = Tels.SelectRef(Tels.Polarity.Implicit, Tels.Polarity.Implicit, name)
-  Tels.Struct(Array(reference), Array.empty)
-
-// Definitions with each member typed as a `Reference` to one of their selects retyped as the
-// member form: this reaches the members a sum's own derivation types for itself (a recursive
-// `List[Inline]` within `Inline`), where the wrapping givens above are not consulted.
-private def membered(definitions: TelSchematic.Definitions): TelSchematic.Definitions =
-  val selects: List[Text] = definitions.selects.map(_.name)
-
-  def retyped(member: Tels.Member): Tels.Member = member match
-    case field: Tels.Field => field.fieldType match
-      case Tels.Reference(name) if selects.has(name) => field.copy(fieldType = selectMember(name))
-      case _                                         => field
-
-    case other =>
-      other
-
-  val records: List[Tels.RecordDefinition] =
-    definitions.records.map: (record: Tels.RecordDefinition) =>
-      record.copy(members = Array.from(record.members.stdlib.toList.map(retyped)))
-
-  TelSchematic.Definitions(records, definitions.selects)
-
-// A derived sum's schematic, typed at a member position as the member form.
-private def atMember[value](derived: => value is TelSchematic over Tels.Type)
+// A schematic for `value` which is another's in every part, that other made when first needed.
+private def forwarded[value, other](derived: => other is TelSchematic over Tels.Type)
 :   value is TelSchematic over Tels.Type =
 
   caps.unsafe.unsafeAssumePure:
     new TelSchematic:
       type Self = value
-      private lazy val inner: value is TelSchematic over Tels.Type = derived
+      private lazy val inner: other is TelSchematic over Tels.Type = derived
 
       def schema(): Tels.Type = inner.schema()
-
-      override def fieldType: Tels.Type = inner.schema() match
-        case Tels.Reference(name) => selectMember(name)
-        case other                => other
-
+      override def schema(naming: TelSchematic.Naming): Tels.Type = inner.schema(naming)
+      override def fieldType(naming: TelSchematic.Naming): Tels.Type = inner.fieldType(naming)
       override def polarity: Tels.Polarity = inner.polarity
       override def repeatable: Tels.Polarity = inner.repeatable
-      override def selectDefinitions: List[Tels.SelectDefinition] = inner.selectDefinitions
 
-      override def definitions(seen: scala.collection.immutable.Set[Text])
+      override def selectDefinitions(naming: TelSchematic.Naming): List[Tels.SelectDefinition] =
+        inner.selectDefinitions(naming)
+
+      override def identities(seen: scala.collection.immutable.Set[TelSchematic.Identity])
+      :   List[TelSchematic.Identity] =
+
+        inner.identities(seen)
+
+      override def definitions
+        ( seen: scala.collection.immutable.Set[TelSchematic.Identity], naming: TelSchematic.Naming )
       :   TelSchematic.Definitions =
 
-        membered(inner.definitions(seen))
+        inner.definitions(seen, naming)
 
-      override def layers(seen: scala.collection.immutable.Set[Text]): List[Tels.Layer] =
-        inner.layers(seen)
+      override def layers
+        ( seen: scala.collection.immutable.Set[TelSchematic.Identity], naming: TelSchematic.Naming )
+      :   List[Tels.Layer] =
+
+        inner.layers(seen, naming)
+
+      override def rootLayers(naming: TelSchematic.Naming): List[Tels.Layer] =
+        inner.rootLayers(naming)
 
 
 given sideTelEncodable: Block.Side is Tel.Encodable = scalar(kebab)

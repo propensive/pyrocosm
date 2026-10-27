@@ -456,7 +456,7 @@ class HtmlRenderer():
     Div(`class` = cls(t"pyro-deck"), tabindex = t"0")(Html.Fragment(slides*), controls)
 
   def animatedCode(language: pyrocosm.Language, animation: Block.Animation, id: Optional[Text] = Unset): Html of Flow =
-    val first: Optional[Block.Slide] = animation.slides.prim
+    val first: Optional[Block.Slide] = animation.slides.head
     val shown: pyrocosm.Language = first.let(_.language).or(language)
     val classes: List[Name[CssClass]] = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}"))
     val rows: List[Html of Phrasing] = animatedRows(animation.lines(0), first.lay(Nil)(_.notes))
@@ -583,7 +583,7 @@ class HtmlRenderer():
       val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
       var pieces: List[Html of Phrasing] = Nil
 
-      cuts.zip(cuts.tail).each: (from: Int, to: Int) =>
+      cuts.zip(cuts.tail.or(Nil)).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
 
