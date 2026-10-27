@@ -37,7 +37,7 @@ object Invitation:
   // (`Scalars`).
   import Scalars.given
 
-  private lazy val schema: Tels = Tels.tels[Invitation](t"pyrocosm-invitation")
+  private lazy val schema: Tels = unsafely(Tels.tels[Invitation](t"pyrocosm-invitation"))
 
   // The invitation as one word, its BinTEL form in BASE-256.
   def encode(invitation: Invitation): Text = Base256.encode(Channel.encode(invitation, schema))

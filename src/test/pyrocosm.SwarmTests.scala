@@ -366,7 +366,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
             Thread.sleep(1)
 
           await(25)(beta.activities().exists(_(1).status == Status.Fraction(1.0)))
-          val arrived: Optional[Activity] = beta.activities().prim.let(_(1))
+          val arrived: Optional[Activity] = beta.activities().head.let(_(1))
           val coalesced: Int = logged.count(_ == t"sent-updated")
 
           live() = Nil

@@ -316,7 +316,7 @@ extends Tether.Host:
   def self: Advert =
     val machine: Machine.Identity = Machine.Identity.local
 
-    val host: Text = node.hosts.prim.or(node.machine)
+    val host: Text = node.hosts.head.or(node.machine)
 
     // Named rather than a lambda around the interpolation (the 3.9.0 `wildApprox` crash).
     def located(service: Service): Service =
@@ -519,8 +519,8 @@ extends Tether.Host:
   @scala.caps.unsafe.untrackedCaptures
   private var links: List[(Text, Tether)] = Nil
 
-  private def link(name: Text): Optional[Tether] = mutex(links.filter(_(0) == name)).prim.let(_(1))
-  private def wants(name: Text): Boolean = mutex(wanted.filter(_.name == name)).prim.present
+  private def link(name: Text): Optional[Tether] = mutex(links.filter(_(0) == name)).head.let(_(1))
+  private def wants(name: Text): Boolean = mutex(wanted.filter(_.name == name)).head.present
 
   // What this node is asked to stay linked to, and how each link stands.
   def connections: List[Connection] =
@@ -614,7 +614,7 @@ extends Tether.Host:
   // node is keeping a link to already.
   def connect(machine: Machine)(using Monitor, Probate): Unit =
     val added: Boolean = mutex:
-      val absent: Boolean = wanted.filter(_.name == machine.name).prim.absent
+      val absent: Boolean = wanted.filter(_.name == machine.name).head.absent
       if absent then wanted = machine :: wanted
       absent
 
@@ -623,7 +623,7 @@ extends Tether.Host:
   // Stops keeping a link to the machine of this name, closing it if it is open.
   def disconnect(name: Text): Boolean =
     val found: Boolean = mutex:
-      val present: Boolean = wanted.filter(_.name == name).prim.present
+      val present: Boolean = wanted.filter(_.name == name).head.present
       wanted = wanted.filter(_.name != name)
       present
 
@@ -893,7 +893,7 @@ extends Tether.Host:
   def advertised: Optional[Text] = announced
 
   // This machine's name as the one DNS label an instance is called by.
-  private def label: Text = node.machine.cut(t".").prim.or(t"pyrocosm").keep(63)
+  private def label: Text = node.machine.cut(t".").head.keep(63)
 
   // Adds `invitation` to those open, and starts advertising, in the background under the
   // daemon's monitor, if nothing was open before; an advertisement running already covers it.

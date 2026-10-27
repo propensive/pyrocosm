@@ -70,7 +70,9 @@ object TerminalArrangement:
   // The pane tree for a plan. Every panel becomes a widget pane supplied by `widget`; the
   // title and the controls become fixed rows, and the activities a band beneath the matter.
   // `hidden` says whether every fixture is painting nothing (an inline commit's last frame),
-  // when a border must vanish with its content rather than stand as an empty box.
+  // when a border must vanish with its content rather than stand as an empty box. `spaced` puts
+  // a blank row above the prompts (an inline block's), as a transcript puts one between entries,
+  // so a line keeps its place when it is submitted.
   def build
     ( interface:  Interface,
       plan:       Plan,
@@ -78,7 +80,8 @@ object TerminalArrangement:
       toolbar:    Optional[Pane],
       activities: Optional[Pane],
       widget:     Panel => Pane,
-      hidden:     () -> Boolean = () => false )
+      hidden:     () -> Boolean = () => false,
+      spaced:     Boolean       = false )
   :   Pane =
 
     def framed(panel: Panel): Pane =
@@ -108,7 +111,8 @@ object TerminalArrangement:
     val centre: List[Pane] =
       column(plan.centre + centreBelow).lay(Nil: List[Pane])(List(_))
         + column(plan.log).lay(Nil: List[Pane])(List(_))
-        + column(plan.prompt).lay(Nil: List[Pane]) { pane => List(pane.weight(0.0)) }
+        + column(plan.prompt).lay(Nil: List[Pane]): pane =>
+            if spaced then List(gap(hidden), pane.weight(0.0)) else List(pane.weight(0.0))
 
     val middle: Pane = if centre.nil then stack() else stack(centre*)
 
@@ -135,6 +139,10 @@ object TerminalArrangement:
         canvas.clear()
         draw(canvas)
         canvas.flush()
+
+  // A blank row, hiding with the content beneath it, so an inline commit leaves no blank behind.
+  private def gap(hidden: () -> Boolean): Pane =
+    Pane.Widget(Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { _ => () })).weight(0.0)
 
   // A low rule above and a high rule below, no sides: the frame a transcript keeps of its
   // entries, drawn here in the foreground's full strength, where the entries' are faint.

@@ -88,7 +88,7 @@ identity ${record.identity}$gateway
   private def field(lines: List[Text], key: Text): Optional[Text] =
     val prefix: Text = t"$key "
     def keyed(line: Text): Boolean = line.starts(prefix)
-    lines.filter(keyed(_)).prim.let(_.skip(prefix.length).trim)
+    lines.filter(keyed(_)).head.let(_.skip(prefix.length).trim)
 
   private def parse(text: Text): Optional[Record] =
     val lines: List[Text] = text.cut(t"\n")
@@ -173,4 +173,4 @@ class Registry(directory: Optional[Path on Linux]):
   // The record which holds the machine's gateway port, if a live one does.
   def gateway(): Optional[Record] =
     def holds(record: Record): Boolean = record.gateway.present
-    scan().filter(holds(_)).prim
+    scan().filter(holds(_)).head

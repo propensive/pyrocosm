@@ -163,7 +163,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     // A node's label as text, and the open states down the first branch.
     def labels(node: Block.TreeNode): List[Text] = Inline.plain(node.label) :: node.children.bind(labels)
-    def opens(node: Block.TreeNode): List[Optional[Boolean]] = node.open :: node.children.prim.lay(Nil: List[Optional[Boolean]])(opens)
+    def opens(node: Block.TreeNode): List[Optional[Boolean]] = node.open :: node.children.head.lay(Nil: List[Optional[Boolean]])(opens)
 
     val jsonTree: Block = j"""{"name": "Ada", "tags": ["x", "y"], "nested": {"deep": {"n": 1}}}""".exhibit
 
@@ -179,7 +179,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       jsonTree match
         case Block.Tree(root :: Nil) =>
           val nested = root.children.at(Ter).or(root)
-          (root.open, nested.open, nested.children.prim.let(_.open), root.children.prim.let(_.open))
+          (root.open, nested.open, nested.children.head.let(_.open), root.children.head.let(_.open))
         case _ => Unset
     . assert(_ == (true, true, false, Unset))
 
@@ -316,7 +316,7 @@ tags:
       kept == after.filter(kept.has(_))
     . assert(_ == true)
 
-    val animatedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, animation)
+    val animatedBlock: Block = Block.Code(Language.Plain, animatedFrames.head.or(Nil), Nil, Unset, animation)
 
     test(m"the terminal renders a deck as its slides in sequence, each under a marker"):
       def leaf(text: Text): Block.Leaf = Block.Leaf(List(Block.paragraph(text)))
@@ -362,11 +362,11 @@ tags:
           Block.Slide.Detail(Inline.text(t"a value"), 2.0, 3.0, Language.Java, List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"the keyword")))),
           Block.Slide.Detail(notes = List(Block.Note(0, 0, 3, Block.Note.Style.Caution, Inline.text(t"spans"), 1)), transition = Block.Transition.Kind.Fade, duration = 1.0) ))
 
-    def slide(index: Int): Block.Slide = detailed.slides.skip(index).prim.or(Block.Slide(-1))
-    def transition(index: Int): Block.Transition = detailed.transitions.skip(index).prim.or(Block.Transition(-1, -1))
+    def slide(index: Int): Block.Slide = detailed.slides.skip(index).head.or(Block.Slide(-1))
+    def transition(index: Int): Block.Transition = detailed.transitions.skip(index).head.or(Block.Transition(-1, -1))
 
     test(m"a slide's details reach the animation, and the others keep their defaults"):
-      (slide(1).label, slide(1).hold, slide(1).at, slide(1).language, slide(1).notes.size, slide(0).at, slide(2).notes.prim.let(_.last))
+      (slide(1).label, slide(1).hold, slide(1).at, slide(1).language, slide(1).notes.size, slide(0).at, slide(2).notes.head.let(_.last))
     . assert(_ == (Inline.text(t"a value"), 2.0, 3.0, Language.Java, 1, Unset, 1))
 
     // Into the second slide two tokens arrive and nothing departs or moves; into the third a
@@ -383,16 +383,16 @@ tags:
     test(m"a line appended is an insertion, and the line before it remains"):
       def line(words: List[Text]): Block.Line = Block.Line(words.map(Token.plain(_)))
       val appended = Block.Animation.of(List(List(line(List(t"a", t"b"))), List(line(List(t"a", t"b")), line(List(t"c")))))
-      appended.transitions.prim.let { (transition: Block.Transition) => (transition.moved.size, transition.inserted.size, transition.arriving.size, transition.removed.size) }
+      appended.transitions.head.let { (transition: Block.Transition) => (transition.moved.size, transition.inserted.size, transition.arriving.size, transition.removed.size) }
     . assert(_ == (0, 1, 1, 0))
 
     test(m"a token moved to another line is a move of the transition"):
       def line(words: List[Text]): Block.Line = Block.Line(words.map(Token.plain(_)))
       val spread = Block.Animation.of(List(List(line(List(t"a", t"b", t"c"))), List(line(List(t"a")), line(List(t"b")), line(List(t"c")))))
-      spread.transitions.prim.let { (transition: Block.Transition) => (transition.moved.size, transition.inserted.size, transition.arriving.size) }
+      spread.transitions.head.let { (transition: Block.Transition) => (transition.moved.size, transition.inserted.size, transition.arriving.size) }
     . assert(_ == (2, 2, 0))
 
-    val detailedBlock: Block = Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, detailed)
+    val detailedBlock: Block = Block.Code(Language.Plain, animatedFrames.head.or(Nil), Nil, Unset, detailed)
 
     test(m"an animated block's slide details and transitions round-trip as TEL text"):
       detailedBlock.in[Tel].show.read[Tel].as[Block]
@@ -402,7 +402,7 @@ tags:
       val first: Block.Animation =
         Block.Animation.of(animatedFrames, List(Block.Slide.Detail(Inline.text(t"the start"), Unset, 3.0, Language.Java, List(Block.Note(0, 0, 3, Block.Note.Style.Highlight, Inline.text(t"the keyword"))))))
 
-      val html: Text = HtmlRenderer().block(Block.Code(Language.Plain, animatedFrames.prim.or(Nil), Nil, Unset, first)).show
+      val html: Text = HtmlRenderer().block(Block.Code(Language.Plain, animatedFrames.head.or(Nil), Nil, Unset, first)).show
 
       ( html.contains(t"pyro-marked-highlight"),
         html.contains(t"pyro-marker-highlight"),
@@ -819,6 +819,12 @@ tags:
     test(m"a gauge line is exactly the width"):
       renderer.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work")), 50).at(Prim).let(_.length)
     . assert(_ == 50)
+
+    test(m"a captioned bar fills the width, however wide, with its caption at the end"):
+      List(50, 160).map: (width: Int) =>
+        renderer.block(Block.Gauge(Status.Fraction(0.3), Inline.text(t"work")), width).at(Prim).lay(false): line =>
+          line.length == width && line.plain.ends(t" work")
+    . assert(_ == List(true, true))
 
     test(m"code notes leave the text intact"):
       val code = Block.Code(Language.Scala, List(Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" xs = 1")))),
@@ -2044,12 +2050,12 @@ credential nameless
       . assert(_ == List((t"anthropic", 3), (t"empty", 1), (t"nameless", 1)))
 
       test(m"the first source that yields a value wins"):
-        Credential.parse(document).prim.let(_.obtain())
+        Credential.parse(document).head.let(_.obtain())
       . assert(_ == t"sk-from-env")
 
       test(m"an unset variable falls through to the file"):
         given Environment = _ => Unset
-        Credential.parse(document).prim.let(_.obtain())
+        Credential.parse(document).head.let(_.obtain())
       . assert(_ == t"sk-from-file")
 
       test(m"an empty file falls through to the command"):
@@ -2247,7 +2253,7 @@ machine mac-mini
         . assert(_ == List(t"linux-box", t"mac-mini"))
 
         test(m"a machine's fields are read"):
-          machines.prim.let: machine =>
+          machines.head.let: machine =>
             (machine.hosts, machine.port, machine.identity.let(Peer.render(_)), machine.token, machine.capabilities)
         . assert(_ == (List(t"build.example.org"), 8091, t"sha256:${t"ab"*32}", t"not-a-file", List(t"linux", t"x86-64", t"quiet")))
 

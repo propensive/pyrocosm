@@ -66,7 +66,7 @@ case class Advert
     gateway:      Boolean ):
 
   // Where the node's web front-end is, if it serves one.
-  def url: Optional[Text] = services.filter(_.name == t"serve").prim.let(_.url).or(Unset)
+  def url: Optional[Text] = services.filter(_.name == t"serve").head.let(_.url).or(Unset)
 
 object Bus:
   // The derivations below need a tactic for a malformed document; a failure is an exception

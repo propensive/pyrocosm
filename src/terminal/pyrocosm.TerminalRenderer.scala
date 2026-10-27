@@ -507,7 +507,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       val ends: List[Int] = ranges.bind { (range: (Int, Int, Block.Note.Style)) => List(range(0), range(1)) }
       val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
-      cuts.zip(cuts.tail).each: (from: Int, to: Int) =>
+      cuts.zip(cuts.tail.or(Nil)).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
 
@@ -730,6 +730,14 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     inline def line[status: Gaugeable](value: status): List[Teletype] =
       text.lay(List(gaugeLine(value, width, tick))) { caption => List(gaugeLine(Captioned(value, caption), width, tick)) }
 
+    // A bar fills its row, caption and all. Ultimatum's `Captioned` holds the bar to its design's
+    // preferred width, so the caption is laid out here instead, the bar taking what it leaves.
+    inline def filled[status: Gaugeable](value: status): List[Teletype] =
+      text.lay(List(gaugeLine(value, width, tick))): caption =>
+        val layout = summon[CaptionLayout]
+        val room = layout.gaugeWidth(width, caption, width, gauging)
+        List(layout.compose(gaugeLine(value, room, tick), room, caption, width, gauging))
+
     // Progress of unknown extent is a one-character spinner beside its caption, not a bar
     // sweeping the width: there is no extent to show. Ultimatum's spinners are designs for a
     // `Fraction` that animate on the tick's frame.
@@ -738,9 +746,9 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       List(text.lay(mark) { caption => e"$mark ${caption}" })
 
     status match
-      case Status.Fraction(value)        => line(Fraction(value))
+      case Status.Fraction(value)        => filled(Fraction(value))
       case Status.Indeterminate()        => spinner
-      case Status.Reckoning(done, total) => line(Reckoning(done, total))
+      case Status.Reckoning(done, total) => filled(Reckoning(done, total))
       case Status.Elapsed(seconds)       => line(Duration((seconds*1000).toLong))
       case Status.Remaining(seconds)     => line(Countdown(Duration((seconds*1000).toLong)))
 

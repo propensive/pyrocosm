@@ -289,12 +289,12 @@ object Block:
       // The line, by name, each atom of a slide is on.
       def lineOf(slide: Slide): Map[Text, Text] =
         placed.filter(_.slide == slide.index).map: (placement: Placement) =>
-          placement.atom -> slide.lines.skip(placement.line).prim.or(t"?")
+          placement.atom -> slide.lines.skip(placement.line).head.or(t"?")
         . to[Map]
 
       val transitions: List[Transition] =
         described.indexed.bind: (slide: Slide, index: Ordinal) =>
-          described.skip(index.n0 - 1).prim.lay(Nil): (previous: Slide) =>
+          described.skip(index.n0 - 1).head.lay(Nil): (previous: Slide) =>
             if index.n0 == 0 then Nil else
               val before: Map[Text, Text] = lineOf(previous)
               val after: Map[Text, Text] = lineOf(slide)
