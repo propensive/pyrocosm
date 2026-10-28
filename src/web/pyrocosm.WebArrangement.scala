@@ -30,6 +30,7 @@ import soundness.{Control as _, Origin as _, Span as _, *}
 import dysasymptotics.{linearAccess, linearSize}
 import attributives.textAttributive
 import formatting.compactJsonFormatting
+import htmlDoms.whatwg
 import htmlDoms.whatwg.*
 import nomenclature.CssClass.nominative
 
@@ -78,6 +79,25 @@ object PyrocosmPage:
   // A `crossorigin` value on a `link`, as honeycomb declares the attribute but no way to
   // attribute a value to it.
   given crossorigin: Crossorigin is Attributive to Whatwg.Crossorigin = (key, value) => (key, value.show)
+
+  // The mode button's icons: a crescent moon for the dark mode, a sun with eight rays at the
+  // compass points for the light, and a smaller sun behind a crescent for the mixed. All three
+  // are drawn, and the sheet shows the one the document's `data-mode` names, so the right one
+  // is there before the script runs. The markup is constant, so it is read unsafely.
+  private def icon(mode: Text, shapes: Text): Html of "svg" =
+    unsafely:
+      t"""<svg xmlns="http://www.w3.org/2000/svg" class="pyro-mode-icon pyro-mode-$mode" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">$shapes</svg>"""
+      . read[Html of "svg"]
+
+  private val moon: Text = t"""<path fill="currentColor" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>"""
+
+  private val sun: Text =
+    t"""<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/>"""
+
+  private val sunAndMoon: Text =
+    t"""<circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.42 1.42M11.18 11.18l1.06 1.06M3.4 12.6l1.42-1.42M12.6 3.4l-1.42 1.42"/><path fill="currentColor" stroke-width="1" d="M22.2 17.6A5.2 5.2 0 1 1 16.4 11.8a4 4 0 0 0 5.8 5.8z"/>"""
+
+  val modeIcons: List[Html of "svg"] = List(icon(t"dark", moon), icon(t"light", sun), icon(t"mixed", sunAndMoon))
 
 class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset, presence: Presence = Presence.shared)
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
@@ -213,13 +233,14 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
   // The menu bar: a full-width band whose contents are centred to the wide measure, holding
   // the wordmark, which is the way home, the tools running on the swarm (replaced as one by
-  // the frontend as they come and go) and the link to the configuration page.
+  // the frontend as they come and go), the link to the configuration page and the mode button.
   protected override def menu: Html of "nav" =
     Nav(`class` = List(TopMenu.menuClass, cls(t"pyro-menubar")))
       ( Div(`class` = cls(t"pyro-menubar-inner"))
           ( A(href = t"/", `class` = cls(t"pyro-wordmark"))(t"Pyrocosm"),
             Div(id = t"pyro-menubar-tools", `class` = cls(t"pyro-menubar-tools"))(renderer.toolLinks(presence.peers())),
-            A(href = t"/config", `class` = cls(t"pyro-menubar-link"))(t"Configuration") ) )
+            A(href = t"/config", `class` = cls(t"pyro-menubar-link"))(t"Configuration"),
+            Button(id = t"pyro-mode", `type` = t"button", `class` = cls(t"pyro-mode"), title = t"Light, dark or mixed")(PyrocosmPage.modeIcons*) ) )
 
   // The global controls other than a field, each an item of the masthead's toolbar.
   private def toolbarItems: List[Html of "li"] =
@@ -237,8 +258,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
             ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
               Div(id = t"pyro-activities", `class` = cls(t"pyro-activities"))(renderer.activities(interface.activities())),
               Div(id = t"pyro-activities-remote", `class` = List(cls(t"pyro-activities"), cls(t"pyro-activities-remote")))(renderer.remoteActivities(presence.remote())) ),
-          Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting"),
-          Button(id = t"pyro-mode", `type` = t"button", `class` = cls(t"pyro-mode"), title = t"Light, dark or mixed")(t"mixed") )
+          Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
 
     val items = toolbarItems
     if items.nil then brand else Html.Fragment(brand, Menu(`class` = cls(t"pyro-toolbar"))(items*))
