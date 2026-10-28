@@ -165,13 +165,20 @@ object WebStyles:
     // to the wide measure: the wordmark at the start, the configuration link at the end.
     val menubar: Css =
       css"nav.graffiti-top-menu { display: block; gap: 0; background-color: var(--pyro-menubar); color: var(--pyro-on-menubar) }"
-        + css".pyro-menubar-inner { max-width: var(--pyro-measure-wide); margin: 0 auto; padding: 0 var(--pyro-gutter); display: flex; align-items: stretch; gap: var(--pyro-space-5); min-height: 2.5rem }"
+        + css".pyro-menubar-inner { max-width: var(--pyro-measure-wide); margin: 0 auto; padding: 0 var(--pyro-gutter); display: flex; align-items: stretch; gap: var(--pyro-space-5); min-height: 3.25rem }"
         + css".pyro-menubar a { display: inline-flex; align-items: center; color: var(--pyro-on-menubar); text-decoration: none; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 2px solid transparent }"
         + css".pyro-menubar a:hover { color: var(--pyro-on-menubar); border-bottom-color: var(--pyro-button) }"
         + css".pyro-wordmark { font-weight: 700 } .pyro-menubar-link { margin-left: auto }"
         + css".pyro-menubar-tools { display: flex; align-items: stretch; gap: var(--pyro-space-4); overflow-x: auto }"
         + css".pyro-menubar-tools span.pyro-menubar-tool { display: inline-flex; align-items: center; color: var(--pyro-on-menubar); opacity: 0.55; font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap }"
         + css".pyro-menubar a.pyro-menubar-tool { white-space: nowrap } .pyro-menubar a.pyro-menubar-current { border-bottom-color: var(--pyro-button) }"
+        // The mode button, at the end of the band and underlined on hover as the links are; it
+        // shows the icon of the document's mode, the mixed one when none is set.
+        + css".pyro-mode { display: inline-flex; align-items: center; padding: 0 var(--pyro-space-1); margin: 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background-color: transparent; color: var(--pyro-on-menubar); cursor: pointer }"
+        + css".pyro-mode:hover { border-bottom-color: var(--pyro-button) }"
+        + css".pyro-mode-icon { display: none; width: 1.25rem; height: 1.25rem } .pyro-mode-mixed { display: block }"
+        + css"[data-mode='light'] .pyro-mode-light { display: block } [data-mode='light'] .pyro-mode-mixed { display: none }"
+        + css"[data-mode='dark'] .pyro-mode-dark { display: block } [data-mode='dark'] .pyro-mode-mixed { display: none }"
 
     // The masthead spans the page as a band; its rows are centred to the wide measure.
     val masthead: Css =
@@ -192,10 +199,7 @@ object WebStyles:
         + css".pyro-connection { display: inline-flex; align-items: center; gap: var(--pyro-space-2); margin-left: auto; padding: 0.3rem 0.75rem; border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); font-size: var(--pyro-text-small); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); background-color: var(--pyro-bg) }"
         + css".pyro-connection::before { content: ''; width: 0.5em; height: 0.5em; border-radius: 50%; background-color: currentcolor }"
         + css".pyro-connection.pyro-online { color: var(--pyro-tone-success) } .pyro-connection.pyro-offline { color: var(--pyro-tone-warning) }"
-        // The mode button, beside the connection indicator and in its shape; the light page's
-        // gradient is off in the dark mode, whose page is one colour.
-        + css".pyro-mode { display: inline-flex; align-items: center; padding: 0.3rem 0.75rem; border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pyro-muted); background-color: var(--pyro-bg); cursor: pointer }"
-        + css".pyro-mode:hover { color: var(--pyro-fg); border-color: var(--pyro-fg) }"
+        // The light page's gradient is off in the dark mode, whose page is one colour.
         + css"[data-mode='dark'] body { background-image: none }"
         + css".pyro-toolbar { list-style: none; gap: var(--pyro-space-2) var(--pyro-space-3); padding-top: var(--pyro-space-3); padding-bottom: var(--pyro-space-3); border-top: 1px solid var(--pyro-border) }"
         + css".pyro-toolbar > li { margin: 0; display: flex; align-items: center }"

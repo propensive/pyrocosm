@@ -1131,6 +1131,13 @@ tags:
       (nav >= 0, nav < page.s.indexOf("<header"), page.contains(t"""<a href="/config" class="pyro-menubar-link">Configuration</a>"""), page.contains(t"""<a href="/" class="pyro-wordmark">Pyrocosm</a>"""))
     . assert(_ == (true, true, true, true))
 
+    test(m"the mode button ends the menu bar, with an icon for each mode"):
+      val button = page.s.indexOf("<button id=\"pyro-mode\"")
+      ( button > page.s.indexOf("pyro-menubar-link"),
+        button < page.s.indexOf("<header"),
+        List("dark", "light", "mixed").map { mode => page.s.indexOf(s"pyro-mode-icon pyro-mode-$mode") > button } )
+    . assert(_ == (true, true, List(true, true, true)))
+
     test(m"the masthead precedes the main matter, outside it"):
       val header = page.s.indexOf("<header")
       val main = page.s.indexOf("<main")

@@ -59,12 +59,17 @@
 
   // The page's mode — light, dark or mixed — kept by the browser and cycled by the masthead's
   // button; the head applied the kept one before the first paint.
+  // The button shows the mode's icon by the sheet, so the script names the mode in its label.
   var modes = ["light", "dark", "mixed"];
 
   function applyMode(mode) {
     document.documentElement.dataset.mode = mode;
     var button = document.getElementById("pyro-mode");
-    if (button) button.textContent = mode;
+    if (!button) return;
+    var next = modes[(modes.indexOf(mode) + 1) % modes.length];
+    var label = mode.charAt(0).toUpperCase() + mode.substring(1) + " mode (click for " + next + ")";
+    button.title = label;
+    button.setAttribute("aria-label", label);
   }
 
   function wireMode() {
