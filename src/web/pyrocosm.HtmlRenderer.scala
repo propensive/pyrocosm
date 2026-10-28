@@ -207,7 +207,7 @@ class HtmlRenderer():
   private def glyphText(glyph: Glyph): Text = glyph match
     case Glyph.Check      => t"✓"
     case Glyph.Cross      => t"✗"
-    case Glyph.Warning    => t"⚠"
+    case Glyph.Warning    => t"△"
     case Glyph.Running    => t"▶"
     case Glyph.Pending    => t"·"
     case Glyph.Skipped    => t"‑"
@@ -818,5 +818,5 @@ class HtmlRenderer():
     case Standing.Running   => t"▶"
     case Standing.Succeeded => t"✓"
     case Standing.Failed    => t"✗"
-    case Standing.Warned    => t"⚠"
+    case Standing.Warned    => t"△"
     case Standing.Skipped   => t"‑"
