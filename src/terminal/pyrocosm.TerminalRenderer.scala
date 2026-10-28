@@ -367,7 +367,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       case Block.Graph(vertices, edges) =>
         safely(LaneDagDiagram(Block.Graph(vertices, edges).dag)).lay(vertices.map { (vertex: Block.Vertex) => vertexLabel(selected)(vertex) }): diagram =>
           val style = boxDrawingLaneDagStyle[Teletype]
-          List.from(diagram.render(vertexLabel(selected))(using style))
+          diagram.render(vertexLabel(selected))(using style)
 
       case Block.Chart(kind, series) =>
         chart(kind, series, width)
