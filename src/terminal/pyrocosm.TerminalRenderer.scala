@@ -82,7 +82,7 @@ object TerminalRenderer:
     glyph match
       case Glyph.Check      => if unicode then t"✓" else t"+"
       case Glyph.Cross      => if unicode then t"✗" else t"x"
-      case Glyph.Warning    => if unicode then t"⚠" else t"!"
+      case Glyph.Warning    => if unicode then t"△" else t"!"
       case Glyph.Running    => if unicode then t"▶" else t">"
       case Glyph.Pending    => if unicode then t"·" else t"."
       case Glyph.Skipped    => if unicode then t"‑" else t"-"
