@@ -50,13 +50,6 @@ publishLocal:
 stage:
 	./mill release.stage
 
-# Install every library pinned in etc/refs — releases and snapshots alike, transitively —
-# into the local ivy repository, as CI does, so the build resolves exactly the pinned jars rather
-# than whatever a sibling checkout's `publishLocal` last installed under the same version. A
-# snapshot not yet on GitHub is built from the sibling checkout named by the pin's commit.
-sync-deps:
-	./etc/shared sync-deps.sh
-
 # Check every source against Consequent Style and the project's own rules with flare (the
 # release pinned in etc/tools; `make tools` installs it), as configured in
 # .pyrocosm/flare/config.tel. Findings are warnings and the count is not yet zero, so CI does
@@ -97,4 +90,4 @@ release:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: check build test gallery xek-fetch demo static serve publishLocal stage sync-deps tools snapshot snapshot-prune release dev
+.PHONY: check build test gallery xek-fetch demo static serve publishLocal stage tools snapshot snapshot-prune release dev
