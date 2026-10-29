@@ -753,9 +753,10 @@ tags:
       List(HtmlRenderer.share(43), HtmlRenderer.share(2), HtmlRenderer.share(130), HtmlRenderer.share(45))
     . assert(_ == List(45, 5, 100, 45))
 
-    test(m"a fixed sizing round-trips through TEL"):
-      Block.Sizing.Fixed(40).in[Tel].as[Block.Sizing]
-    . assert(_ == Block.Sizing.Fixed(40))
+    test(m"a table with a fixed column round-trips through TEL"):
+      val fixed: Block = Block.Table(List(Block.Column(Inline.text(t"Name"), sizing = Block.Sizing.Fixed(40))), bigRows(2), Unset)
+      fixed.in[Tel].show.read[Tel].as[Block]
+    . assert(_ == Block.Table(List(Block.Column(Inline.text(t"Name"), sizing = Block.Sizing.Fixed(40))), bigRows(2), Unset))
 
     test(m"a table cache's window is the full rendering's slice, wherever it falls"):
       val cache = cacheOf(big, 60)
