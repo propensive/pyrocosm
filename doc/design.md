@@ -443,8 +443,17 @@ directly on the tool's own port are the same page. The script treats only a same
 under the prefix as this application's own, and sends `locate` with the prefix stripped, so
 the application, its fallback and its purview see their own paths; the purview cookie is kept
 for the prefix's paths alone. A leaf advertises its front-end's URL as its path under the hub's
-origin, so an activity card anywhere links there. Not yet: one MCP endpoint aggregating every
-tool's (`/<tool>/mcp` is proxied like any path), and two front-ends of one tool on one machine.
+origin, so an activity card anywhere links there.
+
+**One MCP endpoint.** `/mcp` on the origin is every tool's at once (`Aggregator`): a client
+initialises one session there; `tools/list`, `prompts/list`, `resources/list` and
+`resources/templates/list` are each tool's answers merged, a tool's tools and prompts named
+under its prefix (`fume_run`); `tools/call` and `prompts/get` are routed by that prefix to the
+tool's own `/mcp`, under a session the hub opens there as it is first needed, and the tool's
+answer passed back; a resource is read from whichever tool answers for it; `DELETE` ends every
+session. A tool's own `/<tool>/mcp` is still proxied like any path. Not carried: the
+server-to-client stream a GET opens, which no tool uses yet. Not yet: two front-ends of one
+tool on one machine.
 
 ## Roadmap
 

@@ -171,7 +171,34 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       listed:   Boolean,
       direct:   Boolean,
       missing:  Int,
-      pong:     Optional[Text] )
+      pong:     Optional[Text],
+      session:  Boolean,
+      tools:    Optional[Text],
+      called:   Optional[Text],
+      deleted:  Int )
+
+  // A tool's own MCP server, as its front-end's fallback answers `/mcp`: one tool, `hello`,
+  // which says who called it; a session named by the header the protocol uses.
+  private def mcpFake(request: Http.Request): Optional[Http.Response] =
+    import codepages.utf8Codepage
+    if request.target != t"/mcp" || request.method != Http.Post then Unset else
+      val body: Text = request.body().memoize.utf8
+      val rpc: Optional[Aggregator.Rpc] = safely(body.read[Json].as[Aggregator.Rpc])
+      val id: Text = rpc.let(_.id).or(Unset).let { json => safely(json.as[Int]).let(_.show) }.or(Unset).or(t"null")
+
+      def answer(result: Text): Http.Response =
+        Http.Ok
+          ( List(Http.Header(t"content-type", t"application/json"), Http.Header(t"mcp-session-id", t"alpha-session")),
+            Http.Body.Fixed(t"""{"jsonrpc":"2.0","id":$id,"result":$result}""".in[Data]) )
+
+      rpc.let(_.method).or(t"") match
+        case t"initialize" => answer(t"""{"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"alpha","version":"0"}}""")
+        case t"tools/list" => answer(t"""{"tools":[{"name":"hello","inputSchema":{"type":"object"}}]}""")
+        case t"tools/call" =>
+          val name: Text = rpc.let(_.params).or(Unset).let { params => safely(params.as[Aggregator.Named]).let(_.name) }.or(Unset).or(t"?")
+          answer(t"""{"content":[{"type":"text","text":"hello from alpha: $name"}]}""")
+        case method if method.starts(t"notifications/") => Http.Response(Http.Accepted)()
+        case _ => answer(t"{}")
 
   private case class Relayed
     ( seen:      (Int, Int, Int, Int),
@@ -701,7 +728,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
                 List(Panel(Panel.Id(t"main"), Panel.Role.Primary, Unset, Live(content), Panel.Priority.Essential)) )
 
           val presence: Presence = Presence()
-          val frontend: WebFrontend = WebFrontend(0, presence = presence, prefix = t"/alpha")
+          val frontend: WebFrontend = WebFrontend(0, fallback = mcpFake(_), presence = presence, prefix = t"/alpha")
           async(frontend.run(interface) { _ => () })
           await(25)(presence.web().present)
           val webPort: Int = presence.web().or(0)
@@ -734,6 +761,26 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
           val pong: Optional[Text] = safely(reply.await(5.0*Second))
 
+          // Over MCP at the origin: a session, the tool listed under alpha's name, called by it,
+          // and the session ended.
+          def mcp(method: Http.Method, session: Optional[Text], body: Text): Http.Response =
+            val headers: List[Http.Header] =
+              List(Http.Header(t"content-type", t"application/json"), Http.Header(t"accept", t"application/json, text/event-stream"))
+              + session.lay(Nil: List[Http.Header]) { id => List(Http.Header(t"mcp-session-id", id)) }
+
+            val data: Data = body.in[Data]
+            Loopback.exchange(origin, Http.Request(method, 1.1, Loopback.loopback, t"/mcp", headers, () => Stream(data)))
+            . or(panic(m"the origin did not answer"))
+
+
+          val initialized: Optional[Http.Response] =
+            safely(mcp(Http.Post, Unset, t"""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}"""))
+
+          val session: Optional[Text] = initialized.let(_.textHeaders.seek(_.key.lower == t"mcp-session-id").let(_.value)).or(Unset)
+          val tools: Optional[Text] = safely(mcp(Http.Post, session, t"""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""").receive[Text])
+          val called: Optional[Text] = safely(mcp(Http.Post, session, t"""{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"alpha_hello","arguments":{}}}""").receive[Text])
+          val deleted: Int = safely(mcp(Http.Delete, session, t"").status.code).or(0)
+
           Swarm.stop(t"alpha")
           frontend.stop()
           portal.stop()
@@ -742,7 +789,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           Served
             ( page.contains(t"""<meta name="pyro-prefix" content="/alpha">"""), page.contains(t"Alpha's page"),
               landing.contains(t"""href="/alpha/""""), direct.contains(t"""<meta name="pyro-prefix" content="/alpha">"""),
-              missing, pong )
+              missing, pong, session.present, tools, called, deleted )
 
       test(m"a tool's page is served under its path on the origin, and is the same page directly"):
         (served.prefixed, served.content, served.direct)
@@ -755,6 +802,11 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       test(m"a socket through the origin reaches the tool, and its answer comes back"):
         served.pong.let(_.contains(t"pong"))
       . assert(_ == true)
+
+      test(m"an MCP session at the origin lists the tool's tools under its name, calls one, and ends"):
+        ( served.session, served.tools.let(_.contains(t""""alpha_hello"""")), served.called.let(_.contains(t"hello from alpha: hello")),
+          served.deleted )
+      . assert(_ == (true, true, true, 204))
 
     suite(m"The journal"):
       test(m"entries are returned oldest first, after the one asked for"):

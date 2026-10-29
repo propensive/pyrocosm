@@ -37,7 +37,6 @@ import dysasymptotics.{linearAccess, linearSize}
 import formatting.compactCssFormatting
 import htmlDoms.whatwg
 import htmlDoms.whatwg.*
-import httpBackends.javaNetHttp
 import internetAccess.online
 import logging.silentLogging
 import nomenclature.CssClass.nominative
@@ -45,7 +44,8 @@ import strategies.throwUnsafely
 
 // The machine's one web origin, which the hub serves: every tool's front-end under it, at
 // `/<tool>/`, reached by the port the tool's node advertises; a page naming the tools at `/`;
-// and the stylesheet. A request for a tool's path is passed to the tool's own server as it is
+// the stylesheet; and one MCP endpoint for every tool at `/mcp` (`Aggregator`). A request for a
+// tool's path is passed to the tool's own server as it is
 // — the tool's front-end knows its prefix, and names its paths under it — and the response
 // back; a browser's socket is tunnelled to the tool's. Nothing is rendered here: a tool's
 // pages are its own, and the hub knows only which tool is which.
@@ -64,10 +64,13 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
   private lazy val stylesheet: Text =
     PyrocosmPage(Interface(Nil, Nil), HtmlRenderer(), theme).css.show
 
-  // The headers which describe one hop, not the message, which a proxy does not pass on.
+  private val aggregator: Aggregator = Aggregator(hub, hub.version)
+
+  // The headers which describe one hop, not the message, which a proxy does not pass on; nor
+  // the framing of a body, which each hop writes for itself.
   private val hopByHop: Set[Text] =
     Set(t"connection", t"keep-alive", t"proxy-authenticate", t"proxy-authorization", t"te",
-        t"trailer", t"transfer-encoding", t"upgrade", t"host")
+        t"trailer", t"transfer-encoding", t"upgrade", t"host", t"content-length")
 
   private def endToEnd(header: Http.Header): Boolean = !hopByHop.has(header.key.lower)
 
@@ -96,6 +99,9 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
           case t"/pyrocosm.css" =>
             Http.Ok(List(Http.Header(t"content-type", t"text/css; charset=utf-8")), Http.Body.Fixed(stylesheet.in[Data]))
 
+          case t"/mcp" =>
+            aggregator.answer(request0)
+
           case _ =>
             val tool: Text = path.cut(t"/").at(Sec).or(t"")
 
@@ -115,14 +121,14 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
     service = Unset
     bound = Unset
 
-  // A request passed to the tool's server, and its response passed back.
+  // A request passed to the tool's server, and its response passed back, whole.
   private def forward(tool: Text, port: Int, request: Http.Request): Http.Response =
-    val url: Text = t"http://127.0.0.1:${port.show}${request.target}"
+    val body: Data = Loopback.bounded(request)
     val headers: List[Http.Header] = request.textHeaders.filter(endToEnd(_))
-    val response: Optional[Http.Response] = safely(summon[Http.Backend].request(url, request.method, headers, request.body))
+    val upstream: Http.Request = Http.Request(request.method, 1.1, request.host, request.target, headers, () => Stream(body))
 
-    response.lay(Http.Response(Http.BadGateway)(t"The $tool front-end did not answer")): response =>
-      response.status(response.textHeaders.filter(endToEnd(_)), Http.Body.Flowing(() => response.body.stream))
+    Loopback.exchange(port, upstream).lay(Http.Response(Http.BadGateway)(t"The $tool front-end did not answer")): response =>
+      response.status(response.textHeaders.filter(endToEnd(_)), Http.Body.Fixed(response.body.stream.memoize))
 
   // A browser's socket tunnelled to the tool's: what the browser sends goes to the tool, what
   // the tool sends comes back, and either end closing closes the other. The tool's end is lent
