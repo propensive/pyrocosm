@@ -349,7 +349,7 @@ when `<NAME>_RELEASE_VERSION` names it (the release and snapshot scripts both se
 pinned version with the filtered tree hash of HEAD — the identity `make snapshot` would give
 that commit — and `-dirty` if the working tree has uncommitted changes.
 
-## The swarm (`src/bus`, `src/swarm`)
+## The swarm (`src/bus`, `src/swarm`, `src/hub`)
 
 Every tool's daemon is a NODE of one swarm, so that each tool knows what the others are doing
 — a build in flight in Fury appears as a card in fume's masthead, linking to Fury's page —
@@ -357,25 +357,39 @@ with no configuration on one machine, and one invitation between machines. The s
 Fury's: links kept honest by a heartbeat, invitations advertised over mDNS, a protocol versioned
 by BinTEL acceptances. It moved here, generalised, once it was clear that every tool needed it.
 
-**On one machine**, a node registers itself in a small file under
-`$XDG_RUNTIME_DIR/pyrocosm/swarm/nodes/` (its tool, pid, start, the port of its listener, the
-machine's certificate fingerprint), written whole and moved into place, so no lock is needed;
-each node reads the directory every couple of seconds, deletes any file whose process is gone,
-and links over loopback (TLS to the machine's own certificate, the machine's own token) to each
-node older than itself, so every pair links once. A machine is thus a full mesh of its own
-nodes, and every tool knows every other within seconds of starting.
+**On one machine**, every tool's node is a LEAF of the machine's one HUB: the `pyrocosm`
+process, which the first tool's daemon to find none starts from its own classpath (`Hubs.ensure`,
+a `java -cp` of the daemon's own jars, so that nothing need be installed), and which ends half a
+minute after its last leaf has gone. The hub takes a lock beside the registry
+(`$XDG_RUNTIME_DIR/pyrocosm/swarm/hub.lock`), so two daemons starting one at once leave one, and
+registers itself in `hub.tel` (its pid, start, the port of its loopback listener, the machine's
+certificate fingerprint, and the gateway port when it holds one), written whole and moved into
+place. A leaf reads the record, links to the hub over loopback (TLS to the machine's own
+certificate, the machine's own token), and links again, after a pause which grows with each
+failure, whenever the link ends — starting a hub again if the record names none. Everything a
+leaf knows of other nodes it knows through that link, so it forgets them all when the link
+goes; and a hub passes on what a new link's snapshot teaches it, since its leaves and the
+machines linked to it learn of nodes beyond that link only through the hub. The hub's version is
+the version of the tool which started it: it has no release of its own, and the acceptances
+each end sends when a link is made are what let two builds talk. What it does is logged to
+`hub.log` beside the registry, since no invocation reaches its journal.
 
-**Between machines**, whichever node takes the machine's swarm port — 8093 by default; `swarm`,
-`swarm-port` and `swarm-token` in any tool's config, or `<tool> swarm listen` — is its GATEWAY:
-it accepts other machines, and relays what it hears on one side to the other. The port is the
-lock: a node which wants it polls, and takes it when its holder quits. Another machine joins by
-an invitation (`<tool> swarm invite`, one word, good for one machine until it expires, during
-which the inviter advertises itself on the local network so the joiner finds it by name) or by a
-`machine` declaration and `connect`. An invitation is issued for the tool `pyrocosm`, and the
-token it grants admits its bearer to every tool's listener — fume's worker among them — so
-joining a machine's swarm is joining it for all of them. A joiner links to the inviter; the
-inviter relays between its joiners, as the hub of its spokes. Nothing in the API names the
-topology, so it can become a mesh later.
+**Between machines**, the hub is the machine's GATEWAY: on the machine's swarm port — 8093 by
+default; `swarm`, `swarm-port` and `swarm-token` in any tool's config, or `<tool> swarm listen`
+— it accepts other machines, and relays what it hears on one side to the other. A leaf cannot
+listen, advertise or keep a link to another machine itself, so it asks the hub, in a `request`
+(`listen`, `unlisten`, `invite`, `connect`, `disconnect`, `status`) the hub answers with a
+`reply`; what a tool does with the files the machine shares — issuing an invitation, joining by
+one, revoking a machine — it does itself. A link to another machine is the machine's, not the
+tool's: a tool quitting does not drop it, and `<tool> swarm disconnect` does. Another machine
+joins by an invitation (`<tool> swarm invite`, one word, good for one machine until it expires,
+during which the hub advertises the machine on the local network so the joiner finds it by name)
+or by a `machine` declaration and `connect`. An invitation is issued for the tool `pyrocosm`,
+and the token it grants admits its bearer to every tool's listener — fume's worker among them —
+so joining a machine's swarm is joining it for all of them. A joiner's hub links to the inviter's
+hub; the inviter's relays between its joiners, as the hub of its spokes. An event's hops are
+bounded at four: a leaf's to its hub, that hub's to another machine's, and that hub's to its
+leaf, with one to spare. Nothing in the API names the topology, so it can become a mesh later.
 
 **The bus.** Every link carries BinTEL documents under `Wire`'s schema, each written to the
 acceptance the other end sent when the link was made (BinTEL §8.4), so two builds whose
@@ -415,9 +429,31 @@ In `run` mode every tab shares the one session, so a `Located` moves them all, a
 does; a tool whose pages are per tab (fuel) uses `serve`. A `Local` destination travels over
 the swarm as an external URL, as an internal one does.
 
-**Later**: one HTTP server serving every tool's front-end under one origin (every link is
-root-absolute now, so that is a prefix on the page — `HtmlRenderer.href` is the one seam — and
-`Origin.url` becoming `/<tool>/`), and one MCP endpoint aggregating every tool's.
+**One origin.** The hub serves the machine's one web origin, on 8090 (or a port of its own
+while that is taken, which it advertises either way): every tool's front-end under it at
+`/<tool>/`, reached by the port the tool's node advertises — a `WebFrontend` on port 0 takes a
+free port of its own and says so through the presence — a page at `/` naming the tools, and
+the stylesheet. A request for a tool's path is passed to the tool's server as it is, and the
+response back; a browser's socket is tunnelled to the tool's (`Portal`, in `src/hub`). Nothing
+is rendered at the hub: the tool's front-end knows its prefix (`Presence.prefix`, which the
+tool's command line sets to `/<tool>`; `WebFrontend(prefix = …)` otherwise) and names every
+path under it — `HtmlRenderer.href`, the script, the stylesheet, the wordmark, `/open` — while
+accepting a request with or without it, so a page reached through the hub and one reached
+directly on the tool's own port are the same page. The script treats only a same-origin path
+under the prefix as this application's own, and sends `locate` with the prefix stripped, so
+the application, its fallback and its purview see their own paths; the purview cookie is kept
+for the prefix's paths alone. A leaf advertises its front-end's URL as its path under the hub's
+origin, so an activity card anywhere links there.
+
+**One MCP endpoint.** `/mcp` on the origin is every tool's at once (`Aggregator`): a client
+initialises one session there; `tools/list`, `prompts/list`, `resources/list` and
+`resources/templates/list` are each tool's answers merged, a tool's tools and prompts named
+under its prefix (`fume_run`); `tools/call` and `prompts/get` are routed by that prefix to the
+tool's own `/mcp`, under a session the hub opens there as it is first needed, and the tool's
+answer passed back; a resource is read from whichever tool answers for it; `DELETE` ends every
+session. A tool's own `/<tool>/mcp` is still proxied like any path. Not carried: the
+server-to-client stream a GET opens, which no tool uses yet. Not yet: two front-ends of one
+tool on one machine.
 
 ## Roadmap
 

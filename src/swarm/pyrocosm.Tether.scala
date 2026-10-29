@@ -42,11 +42,12 @@ object Tether:
     case Local, Remote, Unknown
 
   // What a tether tells the swarm it belongs to: a snapshot arrived, an envelope arrived, or
-  // the link ended.
+  // the other end asked something of this one.
   trait Host:
     def self: Advert
     def snapshotted(tether: Tether, self: Advert, known: List[Advert]): Unit
     def carried(tether: Tether, envelope: Envelope): Unit
+    def requested(tether: Tether, request: Wire.Request)(using Monitor, Probate): Unit
 
   // What each end does first, once Pyrocosm has welcomed the connection: sends its acceptance
   // (BinTEL §8.4), which says what forms of the protocol it can read, and reads the other end's.
@@ -79,9 +80,10 @@ object Tether:
     Unset
 
   // How often each end of a link says it is still there, and how long an end waits, hearing
-  // nothing, before it takes the link for lost.
+  // nothing, before it takes the link for lost; and how long a request is given to be answered.
   val interval: Duration = 1.0*Second
   val patience: Duration = 3.0*Second
+  val deliberation: Duration = 10.0*Second
 
 // One link, at either end of it. Both ends do the same things with it: answer a `ping`, deliver
 // a `pong` to whoever asked for it, hand a `snapshot` or a `carry` to the swarm, and — once the
@@ -105,6 +107,9 @@ class Tether
 
   @scala.caps.unsafe.untrackedCaptures
   private var asked: List[(Uuid, Promise[Wire.Pong])] = Nil
+
+  @scala.caps.unsafe.untrackedCaptures
+  private var requested: List[(Uuid, Promise[Wire.Reply])] = Nil
 
   @scala.caps.unsafe.untrackedCaptures
   @volatile
@@ -162,7 +167,7 @@ class Tether
 
   // Reads what the other end says until the link closes. `lasting` is run when the first beat
   // arrives, which is how a listener learns that the caller means to stay.
-  def read(lasting: => Unit): Unit =
+  def read(lasting: => Unit)(using Monitor, Probate): Unit =
     var reading: Boolean = true
 
     while reading do
@@ -195,6 +200,16 @@ class Tether
               Journal.log(Event.Received(pong, peer))
               mutex(asked.filter(_(0) == pong.id)).each: (_, promise) => promise.offer(pong)
 
+            case request: Wire.Request =>
+              last = now()
+              Journal.log(Event.Received(request, peer))
+              host.requested(this, request)
+
+            case reply: Wire.Reply =>
+              last = now()
+              Journal.log(Event.Received(reply, peer))
+              mutex(requested.filter(_(0) == reply.id)).each: (_, promise) => promise.offer(reply)
+
             case other: Wire =>
               Wire.envelope(other) match
                 case envelope: Envelope =>
@@ -226,3 +241,14 @@ class Tether
     val pong: Optional[Wire.Pong] = safely(promise.await(Tether.patience))
     mutex { asked = asked.filter(_(0) != id) }
     pong.let { pong => (pong, now() - sent) }
+
+  // Asks the other end to do `command`, and waits for its reply, which `read` delivers; nothing
+  // if none came in time.
+  def request(command: Text, argument: Text)(using Monitor): Optional[Wire.Reply] =
+    val id: Uuid = Uuid()
+    val promise: Promise[Wire.Reply] = Promise()
+    mutex { requested = (id, promise) :: requested }
+    send(Wire.Request(id, command, argument))
+    val reply: Optional[Wire.Reply] = safely(promise.await(Tether.deliberation))
+    mutex { requested = requested.filter(_(0) != id) }
+    reply

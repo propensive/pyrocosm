@@ -184,7 +184,7 @@ object Swarming:
 
   // `<tool> swarm disconnect`, with no machine: stops being the gateway, and hangs up on every
   // caller from another machine.
-  def deafen(tool: Tool)(using Stdio): Connected =
+  def deafen(tool: Tool)(using Stdio, Monitor): Connected =
     Swarm.of(tool.name).lay[Connected](Exit.Ok): swarm =>
       val listening: Optional[Int] = swarm.listening
       swarm.stopGateway()
@@ -196,7 +196,7 @@ object Swarming:
       Exit.Ok
 
   // `<tool> swarm disconnect <machine>`.
-  def disconnect(tool: Tool, name: Text)(using Stdio): Connected =
+  def disconnect(tool: Tool, name: Text)(using Stdio, Monitor): Connected =
     Swarm.of(tool.name).lay[Connected](Exit.Ok): swarm =>
       if swarm.disconnect(name)
       then Out.println(t"no longer keeping a link to $name")
@@ -226,7 +226,7 @@ object Swarming:
 
   // `<tool> swarm`: every node on the swarm, the links this node keeps to other machines, the
   // callers from other machines keeping one to it, and how each stands.
-  def status(tool: Tool)(using Stdio): Connected =
+  def status(tool: Tool)(using Stdio, Monitor): Connected =
     Swarm.of(tool.name).lay[Connected](Exit.Ok): swarm =>
       val all: List[Advert] = swarm.nodes()
 

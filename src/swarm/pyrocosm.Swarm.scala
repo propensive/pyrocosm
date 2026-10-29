@@ -33,18 +33,21 @@ import Journal.{Event, Fingerprint, Obstacle, Party}
 import alphabets.hexLowerCase
 import denominative.dysasymptotics.linearSize
 import errorDiagnostics.emptyDiagnostics
-
-// The swarm every Pyrocosm tool's daemon is a NODE of. On one machine, the nodes find each
-// other through the `Registry` and link to each other over loopback, so that every tool on a
-// machine knows every other, with no configuration. Between machines, a node links to the
-// GATEWAY of another — whichever of its nodes holds the machine's swarm port — as a Fury did:
-// by an invitation (`invite`, `join`), or a `machine` declaration and `connect`, and a gateway
-// relays what it hears on one side to the other, so a node need link to no machine but its
-// own. Every link carries the BUS: each node advertises itself as it joins and every half
-// minute after, says when it leaves, and publishes each change of its activities, so that the
-// work in flight anywhere on the swarm is known everywhere; and a tool may publish events of
-// its own, which only its instances need understand. A node acts on each event once, however
-// many links bring it, by the sequence its origin numbered it with.
+// The swarm every Pyrocosm tool's daemon is a NODE of. On one machine, every tool's node is
+// a LEAF of the machine's one HUB — a process of its own, `pyrocosm`, started by the first tool
+// which needs it — which it finds through the `Registry` and links to over loopback, so that
+// every tool on a machine knows every other, with no configuration, through one link each.
+// Between machines, the hub is the GATEWAY: it accepts other machines on the machine's swarm
+// port — by an invitation (`invite`, `join`), or a `machine` declaration and `connect` — and
+// relays what it hears on one side to the other, so a leaf need link to nothing but its hub,
+// and a machine to nothing but another's hub. Every link carries the BUS: each node
+// advertises itself as it joins and every half minute after, says when it leaves, and
+// publishes each change of its activities, so that the work in flight anywhere on the swarm
+// is known everywhere; and a tool may publish events of its own, which only its instances
+// need understand. A node acts on each event once, however many links bring it, by the
+// sequence its origin numbered it with. What a leaf cannot do itself — listen for other
+// machines, advertise an invitation, keep a link to another machine — it asks of its hub, in
+// a `request` the hub answers with a `reply`.
 //
 // A link is kept honest by a heartbeat: each end sends a `beat` every second, and an end which
 // hears nothing for three seconds takes the link for lost, says so, and closes it; the end
@@ -128,13 +131,17 @@ object Swarm:
   def delay(failures: Int): Duration = (1 << failures.min(5)).min(30).toDouble*Second
 
   // How often a node repeats its advert, and how long the others keep a node they have not
-  // heard from; how often the registry is read; how often coalesced activity updates are sent;
-  // and the most gateways an event may pass through.
+  // heard from; how often a hub looks over its links; how often coalesced activity updates are
+  // sent; and the most links an event may pass through: a leaf's to its hub, the hub's to
+  // another machine's, and that hub's to its leaf, with one to spare.
   val announcement: Duration = 30.0*Second
   val forgetting: Duration = 90.0*Second
   val housekeeping: Duration = 2.0*Second
   val coalescing: Duration = 0.25*Second
   val reach: Int = 4
+
+  // The name a leaf keeps its link to the hub under.
+  val hubName: Text = t"hub"
 
   // The most events a tool may publish in a second, beyond which they are dropped.
   val budget: Int = 50
@@ -147,15 +154,16 @@ object Swarm:
 
     if average < 0.0 then Unset else average
 
-  // The nodes started in this JVM, by tool: one in a tool's daemon, more in a test.
+  // The leaves started in this JVM, by tool: one in a tool's daemon, more in a test.
   private val instances: TrieMap[Text, Swarm] = TrieMap()
 
-  // Starts this tool's node, if it has not been started: registers it, listens for the other
-  // nodes of this machine, and keeps the links. Idempotent per tool, for as long as the JVM
+  // Starts this tool's node, if it has not been started: a leaf, which finds the machine's hub
+  // and keeps a link to it. `revive` is what starts a hub when there is none — the tool's
+  // daemon spawns one — and nothing, in a test. Idempotent per tool, for as long as the JVM
   // lives or until `stop`.
   def start
     ( tool: Text, version: Text, services: () => List[Service], capabilities: List[Text] = Nil,
-      swarmPort: Int = Wire.port )
+      swarmPort: Int = Wire.port, revive: () => Unit = () => () )
     ( using Monitor, Probate, Environment )
   :   Swarm =
 
@@ -164,20 +172,33 @@ object Swarm:
         swarm
 
       case None =>
-        // The closure is the tool's daemon's own, there for as long as the node is, so it is
-        // vouched pure.
+        // The closures are the tool's daemon's own, there for as long as the node is, so they
+        // are vouched pure.
         val pure: () -> List[Service] = scala.caps.unsafe.unsafeAssumePure(services)
-        val swarm: Swarm = Swarm(tool, version, pure, capabilities, swarmPort)
-        instances.putIfAbsent(tool, swarm) match
+        val revive0: () -> Unit = scala.caps.unsafe.unsafeAssumePure(revive)
+        val leaf: Leaf = Leaf(tool, version, pure, capabilities, swarmPort, revive0)
+        instances.putIfAbsent(tool, leaf) match
           case Some(existing) =>
             existing
 
           case None =>
-            swarm.start()
+            leaf.start()
             // The process's frontends publish through its first node, which in a daemon is the
             // only one.
-            if instances.size == 1 then Presences.start(swarm)
-            swarm
+            if instances.size == 1 then Presences.start(leaf)
+            leaf
+
+  // Starts this machine's hub in this JVM, if no process is the hub already: it takes the
+  // hub's lock, listens for the machine's leaves, and takes the gateway port when asked to.
+  // Absent if another process holds the lock. A hub is not among `instances`: it is the
+  // `pyrocosm` process's own, or a test's, and is stopped by whoever started it.
+  def hub(version: Text, capabilities: List[Text] = Nil, swarmPort: Int = Wire.port)
+    ( using backend: Discovery.Backend^{} = discovery )
+    ( using Monitor, Probate, Environment )
+  :   Optional[Hub] =
+
+    val hub: Hub = Hub(version, capabilities, swarmPort, backend)
+    if hub.start() then hub else Unset
 
   def of(tool: Text): Optional[Swarm] = instances.get(tool).getOrElse(Unset)
 
@@ -276,39 +297,49 @@ object Swarm:
       val listed: List[Text] = invitation.hosts.filter(!hosts.has(_))
       invitation.copy(hosts = List((hosts.stdlib ++ listed.stdlib)*))
 
-// One tool's node. Made through `Swarm.start`.
-final class Swarm private[pyrocosm]
+// A node of the swarm: a tool's (`Leaf`, made through `Swarm.start`) or the machine's (`Hub`,
+// made through `Swarm.hub`). What both do is here — the bus, the activities, the links and
+// what travels over them, pinging — and what each does of its own is in its class: a leaf
+// keeps its one link to the hub and asks it for the rest; the hub listens for leaves, is the
+// gateway, advertises invitations and keeps the links to other machines.
+abstract class Swarm private[pyrocosm]
   ( val tool:    Text,
     val version: Text,
     services:    () -> List[Service],
     val capabilities: List[Text],
     val swarmPort: Int )
   ( using environment: Environment )
-extends Tether.Host:
+extends Tether.Host, scala.caps.Pure:
 
   import Swarm.{Connection, Caller, Filter, Subscription}
 
   // What this object does of its own accord — for the daemon, outside any invocation — it logs
   // to the daemon's journal.
-  private given sink: (LogSink[Any, Message]^{}) = Journal.sink
+  protected given sink: (LogSink[Any, Message]^{}) = Journal.sink
 
-  private val mutex: Mutex = Mutex()
-  private val started: Instant over Unix = now()
-  private val pid: Long = java.lang.ProcessHandle.current.nn.pid
+  protected val mutex: Mutex = Mutex()
+  protected val started: Instant over Unix = now()
+  protected val pid: Long = java.lang.ProcessHandle.current.nn.pid
 
   // This machine's identity and token, had once; a node of a machine without either cannot
   // link, and says so in the journal.
-  private val identity: Optional[Peer.Identity] = safely(Peer.identity)
-  private val token: Optional[Text] = Peer.token
+  protected val identity: Optional[Peer.Identity] = safely(Peer.identity)
+  protected val token: Optional[Text] = Peer.token
 
-  private def fingerprint: Text = identity.let(_.fingerprint.serialize[Hex]).or(t"")
+  protected def fingerprint: Text = identity.let(_.fingerprint.serialize[Hex]).or(t"")
+
+  // The registry by which the machine's nodes find the hub, and whether this node has begun
+  // to stop.
+  protected val registry: Registry = Registry(Registry.directory)
+  protected val stopping: Atomic[Boolean] = Atomic(false)
 
   val node: Node =
     Node
       ( Machine.Identity.local.hostname, fingerprint, tool, version, pid, started,
         Machine.addresses )
 
-  private val gateway0: Atomic[Int] = Atomic(0)
+  // Whether this node is its machine's gateway now: only a hub can be.
+  protected def gateway: Boolean
 
   private def url(host: Text, port: Int): Text = t"http://$host:${port.show}/"
 
@@ -324,8 +355,9 @@ extends Tether.Host:
       else service
 
     // A web front-end started outside the tool's services (`gallery serve <port>`) says so
-    // through the shared presence.
-    val declared: List[Service] = services()
+    // through the shared presence; so does one started on port 0, which took a port of its own.
+    val declared: List[Service] =
+      services().filter { service => !(service.name == t"serve" && service.port == 0) }
 
     val web: List[Service] =
       if declared.exists(_.name == t"serve") then Nil
@@ -335,20 +367,52 @@ extends Tether.Host:
 
     Advert
       ( node, offered, capabilities, machine.os, machine.arch, machine.cores, Swarm.load,
-        gateway0() != 0 )
+        gateway )
+
+  // ── what each kind of node does of its own ───────────────────────────────────────────────
+
+  // Stops what the node does of its own, before its links close; and tidies after them.
+  private[pyrocosm] def halt()(using Monitor): Unit
+  private[pyrocosm] def retire(): Unit
+
+  // The hub this node is linked to (itself, for a hub), once its snapshot has arrived.
+  def hub: Optional[Node]
+
+  // The port this machine accepts other machines on now, if it does.
+  def listening: Optional[Int]
+
+  // Asks the machine to be a gateway on `port`, with `token` as the secret callers present
+  // (the machine's own, if none), and to stop being one.
+  def wantGateway(port: Int, token: Optional[Text])(using Monitor, Probate): Unit
+  def stopGateway()(using Monitor): Unit
+
+  // The name this machine is advertised under on the local network now, if it is.
+  def advertised(using Monitor): Optional[Text]
+
+  // An invitation to this machine, for one other to accept before `lifetime` has passed, on
+  // the gateway port; while it is open the machine is advertised on the local network, so that
+  // the other finds it by name.
+  def invite(port: Int, lifetime: Duration)(using backend: Discovery.Backend^{} = Swarm.discovery)
+    ( using Environment, Monitor, Probate, Tactic[Peer.Error] )
+  :   Invitation
+
+  // What the other end of a link asks of this node; only a hub does anything.
+  def requested(tether: Tether, request: Wire.Request)(using Monitor, Probate): Unit =
+    tether.send(Wire.Reply(request.id, false, t"not a hub"))
 
   // ── the bus ──────────────────────────────────────────────────────────────────────────────
 
   // Every node known to this one, itself included, with what each last advertised; and every
-  // activity of every other node, as it was last updated.
-  val nodes: Live[List[Advert]] = Live(List(self))
+  // activity of every other node, as it was last updated. Lazy, since `self` is each kind of
+  // node's own, and its fields are not there while this class is being built.
+  lazy val nodes: Live[List[Advert]] = Live(List(self))
   val activities: Live[List[(Node, Activity)]] = Live(Nil)
 
   // When each node was last heard from, by key, and the newest sequence heard from each
   // origin, by which an event heard twice is acted on once.
-  private val heard: TrieMap[Text, Long] = TrieMap()
+  protected val heard: TrieMap[Text, Long] = TrieMap()
   private val seen: TrieMap[Text, Long] = TrieMap()
-  private val sequence: juc.atomic.AtomicLong = juc.atomic.AtomicLong(0L)
+  protected val sequence: juc.atomic.AtomicLong = juc.atomic.AtomicLong(0L)
 
   @scala.caps.unsafe.untrackedCaptures
   private var subscribers: List[(Filter, (Optional[Node], Envelope) -> Unit)] = Nil
@@ -391,7 +455,7 @@ extends Tether.Host:
     spent.incrementAndGet() <= Swarm.budget
 
   // Numbers an event of this node's own, acts on it here, and sends it down every link.
-  private def emit(event: Bus.Event): Unit =
+  protected def emit(event: Bus.Event): Unit =
     val envelope: Envelope = Envelope(node.key, sequence.incrementAndGet(), now(), 0, event)
     seen(node.key) = envelope.sequence
     notify(node, envelope)
@@ -399,7 +463,7 @@ extends Tether.Host:
 
   // Sends an envelope down every link but the one it arrived by, and the one to its origin: a
   // link counts once the other end's snapshot has arrived, which is before its first beat.
-  private def broadcast(envelope: Envelope, from: Optional[Tether]): Unit =
+  protected def broadcast(envelope: Envelope, from: Optional[Tether]): Unit =
     val carry: Wire = Wire.carry(envelope)
 
     mutex(tethers).each: tether =>
@@ -464,7 +528,7 @@ extends Tether.Host:
     case Bus.Event.Tool(_, _, _) =>
       Unset
 
-  private def forget(gone: Node): Unit =
+  protected def forget(gone: Node): Unit =
     val was: Boolean = known(gone.key).present
     nodes.amend(_.filter(_.node.key != gone.key))
     activities.amend(_.filter(_(0).key != gone.key))
@@ -499,7 +563,7 @@ extends Tether.Host:
       current.each: activity =>
         if published.get(activity.id) != Some(activity) then pending(activity.id) = activity
 
-  private def flush()(using Monitor): Unit =
+  protected def flush()(using Monitor): Unit =
     pending.keys.toList.foreach: id =>
       pending.remove(id).foreach: activity =>
         published(id) = activity
@@ -509,21 +573,22 @@ extends Tether.Host:
 
   // Every link, whichever side it is on and whichever end made it.
   @scala.caps.unsafe.untrackedCaptures
-  private var tethers: List[Tether] = Nil
+  protected var tethers: List[Tether] = Nil
 
   // The machines this node is asked to stay linked to, and the links it has made, by the
   // machine's name, or a local node's record name.
   @scala.caps.unsafe.untrackedCaptures
-  private var wanted: List[Machine] = Nil
+  protected var wanted: List[Machine] = Nil
 
   @scala.caps.unsafe.untrackedCaptures
-  private var links: List[(Text, Tether)] = Nil
+  protected var links: List[(Text, Tether)] = Nil
 
-  private def link(name: Text): Optional[Tether] = mutex(links.filter(_(0) == name)).head.let(_(1))
-  private def wants(name: Text): Boolean = mutex(wanted.filter(_.name == name)).head.present
+  protected def link(name: Text): Optional[Tether] = mutex(links.filter(_(0) == name)).head.let(_(1))
+  protected def wants(name: Text): Boolean = mutex(wanted.filter(_.name == name)).head.present
 
-  // What this node is asked to stay linked to, and how each link stands.
-  def connections: List[Connection] =
+  // What this node is asked to stay linked to, and how each link stands. A leaf asks the hub,
+  // whose links they are, hence the monitor.
+  def connections(using Monitor): List[Connection] =
     def standing(machine: Machine): Tether.Standing = link(machine.name) match
       case link: Tether => link.standing
       case _            => Tether.Standing()
@@ -531,7 +596,7 @@ extends Tether.Host:
     mutex(wanted).reverse.map: machine => Connection(machine, standing(machine))
 
   // The callers from other machines which have made a lasting link to this node.
-  def visitors: List[Caller] =
+  def visitors(using Monitor): List[Caller] =
     mutex(tethers).reverse.filter { t => t.lasting && t.side == Tether.Side.Remote && link(t.peer.show).absent }
     . map: link => Caller(link.peer, link.standing)
 
@@ -541,17 +606,17 @@ extends Tether.Host:
       tether.node.lay(Nil: List[(Node, Tether.Standing)]) { node => List((node, tether.standing)) }
 
   // Whether a lasting link to the machine of this name is open now.
-  def connected(name: Text): Boolean = link(name).present
+  def connected(name: Text)(using Monitor): Boolean = link(name).present
 
-  private def hostname(text: Text): Optional[Text] = if text == t"" then Unset else text
+  protected def hostname(text: Text): Optional[Text] = if text == t"" then Unset else text
 
-  private def welcomed(peer: Party, session: Peer.Session[Data]): Unit =
+  protected def welcomed(peer: Party, session: Peer.Session[Data]): Unit =
     val host: Optional[Text] = hostname(session.peer.identity.hostname)
     Journal.log(Event.Welcomed(peer, host, hostname(session.peer.version), session.address))
 
   // One caller's link, for as long as the caller keeps it: a caller which sends a beat means to
   // stay, and is sent beats in return, and watched for silence.
-  private def answer(session: Peer.Session[Data])(using Monitor, Probate): Unit =
+  protected def answer(session: Peer.Session[Data])(using Monitor, Probate): Unit =
     val peer: Party = Party.Caller(hostname(session.peer.identity.hostname))
     Journal.log(Event.Accepted(peer, hostname(session.peer.version)))
 
@@ -569,27 +634,29 @@ extends Tether.Host:
       if !tether.lost then Journal.log(Event.Closed(peer))
 
   // A link has closed: what was known through it alone is forgotten, and the other side told.
-  private def ended(tether: Tether)(using Monitor): Unit =
+  protected def ended(tether: Tether)(using Monitor): Unit =
     tether.close()
     mutex { tethers = tethers.filter(_ ne tether) }
+    tether.node.let(severed(tether, _))
 
-    tether.node.let: other =>
-      tether.side match
-        case Tether.Side.Local =>
-          forget(other)
-          broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, Bus.Event.Left(other)), tether)
+  // What a closed link to `other` took with it: that node, if it was on this machine; every
+  // node of its machine otherwise, all of which were reached through this link alone.
+  protected def severed(tether: Tether, other: Node)(using Monitor): Unit =
+    tether.side match
+      case Tether.Side.Local =>
+        forget(other)
+        broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, Bus.Event.Left(other)), tether)
 
-        case Tether.Side.Remote =>
-          // Every node of that machine was reached through this link alone.
-          nodes().filter(_.node.identity == other.identity).each: advert =>
-            forget(advert.node)
-            broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, Bus.Event.Left(advert.node)), tether)
+      case Tether.Side.Remote =>
+        nodes().filter(_.node.identity == other.identity).each: advert =>
+          forget(advert.node)
+          broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, Bus.Event.Left(advert.node)), tether)
 
-        case _ =>
-          ()
+      case _ =>
+        ()
 
   // Makes a link to a machine and keeps it for as long as it lasts.
-  private def dial(name: Text, machine: Machine, defaultPort: Int)(using Monitor, Probate)
+  protected def dial(name: Text, machine: Machine, defaultPort: Int)(using Monitor, Probate)
   :   Attempt[Unit, Peer.Error] =
 
     val peer: Party = Party.Callee(machine)
@@ -621,7 +688,7 @@ extends Tether.Host:
     if added then async(keep(machine, 0))
 
   // Stops keeping a link to the machine of this name, closing it if it is open.
-  def disconnect(name: Text): Boolean =
+  def disconnect(name: Text)(using Monitor): Boolean =
     val found: Boolean = mutex:
       val present: Boolean = wanted.filter(_.name == name).head.present
       wanted = wanted.filter(_.name != name)
@@ -630,11 +697,11 @@ extends Tether.Host:
     link(name).let(_.close())
     found
 
-  def disconnect(): Unit = mutex(wanted).each: machine => disconnect(machine.name)
+  def disconnect()(using Monitor): Unit = mutex(wanted).each: machine => disconnect(machine.name)
 
   // Makes the link, keeps it for as long as it lasts, and makes it again — after a pause which
   // grows with each failure in a row — until this node no longer wants it.
-  private def keep(machine: Machine, failures: Int)(using Monitor, Probate): Unit =
+  protected def keep(machine: Machine, failures: Int)(using Monitor, Probate): Unit =
     val peer: Party = Party.Callee(machine)
     var count: Int = failures
 
@@ -655,104 +722,12 @@ extends Tether.Host:
 
     Journal.log(Event.Unlinked(peer))
 
-  // ── this machine ─────────────────────────────────────────────────────────────────────────
+  // ── this node ────────────────────────────────────────────────────────────────────────────
 
-  private val registry: Registry = Registry(Registry.directory)
-  private val stopping: Atomic[Boolean] = Atomic(false)
-
-  @scala.caps.unsafe.untrackedCaptures
-  @volatile
-  private var loopback: Optional[Peer.Listener[Data]] = Unset
-
-  @scala.caps.unsafe.untrackedCaptures
-  @volatile
-  private var loopbackPort: Int = 0
-
-  private def record: Registry.Record =
-    Registry.Record(tool, version, pid, started.long, loopbackPort, fingerprint, gateway0() match
-      case 0    => Unset
-      case port => port)
-
-  // A local node, as a machine to link to: this machine, at the node's port, with its own token.
-  private def local(other: Registry.Record): Machine =
-    Machine(localName(other), List(t"127.0.0.1"), other.port, identity.let(_.fingerprint), token, Nil)
-
-  private def localName(other: Registry.Record): Text = t"${other.tool}@${other.pid.show}"
-
-  // Starts the node: its listener for the others of this machine, on a port of its own, its
-  // registration, and its housekeeping.
-  private[pyrocosm] def start()(using Monitor, Probate): Unit = (identity, token) match
-    case (identity: Peer.Identity, token: Text) =>
-      async(listen(identity, token))
-      async(housekeep())
-      async(announce())
-      async(coalesce())
-      ()
-
-    case (identity, _) =>
-      if identity.absent then Journal.log(Event.ListenFailed(0, Obstacle.NoIdentity))
-      else Journal.log(Event.ListenFailed(0, Obstacle.NoToken))
-
-  private def coalesce()(using Monitor): Unit =
+  protected def coalesce()(using Monitor): Unit =
     while !stopping() do
       flush()
       snooze(Swarm.coalescing)
-
-  // Listens for the other nodes of this machine, on an unused port, for as long as the node
-  // lives: a port which could not be bound, or stops being served, is replaced by another.
-  private def listen(identity: Peer.Identity, token: Text)(using Monitor, Probate): Unit =
-    val gate: () => Optional[Text] = () => Unset
-
-    while !stopping() do
-      val port: Int = Port[Tcp]().number
-
-      val listener: Peer.Listener[Data] =
-        Peer.Listener[Data](Wire.tool, version, Wire.codec, token, identity, capabilities, gate):
-          session => answer(session)
-
-      loopback = listener
-      loopbackPort = port
-      registry.register(record)
-      Journal.log(Event.Registered(tool, pid, port))
-      listener.serve(port)
-      loopbackPort = 0
-      if !stopping() then snooze(Swarm.housekeeping)
-
-  // Every couple of seconds: links to any node of this machine registered since, which this
-  // one is to call — the younger calls the older, so each pair links once — forgets any node
-  // not heard from for too long, and takes the gateway port if it is wanted and free.
-  private def housekeep()(using Monitor, Probate): Unit =
-    while !stopping() do
-      safely:
-        if loopbackPort != 0 then
-          val records: List[Registry.Record] = registry.scan()
-
-          records.each: other =>
-            val older: Boolean = (other.started, other.pid) < ((started.long, pid))
-            val mine: Boolean = other.pid == pid && other.tool == tool
-
-            if older && !mine && link(localName(other)).absent && other.identity == fingerprint then
-              async(dialLocal(other))
-
-          val moment: Long = java.lang.System.currentTimeMillis
-
-          heard.toList.foreach: (key, last) =>
-            if moment - last > (Swarm.forgetting.value*1000.0).toLong then
-              known(key).let(forget(_))
-
-          elect()
-
-      snooze(Swarm.housekeeping)
-
-  private def dialLocal(other: Registry.Record)(using Monitor, Probate): Unit =
-    val name: Text = localName(other)
-    if link(name).absent then
-      dial(name, local(other), other.port) match
-        case Attempt.Failure(error) =>
-          Journal.log(Event.Failed(local(other), Swarm.Error.Reason.Connection(error.reason)))
-
-        case _ =>
-          ()
 
   // Says what this node is now: when something it offers has changed, and every half minute
   // regardless, so that a node which joined since, or forgot it, learns of it.
@@ -761,98 +736,21 @@ extends Tether.Host:
     nodes.amend { all => advert :: all.filter(_.node.key != node.key) }
     emit(Bus.Event.Advertised(advert))
 
-  private def announce()(using Monitor, Probate): Unit =
+  protected def announce()(using Monitor, Probate): Unit =
     while !stopping() do
       advertise()
       snooze(Swarm.announcement)
 
-  // Says goodbye, closes every link, and leaves the registry.
+  // Says goodbye, stops what the node does of its own, and closes every link.
   private[pyrocosm] def stop()(using Monitor): Unit =
     if !stopping.swap(true) then
       broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 0, Bus.Event.Left(node)), Unset)
-      stopGateway()
-      loopback.let(_.stop())
+      halt()
       disconnect()
       mutex(tethers).each(_.close())
-      registry.unregister(pid, tool)
-      Journal.log(Event.Unregistered(tool, pid))
-
-  // ── the gateway ──────────────────────────────────────────────────────────────────────────
-
-  @scala.caps.unsafe.untrackedCaptures
-  @volatile
-  private var gatewayListener: Optional[Peer.Listener[Data]] = Unset
-
-  @scala.caps.unsafe.untrackedCaptures
-  @volatile
-  private var gatewayWanted: Optional[(Int, Text)] = Unset
-
-  private val gatewayStopping: Atomic[Boolean] = Atomic(false)
-
-  // The port this node accepts other machines on now, if it is the gateway.
-  def listening: Optional[Int] = gateway0() match
-    case 0      => Unset
-    case number => number
-
-  // Asks this node to be the machine's gateway on `port`, with `token` as the secret callers
-  // present (the machine's own, if none): it takes the port when it is free, and again whenever
-  // the node holding it goes.
-  def wantGateway(port: Int, token: Optional[Text])(using Monitor, Probate): Unit =
-    gatewayWanted = (port, token.or(this.token.or(t"")))
-    elect()
-
-  private def elect()(using Monitor, Probate): Unit =
-    gatewayWanted.let: (port, secret) =>
-      if listening.absent && registry.gateway().absent then async(serveGateway(port, secret))
-
-  // Accepts other machines on `port`, until `stopGateway` or until the port cannot be held.
-  private def serveGateway(port: Int, secret: Text)(using Monitor, Probate): Unit =
-    identity.let: identity =>
-      if gateway0.swap(port) == 0 then
-        val gate: () => Optional[Text] = () => Unset
-
-        val listener: Peer.Listener[Data] =
-          Peer.Listener[Data](Wire.tool, version, Wire.codec, secret, identity, capabilities, gate):
-            session => answer(session)
-
-        gatewayListener = listener
-        gatewayStopping() = false
-        registry.register(record)
-        Journal.log(Event.Listening(port, Fingerprint(identity.fingerprint)))
-        Journal.log(Event.Gateway(port))
-
-        // `serve` blocks until `stop`, and returns at once, saying nothing, if the port could
-        // not be bound; which of the two happened is what `gatewayStopping` tells apart.
-        try listener.serve(port) finally
-          if gatewayStopping() then Journal.log(Event.Stopped(port))
-          else Journal.log(Event.ListenFailed(port, Obstacle.Unbound))
-
-          gateway0() = 0
-          gatewayListener = Unset
-          registry.register(record)
-
-  // Stops accepting other machines, hangs up on those linked, and withdraws any advertisement.
-  def stopGateway(): Unit =
-    gatewayWanted = Unset
-    gatewayStopping() = true
-    gatewayListener.let(_.stop())
-    mutex(tethers).filter(_.side == Tether.Side.Remote).each(_.close())
-    mutex { open = Nil }
+      retire()
 
   // ── joining ──────────────────────────────────────────────────────────────────────────────
-
-  // An invitation to this machine, for one other to accept before `lifetime` has passed, on
-  // the gateway port. While it is open, this machine is advertised on the local network, so
-  // that the other finds it by name. The tactic is a parameter rather than `raises`, since a
-  // context-function result would hide the monitor the advertisement runs under.
-  def invite(port: Int, lifetime: Duration)(using backend: Discovery.Backend^{} = Swarm.discovery)
-    ( using Environment, Monitor, Probate, Tactic[Peer.Error] )
-  :   Invitation =
-
-    val invitation: Invitation = Peer.invite(Wire.tool, port, lifetime)
-    Journal.log(Event.Invited(invitation.expires))
-    advertise(invitation, port)
-    invitation
 
   // Accepts `invitation`: links to the machine it invites to, as `name`, says what this node
   // accepts, and records the machine and the token it granted, for `connect`.
@@ -877,96 +775,6 @@ extends Tether.Host:
     val count: Int = Peer.revoke(name, Wire.tool)
     Journal.log(Event.Revoked(name, count))
     count
-
-  // ── advertising ──────────────────────────────────────────────────────────────────────────
-
-  // The invitations this node has issued and not yet seen used or expire, newest first; the
-  // advertisement runs while there are any.
-  @scala.caps.unsafe.untrackedCaptures
-  private var open: List[Invitation] = Nil
-
-  @scala.caps.unsafe.untrackedCaptures
-  @volatile
-  private var announced: Optional[Text] = Unset
-
-  // The name this machine is advertised as now, if it is.
-  def advertised: Optional[Text] = announced
-
-  // This machine's name as the one DNS label an instance is called by.
-  private def label: Text = node.machine.cut(t".").head.keep(63)
-
-  // Adds `invitation` to those open, and starts advertising, in the background under the
-  // daemon's monitor, if nothing was open before; an advertisement running already covers it.
-  private def advertise(invitation: Invitation, port: Int)
-    ( using Environment, Monitor, Probate, Discovery.Backend^{} )
-  :   Unit =
-
-    val first: Boolean = mutex:
-      val idle: Boolean = open.nil
-      open = invitation :: open
-      idle
-
-    if first then async(advertise(port, Peer.peers.size))
-
-  // Advertises this machine for as long as an invitation is open: until the last expires or is
-  // used — which this node tells by one more machine among those it has admitted — or the
-  // gateway stops. The advertisement ends with a goodbye on the link. `admitted` is how many
-  // machines had been admitted when the advertisement began.
-  private def advertise(port: Int, admitted: Int)
-    ( using environment: Environment, monitor: Monitor, probate: Probate )
-    ( using backend: Discovery.Backend^{} )
-  :   Unit =
-
-    val made: Optional[Boolean] = identity.let: identity =>
-      val txt: Optional[Discovery.Txt] = safely:
-        Discovery.Txt
-          ( Swarm.fingerprintKey -> Peer.render(identity.fingerprint),
-            Swarm.versionKey     -> version,
-            Swarm.portKey        -> port.show )
-
-      txt.let: txt =>
-        val description: Discovery.Description = Discovery.Description(label, Port.unsafe[Tcp](port), txt)
-
-        val outcome: Attempt[Unit, Discovery.Error] = attempt[Discovery.Error]:
-          Swarm.nearby.advertise(description)(using backend):
-            val instance: Text = summon[Discovery.Advertisement].instance.label
-            announced = instance
-            Journal.log(Event.Advertised(instance, port))
-            linger(admitted)(using environment, monitor)
-            announced = Unset
-            Journal.log(Event.Withdrawn(instance))
-
-        outcome match
-          case Attempt.Failure(error) =>
-            Journal.log(Event.Unadvertised(error.reason))
-            false
-
-          case _ =>
-            true
-
-    // An advertisement which was never made leaves nothing open, or an invitation issued
-    // meanwhile would be waited for by nobody. One which ran left nothing open when it ended,
-    // and anything issued since has an advertisement of its own.
-    if !made.or(false) then mutex { open = Nil }
-
-  // Waits, a second at a time, while any invitation is open: each time it looks, it drops
-  // those which have expired, and the oldest for each machine admitted since the last look.
-  private def linger(admitted: Int)(using Environment, Monitor): Unit =
-    var count: Int = admitted
-    var lingering: Boolean = true
-
-    while lingering do
-      val moment: Instant over Unix = now()
-      val latest: Int = Peer.peers.size
-      val used: Int = (latest - count).max(0)
-      count = latest
-
-      val remaining: List[Invitation] = mutex:
-        val live: List[Invitation] = open.filter(_.expires > moment)
-        open = List(live.reverse.stdlib.drop(used).reverse*)
-        open
-
-      if !remaining.nil && listening.present then snooze(1.0*Second) else lingering = false
 
   // ── pinging ──────────────────────────────────────────────────────────────────────────────
 

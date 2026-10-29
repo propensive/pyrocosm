@@ -54,14 +54,20 @@ object Presences:
   private def opener(id: Text): Text = t"/open?activity=$id"
 
   // Where a node's web front-end is, as seen from here: `localhost` for a node of this machine,
-  // and the nearest of its addresses otherwise.
+  // and the nearest of its addresses otherwise; and, where its machine's hub serves a web
+  // origin, the tool's path under that origin, which is where a browser should go.
   private def url(swarm: Swarm, advert: Advert): Optional[Text] =
     advert.services.filter(_.name == t"serve").head.let: service =>
       val host: Text =
         if advert.node.shares(swarm.node) then t"localhost"
         else Machine.ordered(advert.node.hosts).head.or(advert.node.machine)
 
-      located(host, service.port)
+      val hub: Optional[Advert] =
+        swarm.nodes().seek { other => other.node.tool == Wire.tool && other.node.identity == advert.node.identity }
+
+      hub.let(_.services.filter(_.name == t"serve").head).or(Unset) match
+        case origin: Service => t"http://$host:${origin.port.show}/${advert.node.tool}/"
+        case _               => located(host, service.port)
 
   private def located(host: Text, port: Int): Text = t"http://$host:${port.show}/"
 
@@ -75,9 +81,11 @@ object Presences:
         node.shares(swarm.node) )
 
   // Every node, this one included, in menu order: by tool, then machine, then address. Two
-  // nodes of one tool on one machine are told apart by their ports.
+  // nodes of one tool on one machine are told apart by their ports. A machine's hub is not a
+  // tool, and is not listed.
   private def origins(swarm: Swarm, adverts: List[Advert]): List[Origin] =
-    val all: scala.List[(Origin, Advert)] = adverts.map { advert => (origin(swarm, advert), advert) }.stdlib
+    val tools: List[Advert] = adverts.filter(_.node.tool != Wire.tool)
+    val all: scala.List[(Origin, Advert)] = tools.map { advert => (origin(swarm, advert), advert) }.stdlib
 
     def named(origin: Origin, advert: Advert): Origin =
       val twins: Int = all.count { (other, _) => other.tool == origin.tool && other.machine == origin.machine }

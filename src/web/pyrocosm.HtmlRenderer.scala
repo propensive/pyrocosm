@@ -102,8 +102,11 @@ object HtmlRenderer:
   given localLink: ("data-local" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
 // The `purview` is the reader's: what it imports is elided from every qualified name, and an
-// import toggle or a bookmark button shows whether its page is in it.
-class HtmlRenderer(purview: Purview = Purview()):
+// import toggle or a bookmark button shows whether its page is in it. The `prefix` is the path
+// the application is served under (`/fume`, say; empty at the origin's root), which goes before
+// every local destination's link; a page's path as the application knows it, which a purview
+// button carries for the frontend, has no prefix.
+class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath, actionId, atomId, tabIndex, localLink, jsonText, dataPath}
 
   def phrase(content: List[Inline]): Html of Phrasing = Html.Fragment(content.map(inline1)*)
@@ -132,10 +135,9 @@ class HtmlRenderer(purview: Purview = Purview()):
         case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = classes :+ cls(t"pyro-action"))(token.text)
         case local: Inline.Destination.Local     => A(href = href(local), `class` = classes :+ cls(t"pyro-locate"))(token.text)
 
-  // The `href` of a local destination: its path, and its fragment. The one place a prefix would
-  // be put before every page of a tool, were several tools to share an origin.
+  // The `href` of a local destination: its path under the prefix, and its fragment.
   private def href(local: Inline.Destination.Local): Text =
-    local.fragment.lay(local.path) { fragment => t"${local.path}#$fragment" }
+    local.fragment.lay(t"$prefix${local.path}") { fragment => t"$prefix${local.path}#$fragment" }
 
   // A label which leads somewhere: an anchor around it for a local or external destination, an
   // action's anchor for an internal one.

@@ -259,9 +259,11 @@ object Tool:
 
     List(found.reverse*)
 
-  // The two services every tool's daemon offers through its node: being the machine's gateway
-  // (`swarm` in a config, on `swarm-port`, with `swarm-token` as the secret callers present),
-  // and keeping links to the machines a `connect` line names.
+  // The two services every tool's daemon asks of the machine's hub through its node: being the
+  // machine's gateway (`swarm` in a config, on `swarm-port`, with `swarm-token` as the secret
+  // callers present), and keeping links to the machines a `connect` line names. Both are the
+  // machine's, not the tool's: the hub keeps them until `swarm disconnect`, or until it ends,
+  // which it does once its last tool has quit, so a tool quitting stops neither.
   private def gatewayService(tool: Tool): Service = new Service:
     def keyword: Text = t"swarm"
     def portKeyword: Text = t"swarmPort"
@@ -278,9 +280,7 @@ object Tool:
       Swarm.of(tool.name).let(_.wantGateway(number, token))
       safely(waiting.attend())
 
-    def stop(): Unit =
-      Swarm.of(tool.name).let(_.stopGateway())
-      stopped.let(_.offer(()))
+    def stop(): Unit = stopped.let(_.offer(()))
 
   private[pyrocosm] def swarmServices(tool: Tool): List[Service] =
     List(gatewayService(tool), connectService(tool))
@@ -306,9 +306,7 @@ object Tool:
         known.filter { machine => names.has(machine.name) }.each: machine => swarm.connect(machine)
       safely(waiting.attend())
 
-    def stop(): Unit =
-      Swarm.of(tool.name).let(_.disconnect())
-      stopped.let(_.offer(()))
+    def stop(): Unit = stopped.let(_.offer(()))
 
   // Offers the configured machines' names at the argument after a swarm subcommand.
   private def suggestMachines(rest: List[Argument], known: List[Machine])(using Cli): Unit =
@@ -580,9 +578,12 @@ object Tool:
         case _: Invocation =>
           tool.check()
 
-          // The daemon's node on the swarm, started with the first invocation: it advertises
-          // whatever services this daemon has launched.
-          Swarm.start(tool.name, tool.version, () => Tool.offered(tool))
+          // The machine's hub, started if this daemon finds none, and the daemon's node on the
+          // swarm, a leaf of it, started with the first invocation: it advertises whatever
+          // services this daemon has launched. The leaf starts a hub again should the hub go.
+          Presence.shared.prefix() = t"/${tool.name}"
+          Hubs.ensure(tool.name, tool.version)
+          Swarm.start(tool.name, tool.version, () => Tool.offered(tool), revive = () => Hubs.ensure(tool.name, tool.version))
 
           tool.allServices.each: (service: Service) =>
             val wanted: Boolean = configurator.read(service.keyword).present
@@ -772,7 +773,7 @@ object Tool:
       Exit.Ok
 
     private def about(directory: Text)
-       (using invocation: Invocation, service: Resident, environment: Environment)
+       (using invocation: Invocation, service: Resident, environment: Environment, monitor: Monitor)
     :   Exit =
 
       given Stdio = invocation.stdio
@@ -826,6 +827,9 @@ object Tool:
       val gateway: Optional[Text] = swarm.let: swarm =>
         swarm.listening.lay(t"no"): port => t"accepting other machines on port ${port.show}"
 
+      val hub: Optional[Text] = swarm.let: swarm =>
+        swarm.hub.lay(t"not linked"): node => t"pid ${node.pid.show}, started by version ${node.version}"
+
       val details: List[Tool.Fact] =
         Tool.facts
           ( t"PID"         -> java.lang.ProcessHandle.current.nn.pid.show,
@@ -836,6 +840,7 @@ object Tool:
             t"Executable"  -> service.executable.encode,
             t"User config" -> user,
             t"Machine"     -> swarm.let(_.node.machine).or(absent),
+            t"Hub"         -> hub.or(absent),
             t"Swarm nodes" -> nodes.or(absent),
             t"Gateway"     -> gateway.or(absent),
             t"Links"       -> links.or(absent),
@@ -947,7 +952,7 @@ object Tool:
           Out.println(t"Usage: ${tool.name} swarm connect <machine>")
           Tool.UsageError
 
-    private def swarmDisconnect(words: List[Text])(using invocation: Invocation)
+    private def swarmDisconnect(words: List[Text])(using invocation: Invocation, monitor: Monitor)
     :   Swarming.Connected =
 
       given Stdio = invocation.stdio
@@ -1004,7 +1009,7 @@ object Tool:
       given Stdio = invocation.stdio
       Swarming.log(follow, level)
 
-    private def swarmStatus()(using invocation: Invocation): Swarming.Connected =
+    private def swarmStatus()(using invocation: Invocation, monitor: Monitor): Swarming.Connected =
       given Stdio = invocation.stdio
       Swarming.status(tool)
 
