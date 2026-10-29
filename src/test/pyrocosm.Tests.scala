@@ -512,6 +512,8 @@ tags:
                   Inline.Amount(0.0123, t"s"),
                   Inline.Numeral(3.5, 2),
                   Inline.Icon(t"/icon.svg", t"an icon"),
+                  Inline.Import(t"/api/gossamer", t"gossamer"),
+                  Inline.Bookmark(t"/api/gossamer.Text", t"gossamer.Text"),
                   Inline.Break() ),
             Block.Table
               ( List
@@ -1024,6 +1026,56 @@ tags:
 
     . assert(_ == (true, true))
 
+    val imported: Purview = Purview(List(Purview.Entry(t"/api/com.example", t"com.example")))
+
+    test(m"an empty purview elides nothing"):
+      Purview().elide(qualifiedName)
+    . assert(_ == qualifiedName)
+
+    test(m"an imported package's prefix is elided, and what remains begins a run"):
+      imported.elide(qualifiedName)
+    . assert(_ == List(segment(t"Foo", Token.Accent.Typal, t"/api/com.example.Foo", false), Token.plain(t" ")))
+
+    test(m"the longest imported prefix is elided"):
+      Purview(List(Purview.Entry(t"/api/com", t"com"), Purview.Entry(t"/api/com.example", t"com.example"))).elide(qualifiedName)
+    . assert(_ == List(segment(t"Foo", Token.Accent.Typal, t"/api/com.example.Foo", false), Token.plain(t" ")))
+
+    test(m"an imported name which ends a run is not elided"):
+      Purview(List(Purview.Entry(t"/api/com.example.Foo", t"Foo"))).elide(qualifiedName)
+    . assert(_ == qualifiedName)
+
+    test(m"a run without links is as it was"):
+      imported.elide(List(Token.plain(t"com"), dot, Token.plain(t"example")))
+    . assert(_ == List(Token.plain(t"com"), dot, Token.plain(t"example")))
+
+    test(m"a purview is toggled by path"):
+      val once: Purview = Purview().toggleImport(Purview.Entry(t"/api/com", t"com")).toggleBookmark(Purview.Entry(t"/api/com.example.Foo", t"Foo"))
+      val twice: Purview = once.toggleImport(Purview.Entry(t"/api/com", t"com (again)"))
+      (once.imported(t"/api/com"), once.bookmarked(t"/api/com.example.Foo"), twice.imported(t"/api/com"), twice.bookmarks.size)
+    . assert(_ == (true, true, false, 1))
+
+    test(m"the web renders a qualified name short under a purview which imports its package"):
+      HtmlRenderer(imported).tokens(qualifiedName).show
+    . assert(_ == link(t"/api/com.example.Foo", t"typal", t"Foo") + space)
+
+    test(m"an import toggle is a button carrying its path, active when the page is imported"):
+      ( HtmlRenderer(imported).phrase(List(Inline.Import(t"/api/com.example", t"com.example"))).show,
+        html.phrase(List(Inline.Bookmark(t"/api/com.example.Foo", t"Foo"))).show )
+    . assert:
+        _ == ( t"""<button type="button" class="pyro-import pyro-active" data-path="/api/com.example" title="Remove the import of com.example.*">com.example</button>""",
+               t"""<button type="button" class="pyro-bookmark" data-path="/api/com.example.Foo" title="Bookmark Foo">Foo</button>""" )
+
+    test(m"the purview cookie round-trips, among other cookies, and garbage reads as none"):
+      val purview: Purview = imported.toggleBookmark(Purview.Entry(t"/api/com.example.Foo", t"Foo"))
+      val header: Text = t"other=1; ${WebFrontend.cookieName}=${WebFrontend.cookie(purview)}; last=2"
+      (WebFrontend.purview(header) == purview, WebFrontend.purview(t"${WebFrontend.cookieName}=%7Bnot-json"), WebFrontend.purview(t"other=1"))
+    . assert(_ == (true, Unset, Unset))
+
+    test(m"a cookie entry whose path is not a page of the application is dropped"):
+      val forged: Purview = Purview(List(Purview.Entry(t"javascript:alert(1)", t"x"), Purview.Entry(t"/api/com", t"com")))
+      WebFrontend.purview(t"${WebFrontend.cookieName}=${WebFrontend.cookie(forged)}")
+    . assert(_ == Purview(List(Purview.Entry(t"/api/com", t"com"))))
+
     val deckOfTwo: Block =
       Block.Deck
         ( List
@@ -1153,6 +1205,15 @@ tags:
     test(m"an interface without global controls has no toolbar"):
       page.contains(t"pyro-toolbar")
     . assert(_ == false)
+
+    val primaryOnly: Panel = Panel(Panel.Id(t"main"), Panel.Role.Primary, Unset, Live(Nil: List[Block]), Panel.Priority.Essential)
+
+    test(m"an interface read under a purview has a recto column listing it; one without has neither"):
+      val under: Text = PyrocosmPage(Interface(Inline.text(t"Docs"), List(primaryOnly), purview = Purview()), html, WebTheme.default, Unset, Presence()).markup.show
+      val without: Text = PyrocosmPage(Interface(Inline.text(t"Docs"), List(primaryOnly)), html, WebTheme.default, Unset, Presence()).markup.show
+      ( under.contains(t"""<body dir="ltr" class="pyro-has-recto">"""), under.contains(t"""<section id="pyro-purview" class="pyro-panel pyro-purview">"""),
+        without.contains(t"pyro-has-recto"), without.contains(t"pyro-purview") )
+    . assert(_ == (true, true, false, false))
 
     test(m"a masthead without other nodes' activities holds their empty holder, after its own, before the matter"):
       val own = page.s.indexOf("<div id=\"pyro-activities\" class=\"pyro-activities\"></div>")
