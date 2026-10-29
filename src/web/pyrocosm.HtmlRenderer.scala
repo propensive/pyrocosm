@@ -69,6 +69,10 @@ object HtmlRenderer:
   // `tabindex` on an animated block, so that it takes the arrow keys when focused.
   given tabIndex: ("tabindex" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
+  // `data-path="/api/com.example"` on an import toggle or a bookmark button: the page it is of,
+  // which the script sends with the click.
+  given dataPath: ("data-path" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
   // A text as a JSON string literal, for the animation the renderer embeds.
   def jsonText(text: Text): Text =
     val builder = StringBuilder()
@@ -97,8 +101,10 @@ object HtmlRenderer:
   // replaces with the page's own host when the page is viewed from another.
   given localLink: ("data-local" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
-class HtmlRenderer():
-  import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath, actionId, atomId, tabIndex, localLink, jsonText}
+// The `purview` is the reader's: what it imports is elided from every qualified name, and an
+// import toggle or a bookmark button shows whether its page is in it.
+class HtmlRenderer(purview: Purview = Purview()):
+  import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath, actionId, atomId, tabIndex, localLink, jsonText, dataPath}
 
   def phrase(content: List[Inline]): Html of Phrasing = Html.Fragment(content.map(inline1)*)
 
@@ -128,7 +134,40 @@ class HtmlRenderer():
     case local: Inline.Destination.Local     => A(href = href(local), `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(label)
 
   def tokens(tokens: List[Token]): Html of Phrasing =
-    Html.Fragment(qualified(tokens.map { (token: Token) => (token, this.token(token)) })*)
+    Html.Fragment(qualified(purview.elide(tokens).map { (token: Token) => (token, this.token(token)) })*)
+
+  // An import toggle or a bookmark button: a button carrying its page's path, active when the
+  // page is in the purview, so that the script sends the click and the frontend answers with
+  // the panels re-rendered under the new purview.
+  private def purviewButton(kind: Text, path: Text, label: Text, active: Boolean, title: Text): Html of Phrasing =
+    val classes: List[Name[CssClass]] = List(cls(t"pyro-$kind")) + (if active then List(cls(t"pyro-active")) else Nil)
+    Button(`type` = t"button", `class` = classes, `data-path` = path, title = title)(label)
+
+  private def importButton(path: Text, label: Text): Html of Phrasing =
+    val active: Boolean = purview.imported(path)
+    val title: Text = if active then t"Remove the import of $label.*" else t"Import $label.*"
+    purviewButton(t"import", path, label, active, title)
+
+  private def bookmarkButton(path: Text, label: Text): Html of Phrasing =
+    val active: Boolean = purview.bookmarked(path)
+    val title: Text = if active then t"Remove the bookmark of $label" else t"Bookmark $label"
+    purviewButton(t"bookmark", path, label, active, title)
+
+  // The reader's purview as a side panel: the imports, then the bookmarks, each entry a link
+  // to its page with the button which removes it; replaced as one when the purview changes.
+  def purviewPanel: Html of Flow =
+    def entries(kind: Text, entries: List[Purview.Entry], empty: Text): Html of Flow =
+      if entries.nil then P(`class` = cls(t"pyro-empty"))(empty)
+      else Ul(`class` = cls(t"pyro-purview-list"))(entries.map { (entry: Purview.Entry) =>
+        val remove: Html of Phrasing =
+          purviewButton(kind, entry.path, t"remove", true, t"Remove ${entry.label}")
+        Li(A(href = entry.path, `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(entry.label), t" ", remove) }*)
+
+    Section(id = t"pyro-purview", `class` = List(cls(t"pyro-panel"), cls(t"pyro-purview")))
+      ( H2(t"Imports"),
+        entries(t"import", purview.imports, t"Nothing is imported: every name is written in full."),
+        H2(t"Bookmarks"),
+        entries(t"bookmark", purview.bookmarks, t"No page is bookmarked.") )
 
   // Each run of chained tokens as Amok rendered a qualified name: every linked segment after the
   // first wraps everything before it, its separators and itself in a `pyro-qualified` span, and
@@ -184,6 +223,8 @@ class HtmlRenderer():
       Img(src = source, alt = alt, title = alt, `class` = cls(t"pyro-icon"))
 
     case Inline.Link(destination, content) => lead(destination, phrase(content))
+    case Inline.Import(path, label)        => importButton(path, label)
+    case Inline.Bookmark(path, label)      => bookmarkButton(path, label)
 
     // The note is in the element, after the content, so that it is read by what has no hover
     // (a screen reader, a text browser); the stylesheet shows it only when pointed at or

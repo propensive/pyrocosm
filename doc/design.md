@@ -146,6 +146,16 @@ highlighting tokens and completions supplied by the application), `Choice` and `
 names a handle (`Action`, `Input`, `Choice`, `Toggle`) the application created, a value with a
 process-unique id.
 
+An interface whose pages are read under a **purview** says so with `Interface.purview`: the
+reader's wildcard imports and bookmarks, each the path of a local destination (a package's page
+*is* the package) with a label. An application writes every qualified name in full; the renderers
+elide what is imported (`Purview.elide`: the last imported segment of a chained run, and all
+before it, go), so one rendered page serves every reader. `Inline.Import(path, label)` and
+`Inline.Bookmark(path, label)` are the toggles, which the frontend answers itself: the web keeps
+the reader's purview in a cookie (`pyro-purview`, read when a page is asked for, so the first
+paint is right), shows it in the recto column, and on a toggle re-renders the panels under the
+new purview; the terminal renders under the purview it is given and shows the toggles as nothing.
+
 `Hints` is an open, typed bag. Three vocabularies live in the model so an application can attach
 any of them without touching a renderer: `pyrocosm.hints.*` (medium-neutral: `Proportion`,
 `Minimum`, `Beside`, `Below`, `Compact`, `Follow`), `hints.terminal.*` (`Occupancy`, `Border`,
@@ -636,6 +646,14 @@ root-absolute now, so that is a prefix on the page — `HtmlRenderer.href` is th
   than a third, as Fuel's `fuel show` wants a page set; off by default, since a log or a
   board reads better ragged. An animated block, which a terminal cannot step, is its slides
   in sequence, each under `step n of m` and its label, with its own notes.
+- **M6g Purview** (done): `Purview` (imports and bookmarks, each a local path and a label),
+  `Interface.purview`, `Inline.Import` and `Inline.Bookmark`, renderer-side elision of imported
+  prefixes (`Purview.elide`, shared by both renderers), the recto card of the reader's imports
+  and bookmarks, and the `pyro-purview` cookie, read when a page is asked for and set by a
+  `cookie` patch after a toggle, which the frontend answers itself with every panel re-rendered.
+  Written for Fuel's API pages, which write every name in full and give the project's own
+  imports as the starting purview. Not yet: an `Event` telling the application the purview
+  changed, and the terminal stepping into a purview of its own.
 - **M7 Fury and Fluence**: Fury's `FrontEnd` as an interface with the target DAG as a graph;
   Fluence pages as blocks with the API tree as navigation.
 - **M8 Hardening**: Markdown renderer, themes, ARIA from roles, optional Scala.js client,

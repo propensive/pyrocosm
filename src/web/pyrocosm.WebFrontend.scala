@@ -45,7 +45,7 @@ import logging.silentLogging
 // `Control.Field`): an `edit`, `submit` or `enter` says which version it is of, and a `value`
 // passed on to another tab carries the version with it, so every tab numbers the text alike.
 case class Patch(kind: Text, id: Text, html: Text = t"", version: Int = 0)
-case class Incoming(kind: Text, id: Text = t"", text: Text = t"", caret: Int = 0, index: Int = 0, version: Int = 0)
+case class Incoming(kind: Text, id: Text = t"", text: Text = t"", caret: Int = 0, index: Int = 0, version: Int = 0, label: Text = t"")
 
 // The answer to an `enter`: whether the text is incomplete, and the version of the text the
 // decoration which says so was given for.
@@ -81,6 +81,21 @@ object WebFrontend:
       activity.destination match
         case Inline.Destination.Internal(action) => action
         case _                                   => Unset
+
+  // The reader's purview travels in one cookie, as URL-encoded JSON, so that the page a browser
+  // asks for is rendered under it before anything is scripted. Garbage reads as no cookie, and
+  // an entry whose path is not a page of this application (root-absolute) is dropped, as it is
+  // from a click: the browser's word for what it keeps is not trusted as a link.
+  val cookieName: Text = t"pyro-purview"
+
+  def cookie(purview: Purview): Text = purview.in[Json].show.urlEncode
+
+  def purview(header: Text): Optional[Purview] =
+    header.cut(t";").map(_.trim).seek(_.starts(t"$cookieName=")).let { pair =>
+      safely(pair.skip(cookieName.length + 1).urlDecode.read[Json].as[Purview]).let: purview0 =>
+        Purview(purview0.imports.filter(local(_)), purview0.bookmarks.filter(local(_))) }
+
+  private def local(entry: Purview.Entry): Boolean = entry.path.starts(t"/")
 
   // The script, from the module's resources.
   lazy val script: Text =
@@ -154,8 +169,30 @@ extends pyrocosm.Frontend:
   // One interface and the tabs showing it. The handler is vouched pure, as the terminal
   // frontend's is: it lives exactly as long as the session.
   private class Session(val id: Text, val interface: Interface, handle: Event -> Unit):
-    val renderer: HtmlRenderer = HtmlRenderer()
-    val page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id, presence)
+    // The reader's purview, when the interface is read under one: the interface's own to begin
+    // with, the cookie's once a page is asked for, and the reader's toggles after that. The
+    // renderer and the page are made for the purview of the moment, being cheap.
+    @caps.unsafe.untrackedCaptures
+    @volatile
+    var purview: Purview = interface.purview.or(Purview())
+
+    def renderer: HtmlRenderer = HtmlRenderer(purview)
+    def page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id, presence)
+
+    // The reader's purview, as a page request's cookie says it is; nothing, without one.
+    def adopt(cookies: Optional[Text]): Unit =
+      if interface.purview.present then cookies.let(WebFrontend.purview(_)).let { purview0 => purview = purview0 }
+
+    // The purview has changed: every panel is shown again under it, the purview panel with it,
+    // and the browser is told to keep it.
+    private def refresh(): Unit =
+      val renderer0: HtmlRenderer = renderer
+
+      interface.panels.each: panel =>
+        broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", renderer0.blocks(panel.content()).show))
+
+      broadcast(Patch(t"replace", t"pyro-purview", renderer0.purviewPanel.show))
+      broadcast(Patch(t"cookie", t"", WebFrontend.cookie(purview)))
 
     // The wakes this session binds to the process-wide presence, to unbind — and no other
     // session's — when it closes.
@@ -348,6 +385,18 @@ extends pyrocosm.Frontend:
           case t"key" =>
             Keypresses.parse(incoming.text).let { keypress => handle(Event.Key(keypress)) }
 
+          // An import toggle or a bookmark button: the frontend's own, answered without the
+          // application, for an interface read under a purview.
+          case t"import" =>
+            if interface.purview.present && incoming.text.starts(t"/") then
+              purview = purview.toggleImport(Purview.Entry(incoming.text, incoming.label))
+              refresh()
+
+          case t"bookmark" =>
+            if interface.purview.present && incoming.text.starts(t"/") then
+              purview = purview.toggleBookmark(Purview.Entry(incoming.text, incoming.label))
+              refresh()
+
           // The script's keep-alive; answered so the connection sees traffic both ways.
           case t"ping" =>
             broadcast(Patch(t"pong", t""))
@@ -452,6 +501,7 @@ extends pyrocosm.Frontend:
       // fragment finds its target.
       def page(path: Text): Http.Response =
         sessionFor(request.target, fresh = true).lay(Http.Response(Http.NotFound)(t"No session")): session =>
+          session.adopt(request.textHeaders.seek(_.key.lower == t"cookie").let(_.value))
           session.locate(path)
           val html: Text = t"<!DOCTYPE html>${session.page.markup.show}"
           Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(html.in[Data]))

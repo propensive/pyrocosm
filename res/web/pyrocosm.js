@@ -194,6 +194,8 @@
 
   function apply(patch) {
     if (patch.kind === "pong") return;
+    // The reader's purview, kept for a year, so the next page asked for is rendered under it.
+    if (patch.kind === "cookie") { document.cookie = "pyro-purview=" + patch.html + "; path=/; max-age=31536000; SameSite=Lax"; return; }
     var element = document.getElementById(patch.id);
     if (!element) return;
     switch (patch.kind) {
@@ -1428,6 +1430,19 @@
       element.addEventListener("click", function (event) {
         event.preventDefault();
         send({ kind: "press", id: element.dataset.action || element.id, text: "", caret: 0, index: 0 });
+      });
+    });
+
+    // An import toggle or a bookmark button: the page's path and label go to the session, which
+    // answers with the panels re-rendered under the new purview.
+    root.querySelectorAll("button.pyro-import, button.pyro-bookmark").forEach(function (button) {
+      if (button.dataset.pyroWired) return;
+      button.dataset.pyroWired = "1";
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        var kind = button.classList.contains("pyro-import") ? "import" : "bookmark";
+        var label = button.closest(".pyro-purview") ? (button.previousElementSibling ? button.previousElementSibling.textContent : "") : button.textContent;
+        send({ kind: kind, id: "", text: button.dataset.path, caret: 0, index: 0, label: label });
       });
     });
 

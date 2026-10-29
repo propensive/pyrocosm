@@ -212,6 +212,21 @@ object Samples:
               Inline.Textual(t" and some code "),
               Inline.Snippet(Language.Scala, List(Token(t"val", Token.Accent.Keyword), Token.plain(t" "), Token(t"x", Token.Accent.Term))),
               Inline.Textual(t".") ),
+        // A qualified name written in full, which the purview elides once its package is
+        // imported by the toggle beside it; and a bookmark of this page.
+        Block.Paragraph:
+          def segment(text: Text, accent: Token.Accent, path: Text, chained: Boolean): Token =
+            Token(text, accent, Unset, Inline.Destination.Local(path), chained)
+
+          val dot: Token = Token(t".", Token.Accent.Symbol, Unset, Unset, true)
+
+          List
+            ( Inline.Textual(t"The type "),
+              Inline.Snippet(Language.Scala, List(segment(t"com", Token.Accent.Term, t"/api/com", false), dot, segment(t"example", Token.Accent.Term, t"/api/com.example", true), dot, segment(t"Foo", Token.Accent.Typal, t"/api/com.example.Foo", true))),
+              Inline.Textual(t" is written in full until its package is imported: "),
+              Inline.Import(t"/api/com.example", t"com.example"),
+              Inline.Textual(t" — and this page can be kept to hand: "),
+              Inline.Bookmark(t"/", t"Pyrocosm gallery") ),
         results,
         Block.Code
           ( Language.Scala,
@@ -547,7 +562,8 @@ object Samples:
             Panel(Panel.Id(t"log"), Panel.Role.Log, Inline.text(t"Log"), log, Panel.Priority.Important, controls = List(note), hints = Hints(hints.Follow, hints.terminal.MaxRows(8))),
             Panel(Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]), Panel.Priority.Essential, controls = List(field)) ),
         List(Control.Button(Inline.text(t"Append"), append), Control.Button(Inline.text(t"Clear"), clear), Control.Toggle(verbose, Inline.text(t"Verbose"))),
-        List(Shortcut(Keypress.Ctrl('L'), clear, Inline.text(t"clear the log"))) )
+        List(Shortcut(Keypress.Ctrl('L'), clear, Inline.text(t"clear the log"))),
+        purview = Purview() )
 
   // A toy tokeniser and completer, standing in for a compiler.
   private val keywords: List[Text] = List(t"val", t"def", t"if", t"else", t"then", t"import", t"given")

@@ -30,13 +30,16 @@ case class Shortcut(keypress: Keypress, action: Action, description: List[Inline
 
 // The whole of what an application shows: its panels, its global controls, its shortcuts, and
 // the activities — the concurrent work it keeps in view, which come and go while it runs. A
-// description, not a layout — see `Panel`.
+// description, not a layout — see `Panel`. An interface whose pages are read under a `Purview`
+// says so by giving its starting one (empty, if need be): a frontend then shows the reader's
+// imports and bookmarks beside the matter and keeps them for them.
 case class Interface
   ( title:      List[Inline],
     panels:     List[Panel],
     controls:   List[Control]        = Nil,
     shortcuts:  List[Shortcut]       = Nil,
-    hints:      Hints                = Hints.none ):
+    hints:      Hints                = Hints.none,
+    purview:    Optional[Purview]    = Unset ):
 
   // The work in flight, which the application assigns as it starts and finishes.
   val activities: Live[List[Activity]] = Live(Nil)

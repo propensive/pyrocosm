@@ -107,7 +107,8 @@ object TerminalRenderer:
 // `justify` spreads each wrapped line of a paragraph to the width, as a typeset page does,
 // but for a paragraph's last line and any line whose slack would open rivers; off by default,
 // since a log or a board reads better ragged.
-class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val justify: Boolean = false)
+// The `purview` is the reader's: a qualified name's imported prefix is elided, as the web does.
+class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val justify: Boolean = false, val purview: Purview = Purview())
   ( using metric:      Text is Measurable,
           hyphenation: Hyphenation,
           tableStyle:  TableStyle,
@@ -140,7 +141,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     val coloured = tint(theme.accent(token.accent))(Teletype(token.text))
     if token.role == Token.Role.Binding then e"$Italic($coloured)" else coloured
 
-  def tokens(tokens: List[Token]): Teletype = joined(tokens.map(token))
+  def tokens(tokens: List[Token]): Teletype = joined(purview.elide(tokens).map(token))
 
   private def inline1(node: Inline): Teletype = node match
     case Inline.Textual(text)         => Teletype(text)
@@ -154,6 +155,8 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     case Inline.Break()               => Teletype(t"\n")
     case Inline.Math(math)            => Teletype(safely(Ergo.serialize(math)).or(t"…"))
     case Inline.Icon(_, _)            => blank   // a terminal has no images; `plain` says the alt
+    case Inline.Import(_, _)          => blank   // nothing to click, and no purview to keep
+    case Inline.Bookmark(_, _)        => blank
     case Inline.Annotated(content, _) => phrase(content)   // a terminal has no hover; the note is for the page
 
     case Inline.Link(destination, content) =>

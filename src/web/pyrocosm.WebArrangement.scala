@@ -110,6 +110,10 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   override def versoWidth: Quantity[Rems[1]] = 15.0*Rem
   override def rectoWidth: Quantity[Rems[1]] = 20.0*Rem
 
+  // The recto holds the detail panels and, for an interface read under a purview, the reader's
+  // imports and bookmarks.
+  private val hasRecto: Boolean = !plan.detail.nil || interface.purview.present
+
   // A side column exists only when a panel is arranged there: the matter alone, otherwise.
   protected override def versoArrangement
     ( panel: Html of (? <: Flow), content: Html of (? <: Flow) )
@@ -121,7 +125,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     ( content: Html of (? <: Flow), panel: Html of (? <: Flow) )
   :   Html of (? <: Flow) =
 
-    if plan.detail.nil then content else super.rectoArrangement(content, panel)
+    if hasRecto then super.rectoArrangement(content, panel) else content
 
   // The controls other than a field are phrasing, so they fit the top menu; a field is flow.
   def controlFlow(control: Control): Html of Flow = control match
@@ -264,7 +268,8 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     if items.nil then brand else Html.Fragment(brand, Menu(`class` = cls(t"pyro-toolbar"))(items*))
 
   override def verso: Html of Flow = cards(plan.navigation)
-  override def recto: Html of Flow = cards(plan.detail)
+  override def recto: Html of Flow =
+    if interface.purview.present then Html.Fragment(cards(plan.detail), renderer.purviewPanel) else cards(plan.detail)
   def content: Html of Flow = Html.Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
 
   // The session this page belongs to, if it has one of its own, for the script to name when it
@@ -307,7 +312,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
   private def framed: Html of "html" =
     val verso: List[Name[CssClass]] = if plan.navigation.nil then Nil else List(cls(t"pyro-has-verso"))
-    val recto: List[Name[CssClass]] = if plan.detail.nil then Nil else List(cls(t"pyro-has-recto"))
+    val recto: List[Name[CssClass]] = if hasRecto then List(cls(t"pyro-has-recto")) else Nil
     val sides: List[Name[CssClass]] = verso + recto
 
     Html(Head(Title(pageTitle), Link.Stylesheet(href = t"/pyrocosm.css"), head), Body(dir = direction.show, `class` = sides)(frame))

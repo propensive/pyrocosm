@@ -465,9 +465,26 @@ object WebStyles:
       css"@media (max-width: 64rem) { .graffiti-verso-layout, .graffiti-recto-layout { grid-template-columns: 1fr } .graffiti-verso, .graffiti-recto { inline-size: auto; position: static } .pyro-frames .pyro-source { display: none } }"
         + css"@media (max-width: 40rem) { main.graffiti-mainstay { padding-top: var(--pyro-space-4); padding-bottom: var(--pyro-space-6) } .pyro-panel, .graffiti-verso .pyro-panel, .graffiti-recto .pyro-panel, .pyro-role-primary.pyro-panel { padding: var(--pyro-space-4); border-radius: var(--pyro-radius); margin-bottom: var(--pyro-space-4) } .pyro-title { font-size: 2.38rem } .pyro-masthead { gap: var(--pyro-space-2) var(--pyro-space-4); min-height: 0 } .pyro-toolbar > li { flex: 1 1 auto } .pyro-toolbar .pyro-button { width: 100% } .pyro-activity { width: 100% } .pyro-table { display: block; overflow-x: auto } .pyro-record { grid-template-columns: 1fr; gap: var(--pyro-space-1) } .pyro-record dd { margin-bottom: var(--pyro-space-2) } .pyro-priority-peripheral { display: none } }"
 
+    // An import toggle and a bookmark button are small labels set in the line, marked by a
+    // glyph and filled when the page is in the purview; the purview panel lists each entry
+    // with its link and the button which removes it.
+    val purview: Css =
+      css".pyro-import, .pyro-bookmark { display: inline-flex; align-items: center; gap: 0.35em; padding: 0.15rem 0.5rem; margin: 0 0.25rem; vertical-align: middle; border: 1px solid var(--pyro-border); border-radius: var(--pyro-radius); background-color: var(--pyro-surface); color: var(--pyro-muted); font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.4; cursor: pointer }"
+        + css".pyro-import::before { content: '+' } .pyro-bookmark::before { content: '☆' }"
+        + css".pyro-import.pyro-active, .pyro-bookmark.pyro-active { color: var(--pyro-on-button); background-color: var(--pyro-button); border-color: var(--pyro-button) }"
+        + css".pyro-import.pyro-active::before { content: '✓' } .pyro-bookmark.pyro-active::before { content: '★' }"
+        + css".pyro-import:hover, .pyro-bookmark:hover { border-color: var(--pyro-button) }"
+        + css".pyro-import:focus-visible, .pyro-bookmark:focus-visible { outline: 2px solid var(--pyro-tone-accent); outline-offset: 2px }"
+        + css".pyro-purview h2 + h2, .pyro-purview .pyro-purview-list + h2, .pyro-purview .pyro-empty + h2 { margin-top: var(--pyro-space-5) }"
+        + css".pyro-purview .pyro-empty { color: var(--pyro-muted); font-size: var(--pyro-text-small); margin: 0 }"
+        + css".pyro-purview-list { list-style: none; margin: 0; padding: 0 }"
+        + css".pyro-purview-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--pyro-space-2); padding: var(--pyro-space-1) 0; font-family: var(--pyro-font-mono); font-size: var(--pyro-text-mono); overflow-wrap: anywhere }"
+        + css".pyro-purview-list .pyro-import, .pyro-purview-list .pyro-bookmark { flex: none; margin: 0 }"
+        + css".pyro-purview-list .pyro-import::before, .pyro-purview-list .pyro-bookmark::before { content: '×' }"
+
     val tones: Css = Tone.values.foldLeft(Css(Nil)) { (acc, tone0) => acc + tone(tone0) }
     val accents: Css = Token.Accent.values.foldLeft(Css(Nil)) { (acc, accent0) => acc + accent(accent0) }
     val traceAccents: Css = (1 to 5).foldLeft(Css(Nil)) { (acc, index) => acc + traceAccent(index) }
 
     theme.variables + scale + stage + base + layout + menubar + masthead + phrasing + label + flow + trace
-    + charts + panels + controls + responsive + tones + accents + traceAccents
+    + charts + panels + controls + purview + responsive + tones + accents + traceAccents

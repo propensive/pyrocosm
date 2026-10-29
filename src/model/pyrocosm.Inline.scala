@@ -94,6 +94,11 @@ enum Inline:
   // term's definition — as a tooltip where the medium has one; a plain rendering is the
   // content alone.
   case Annotated(content: List[Inline], note: List[Inline])
+  // A toggle of the wildcard import of the page at `path` — a package's — into the reader's
+  // `Purview`, and a button bookmarking the page there; each labelled. Both are the frontend's
+  // to act on, not the application's, and a medium without a purview shows nothing.
+  case Import(path: Text, label: Text)
+  case Bookmark(path: Text, label: Text)
 
   // A fieldless product, not a singleton: deriving the TEL decoder for this enum with a singleton
   // case fails under capture checking (see the `Min` reproduction in the Soundness issue). Revert
@@ -116,4 +121,6 @@ enum Inline:
     case Numeral(value, _)    => value.toString.tt
     case Icon(_, alt)         => alt
     case Annotated(content, _) => Inline.plain(content)
+    case Import(_, _)         => t""
+    case Bookmark(_, _)       => t""
     case Break()              => "\n"
