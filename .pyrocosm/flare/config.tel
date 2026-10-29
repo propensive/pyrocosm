@@ -1,8 +1,8 @@
 tel 1.0
 
 # Flare checks Pyrocosm: every source, against Consequent Style, with the licence header every
-# file begins with. The rules below are measured by `flare metrics` commit by commit; `cast` is
-# enforced too. `make check` runs the profile; CI runs the same command.
+# file begins with. The rules below are measured by `flare metrics` commit by commit. `make check`
+# runs the profile; CI runs the same command.
 
 rule cast
   invokes asInstanceOf
@@ -18,17 +18,24 @@ rule imperative
 profile default
   source src/**/*.scala
 
+  # `package pyrocosm.hints` is public API, and Consequent Style's single-segment `package` line
+  # (F2) cannot express it: the nested `package pyrocosm` / `package hints` form fails F3 instead.
+  exclude src/model/pyrocosm_hints.scala
+
   # The `-language` features the build compiles with, so flare parses the sources exactly as
   # the build does.
   language implicitConversions
   language experimental.modularity
   language experimental.dependent
+
+  # The build enables relaxed lambda syntax with `-preview` instead; this line stays because
+  # flare cannot yet be given `-preview`, and without it every one-line `f: x => ...` lambda
+  # fails to parse.
   language experimental.relaxedLambdaSyntax
+
   language experimental.genericNumberLiterals
-  language experimental.into
   language experimental.erasedDefinitions
   language experimental.saferExceptions
-  language experimental.strictEqualityPatternMatching
   language experimental.subCases
   language experimental.multiSpreads
   language experimental.captureChecking
@@ -43,4 +50,8 @@ profile default
     interpolator svg
     interpolator js
 
-  enforce cast
+  # `cast` is measured but not enforced: the casts that remain have no pattern-match equivalent.
+  # Fixtures compares lists by reference (`eq`), which needs `AnyRef`; TerminalFrontend and
+  # WebFrontend narrow capture-checked types (a `null` start for a tracked local `var`, and a
+  # websocket's captures dropped for a response body); and Trees passes an untyped CBOR tag value
+  # on as breviloquence's `CborTypes` union, which a type test cannot check.

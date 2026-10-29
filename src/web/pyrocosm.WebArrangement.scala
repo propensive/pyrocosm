@@ -23,15 +23,17 @@
 package pyrocosm
 
 // Excluded from the umbrella: `Control` (coaxial), which would outrank this package's own
-// definitions, since a wildcard import beats a package member declared in another file. Excluded
-// too: `Span` (denominative), so the name is the HTML element `htmlDoms` supplies.
-import soundness.{Control as _, Origin as _, Span as _, *}
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Control as _, *}
 
-import dysasymptotics.{linearAccess, linearSize}
 import attributives.textAttributive
+import dysasymptotics.linearSize
 import formatting.compactJsonFormatting
 import htmlDoms.whatwg
 import htmlDoms.whatwg.*
+// `Span` is imported by name, so it means the HTML element and not the name the umbrella also
+// offers: hiding it from the umbrella works too, but `-Wunused` thinks it unused.
+import htmlDoms.whatwg.Span
 import nomenclature.CssClass.nominative
 
 // The web's arrangement: the same roles as the terminal's, mapped onto graffiti's page features
@@ -56,10 +58,11 @@ object WebArrangement:
         prompt = role(Panel.Role.Prompt) )
 
 // The page: a masthead holding the title, the activities as linked cards and the connection
-// indicator, with the global controls beneath it as a toolbar; navigation on the verso side; detail on the
-// recto side; and the primary, log and prompt panels as the main matter. A side whose panels
-// are absent is not drawn, so a page without detail has no right-hand column. Each panel is a
-// card whose content element the frontend replaces by id when its `Live` cell changes.
+// indicator, with the global controls beneath it as a toolbar; navigation on the verso side;
+// detail on the recto side; and the primary, log and prompt panels as the main matter. A side
+// whose panels are absent is not drawn, so a page without detail has no right-hand column. Each
+// panel is a card whose content element the frontend replaces by id when its `Live` cell
+// changes.
 //
 // The features are mixed in so that the chrome encloses the matter: `Mainstay` wraps the
 // columns in `<main>`, `Masthead` puts its `<header>` before it, and `TopMenu`, last, puts the
@@ -73,35 +76,64 @@ object PyrocosmPage:
   val PrefixMeta = Tag.void["meta", Whatwg](presets = proscenium.Map(t"name" -> t"pyro-prefix"))
 
   // `data-history="…"` on a field: the application's history, seeded for the script.
-  given history: ("data-history" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+  given history: ("data-history" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
 
   // `data-version="…"` and `data-incomplete="…"` on a decoration's state: the version of the
   // text it describes, and whether that text is an incomplete prefix, for the script.
-  given dataVersion: ("data-version" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
-  given dataIncomplete: ("data-incomplete" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+  given dataVersion: ("data-version" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
+
+  given dataIncomplete: ("data-incomplete" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
 
   // A `crossorigin` value on a `link`, as honeycomb declares the attribute but no way to
   // attribute a value to it.
-  given crossorigin: Crossorigin is Attributive to Whatwg.Crossorigin = (key, value) => (key, value.show)
+  given crossorigin: Crossorigin is Attributive to Whatwg.Crossorigin =
+    (key, value) => (key, value.show)
 
   // The mode button's icons: a crescent moon for the dark mode, a sun with eight rays at the
   // compass points for the light, and a smaller sun behind a crescent for the mixed. All three
   // are drawn, and the sheet shows the one the document's `data-mode` names, so the right one
   // is there before the script runs. The markup is constant, so it is read unsafely.
+  // The markup is built from pieces only to keep its lines short: the text is the same.
   private def icon(mode: Text, shapes: Text): Html of "svg" =
+    val namespace: Text = t"http://www.w3.org/2000/svg"
+    val names: Text = t"pyro-mode-icon pyro-mode-$mode"
+    val frame: Text = t"""viewBox="0 0 24 24" aria-hidden="true" fill="none""""
+
+    val strokes: Text =
+      t"""stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round""""
+
     unsafely:
-      t"""<svg xmlns="http://www.w3.org/2000/svg" class="pyro-mode-icon pyro-mode-$mode" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">$shapes</svg>"""
+      t"""<svg xmlns="$namespace" class="$names" $frame $strokes>$shapes</svg>"""
       . read[Html of "svg"]
 
-  private val moon: Text = t"""<path fill="currentColor" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>"""
+  private val moon: Text =
+    t"""<path fill="currentColor" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>"""
 
   private val sun: Text =
-    t"""<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/>"""
+    val disc: Text = t"""<circle cx="12" cy="12" r="4"/>"""
+    val cardinal: Text = t"M12 2v3M12 19v3M2 12h3M19 12h3"
+
+    val diagonal: Text =
+      t"M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"
+
+    t"""$disc<path d="$cardinal$diagonal"/>"""
 
   private val sunAndMoon: Text =
-    t"""<circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.42 1.42M11.18 11.18l1.06 1.06M3.4 12.6l1.42-1.42M12.6 3.4l-1.42 1.42"/><path fill="currentColor" stroke-width="1" d="M22.2 17.6A5.2 5.2 0 1 1 16.4 11.8a4 4 0 0 0 5.8 5.8z"/>"""
+    val disc: Text = t"""<circle cx="8" cy="8" r="2.5"/>"""
+    val cardinal: Text = t"M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2"
 
-  val modeIcons: List[Html of "svg"] = List(icon(t"dark", moon), icon(t"light", sun), icon(t"mixed", sunAndMoon))
+    val diagonal: Text =
+      t"M3.4 3.4l1.42 1.42M11.18 11.18l1.06 1.06M3.4 12.6l1.42-1.42M12.6 3.4l-1.42 1.42"
+
+    val crescent: Text = t"M22.2 17.6A5.2 5.2 0 1 1 16.4 11.8a4 4 0 0 0 5.8 5.8z"
+    val rays: Text = t"""<path d="$cardinal$diagonal"/>"""
+    t"""$disc$rays<path fill="currentColor" stroke-width="1" d="$crescent"/>"""
+
+  val modeIcons: List[Html of "svg"] =
+    List(icon(t"dark", moon), icon(t"light", sun), icon(t"mixed", sunAndMoon))
 
 // `prefix` is the path the application is served under (`/fume`, say), empty at the root: it goes
 // before every root-absolute path the page names, so one application can be served beside
@@ -111,7 +143,9 @@ class PyrocosmPage
     presence: Presence = Presence.shared, prefix: Text = t"" )
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
   import HtmlRenderer.{cls, panelId, classes}
-  import PyrocosmPage.{history, crossorigin, dataVersion, dataIncomplete}
+  // The attribute givens are imported wholesale: a macro summons them, which `-Wunused` does not
+  // see, so it would call any of them imported by name unused.
+  import PyrocosmPage.given
 
   private val plan: WebArrangement.Plan = WebArrangement.plan(interface)
 
@@ -143,20 +177,28 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
   def control(control: Control): Html of Phrasing = control match
     case Control.Button(label, action, enabled) =>
-      if enabled() then Button(id = action.id, `class` = cls(t"pyro-button"))(renderer.phrase(label))
-      else Button(id = action.id, `class` = cls(t"pyro-button"), disabled = true)(renderer.phrase(label))
+      val style = cls(t"pyro-button")
+
+      if enabled() then Button(id = action.id, `class` = style)(renderer.phrase(label))
+      else Button(id = action.id, `class` = style, disabled = true)(renderer.phrase(label))
 
     case Control.Toggle(toggle, label, state) =>
+      val style = cls(t"pyro-toggle")
+
       val box =
-        if state() then Input.Checkbox(id = toggle.id, `class` = cls(t"pyro-toggle"), checked = true)
-        else Input.Checkbox(id = toggle.id, `class` = cls(t"pyro-toggle"))
+        if state() then Input.Checkbox(id = toggle.id, `class` = style, checked = true)
+        else Input.Checkbox(id = toggle.id, `class` = style)
+
       Label(box, t" ", renderer.phrase(label))
 
     case Control.Choice(choice, options, current) =>
-      Select(id = choice.id, `class` = cls(t"pyro-choice"))(options.indexed.map { (option, index) =>
-          if index.n0 == current() then Option(value = index.n0.toString.tt, selected = true)(Inline.plain(option))
-          else Option(value = index.n0.toString.tt)(Inline.plain(option))
-        }*)
+      val items = options.indexed.map: (option, index) =>
+        val value: Text = index.n0.toString.tt
+
+        if index.n0 == current() then Option(value = value, selected = true)(Inline.plain(option))
+        else Option(value = value)(Inline.plain(option))
+
+      Select(id = choice.id, `class` = cls(t"pyro-choice"))(items*)
 
     case _: Control.Field => Html.Fragment[Phrasing]()
 
@@ -166,8 +208,13 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   // current; its history is seeded in a data attribute.
   def fieldHtml(field: Control.Field): Html of Flow =
     val group = cls(t"pyro-field-group")
-    val decorated = Div(id = t"${field.input.id}-decoration", `class` = cls(t"pyro-decoration"))(decoration(field))
-    val state: List[Name[CssClass]] = if field.decoration().incomplete then List(cls(t"pyro-incomplete")) else Nil
+
+    val decorated =
+      Div(id = t"${field.input.id}-decoration", `class` = cls(t"pyro-decoration"))
+        ( decoration(field) )
+
+    val state: List[Name[CssClass]] =
+      if field.decoration().incomplete then List(cls(t"pyro-incomplete")) else Nil
 
     field.kind match
       case Control.Field.Kind.Code(_) =>
@@ -178,14 +225,20 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
                 contenteditable = t"true",
                 spellcheck = t"false",
                 `data-history` = field.history().in[Json].show )
-              (field.value()),
+              ( field.value() ),
             Span(`class` = cls(t"pyro-placeholder"))(field.placeholder.or(t"")),
             decorated )
 
       case kind =>
         val rows = if kind == Control.Field.Kind.Line then 1 else 3
+
         Div(`class` = group)
-          ( Textarea(id = field.input.id, `class` = cls(t"pyro-field") :: state, rows = rows, placeholder = field.placeholder.or(t""))(field.value()),
+          ( Textarea
+              ( id = field.input.id,
+                `class` = cls(t"pyro-field") :: state,
+                rows = rows,
+                placeholder = field.placeholder.or(t"") )
+              ( field.value() ),
             decorated )
 
   // What the script reads to decorate a field: its state (the version of the text it is for,
@@ -197,7 +250,9 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
     val state: Html of Flow =
       Span
-        ( `class` = cls(t"pyro-state"), hidden = t"", `data-version` = decoration0.version.toString.tt,
+        ( `class` = cls(t"pyro-state"),
+          hidden = t"",
+          `data-version` = decoration0.version.toString.tt,
           `data-incomplete` = (if decoration0.incomplete then t"true" else t"false") )
         ()
 
@@ -207,9 +262,10 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
       else
         val lines: List[Block.Line] = Block.Line.split(decoration0.tokens)
         val count: Int = lines.size
+
         val rendered: List[Html of Phrasing] =
-          lines.indexed.map { (line: Block.Line, index: Ordinal) =>
-            renderer.codeLine(line, decoration0.marks, index.n0 == count - 1, index.n0) }
+          lines.indexed.map: (line: Block.Line, index: Ordinal) =>
+            renderer.codeLine(line, decoration0.marks, index.n0 == count - 1, index.n0)
 
         Span(`class` = cls(t"pyro-tokens"), hidden = t"")(rendered*)
 
@@ -220,22 +276,32 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     // A candidate that replaces the whole text says so, for the script.
     val list: Html of Flow =
       if decoration0.completions.nil then Html.Fragment[Flow]()
-      else Ul(`class` = cls(t"pyro-completions"))(decoration0.completions.map { (completion: Control.Field.Completion) =>
-        val classes: List[Name[CssClass]] = if completion.whole then List(cls(t"pyro-replacement")) else Nil
-        Li(`class` = classes)(Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature)) }*)
+      else
+        val items = decoration0.completions.map: (completion: Control.Field.Completion) =>
+          val classes: List[Name[CssClass]] =
+            if completion.whole then List(cls(t"pyro-replacement")) else Nil
+
+          Li(`class` = classes)
+            ( Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature) )
+
+        Ul(`class` = cls(t"pyro-completions"))(items*)
 
     Html.Fragment(state, tokens, detail, list)
 
   def panelContent(panel: Panel): Html of Flow =
-    Div(id = t"${panelId(panel)}-content", `class` = cls(t"pyro-panel-content"))(renderer.blocks(panel.content()))
+    Div(id = t"${panelId(panel)}-content", `class` = cls(t"pyro-panel-content"))
+      ( renderer.blocks(panel.content()) )
 
   def card(panel: Panel): Html of Flow =
-    val classes = List
-      ( cls(t"pyro-panel"),
-        cls(t"pyro-role-${panel.role.toString.tt.lower}"),
-        cls(t"pyro-priority-${panel.priority.toString.tt.lower}") )
+    val classes =
+      List
+        ( cls(t"pyro-panel"),
+          cls(t"pyro-role-${panel.role.toString.tt.lower}"),
+          cls(t"pyro-priority-${panel.priority.toString.tt.lower}") )
 
-    val heading: Html of Flow = panel.title.lay(Html.Fragment[Flow]()) { title => H2(renderer.phrase(title)) }
+    val heading: Html of Flow =
+      panel.title.lay(Html.Fragment[Flow]()): title => H2(renderer.phrase(title))
+
     val controls: Html of Flow =
       if panel.controls.nil then Html.Fragment[Flow]()
       else Footer(`class` = cls(t"pyro-controls"))(panel.controls.map(controlFlow)*)
@@ -251,14 +317,24 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     Nav(`class` = List(TopMenu.menuClass, cls(t"pyro-menubar")))
       ( Div(`class` = cls(t"pyro-menubar-inner"))
           ( A(href = t"$prefix/", `class` = cls(t"pyro-wordmark"))(t"Pyrocosm"),
-            Div(id = t"pyro-menubar-tools", `class` = cls(t"pyro-menubar-tools"))(renderer.toolLinks(presence.peers())),
+            Div(id = t"pyro-menubar-tools", `class` = cls(t"pyro-menubar-tools"))
+              ( renderer.toolLinks(presence.peers()) ),
             A(href = t"$prefix/config", `class` = cls(t"pyro-menubar-link"))(t"Configuration"),
-            Button(id = t"pyro-mode", `type` = t"button", `class` = cls(t"pyro-mode"), title = t"Light, dark or mixed")(PyrocosmPage.modeIcons*) ) )
+            Button
+              ( id = t"pyro-mode",
+                `type` = t"button",
+                `class` = cls(t"pyro-mode"),
+                title = t"Light, dark or mixed" )
+              (PyrocosmPage.modeIcons*) ) )
 
   // The global controls other than a field, each an item of the masthead's toolbar.
   private def toolbarItems: List[Html of "li"] =
-    interface.controls.filter { (control0: Control) => !control0.isInstanceOf[Control.Field] }
-    . map { (control0: Control) => Li(`class` = cls(t"pyro-control"))(control(control0)) }
+    interface.controls
+    . filter:
+        case _: Control.Field => false
+        case _                => true
+
+    . map: control0 => Li(`class` = cls(t"pyro-control"))(control(control0))
 
   // The brand row: the title, the activities' cards — this interface's, then other nodes', each
   // holder replaced as one by the frontend when its cell changes, so both are there even while
@@ -269,24 +345,37 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
       Div(`class` = cls(t"pyro-masthead"))
         ( Div(`class` = cls(t"pyro-brand"))
             ( H1(`class` = cls(t"pyro-title"))(renderer.phrase(interface.title)),
-              Div(id = t"pyro-activities", `class` = cls(t"pyro-activities"))(renderer.activities(interface.activities())),
-              Div(id = t"pyro-activities-remote", `class` = List(cls(t"pyro-activities"), cls(t"pyro-activities-remote")))(renderer.remoteActivities(presence.remote())) ),
-          Output(id = t"pyro-connection", `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")))(t"connecting") )
+              Div(id = t"pyro-activities", `class` = cls(t"pyro-activities"))
+                ( renderer.activities(interface.activities()) ),
+              Div
+                ( id = t"pyro-activities-remote",
+                  `class` = List(cls(t"pyro-activities"), cls(t"pyro-activities-remote")) )
+                ( renderer.remoteActivities(presence.remote()) ) ),
+          Output
+            ( id = t"pyro-connection",
+              `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")) )
+            ( t"connecting" ) )
 
     val items = toolbarItems
     if items.nil then brand else Html.Fragment(brand, Menu(`class` = cls(t"pyro-toolbar"))(items*))
 
   override def verso: Html of Flow = cards(plan.navigation)
+
   override def recto: Html of Flow =
-    if interface.purview.present then Html.Fragment(cards(plan.detail), renderer.purviewPanel) else cards(plan.detail)
+    if interface.purview.present then Html.Fragment(cards(plan.detail), renderer.purviewPanel)
+    else cards(plan.detail)
 
   // A transcript and the prompt beneath it are one session, shown on one card: the panels
   // within it keep their ids (the frontend patches them by id) but lose their own chrome (the
   // `.pyro-session` rules).
   def content: Html of Flow =
-    val matter: Html of Flow = Html.Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
+    val matter: Html of Flow =
+      Html.Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
+
     val session: Boolean = !interface.panels.all(_.role != Panel.Role.Transcript)
-    if session then Section(`class` = List(cls(t"pyro-panel"), cls(t"pyro-session")))(matter) else matter
+
+    if session then Section(`class` = List(cls(t"pyro-panel"), cls(t"pyro-session")))(matter)
+    else matter
 
   // The session this page belongs to, if it has one of its own, for the script to name when it
   // opens its socket; and the prefix it is served under, when there is one.
@@ -302,14 +391,18 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     val fonts: Html of Metadata =
       Html.Fragment[Metadata]
         ( Link.Preconnect(href = t"https://fonts.googleapis.com"),
-          Link.Preconnect(href = t"https://fonts.gstatic.com", crossorigin = Crossorigin.Anonymous) )
+          Link.Preconnect
+            ( href = t"https://fonts.gstatic.com", crossorigin = Crossorigin.Anonymous ) )
 
     // The mode the reader chose (or the system's, failing one) is set before the first
     // paint, so a dark page does not flash light.
     val mode: Html of Metadata =
-      Script(t"document.documentElement.dataset.mode = localStorage.getItem('pyro-mode') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'mixed');")
+      val chosen: Text = t"localStorage.getItem('pyro-mode')"
+      val system: Text = t"(matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'mixed')"
+      Script(t"document.documentElement.dataset.mode = $chosen || $system;")
 
-    Html.Fragment[Metadata](fonts, mode, Script(src = t"$prefix/pyrocosm.js", defer = true), named, prefixed, super.head)
+    val script = Script(src = t"$prefix/pyrocosm.js", defer = true)
+    Html.Fragment[Metadata](fonts, mode, script, named, prefixed, super.head)
 
   // The fonts' import first, as CSS requires; then graffiti's rules; then this page's own.
   protected override def styles: Css = WebStyles.fonts + super.styles + WebStyles.rules(theme)
@@ -330,8 +423,12 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     Html(head0, Body(dir = direction.show, `class` = cls(t"pyro-stage"))(stage))
 
   private def framed: Html of "html" =
-    val verso: List[Name[CssClass]] = if plan.navigation.nil then Nil else List(cls(t"pyro-has-verso"))
+    val verso: List[Name[CssClass]] =
+      if plan.navigation.nil then Nil else List(cls(t"pyro-has-verso"))
+
     val recto: List[Name[CssClass]] = if hasRecto then List(cls(t"pyro-has-recto")) else Nil
     val sides: List[Name[CssClass]] = verso + recto
 
-    Html(Head(Title(pageTitle), Link.Stylesheet(href = t"$prefix/pyrocosm.css"), head), Body(dir = direction.show, `class` = sides)(frame))
+    val sheet: Html of Metadata = Link.Stylesheet(href = t"$prefix/pyrocosm.css")
+    val head0: Html of "head" = Head(Title(pageTitle), sheet, head)
+    Html(head0, Body(dir = direction.show, `class` = sides)(frame))

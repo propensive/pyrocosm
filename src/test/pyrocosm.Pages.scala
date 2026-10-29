@@ -22,7 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import soundness.{Figure as _, Glyph as _, Language as _, Standing as _, Status as _, Token as _, *}
+import soundness.*
 
 // A run of blocks as a record, since a BinTEL document's root is one; its codecs and schema are
 // derived here, apart from the suite, whose class the inlined derivations would make too large.

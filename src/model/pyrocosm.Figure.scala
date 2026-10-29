@@ -66,17 +66,17 @@ object Figure:
     hrefPattern.matcher(urls).nn.replaceAll(s"""href="#$prefix$$1"""").nn.tt
 
   // Every figure a run of blocks holds, in document order, as `Actions.of` finds actions.
-  def of(blocks: List[Block]): List[Figure] = blocks.bind { (block: Block) => ofBlock(block) }
+  def of(blocks: List[Block]): List[Figure] = blocks.bind: (block: Block) => ofBlock(block)
 
   private def ofBlock(block: Block): List[Figure] = block match
     case Block.Figure(figure)            => List(figure)
-    case Block.Listing(_, items)         => items.bind { (item: Block.Item) => of(item.content) }
+    case Block.Listing(_, items)         => items.bind: (item: Block.Item) => of(item.content)
     case Block.Quotation(content)        => of(content)
     case Block.Notice(_, _, content)     => of(content)
     case Block.Disclosure(_, content, _) => of(content)
     case Block.Group(content)            => of(content)
-    case Block.Deck(leaves)              => leaves.bind { (leaf: Block.Leaf) => of(leaf.content) }
-    case Block.Record(entries, _)        => entries.bind { (entry: Block.Entry) => of(entry.value) }
+    case Block.Deck(leaves)              => leaves.bind: (leaf: Block.Leaf) => of(leaf.content)
+    case Block.Record(entries, _)        => entries.bind: (entry: Block.Entry) => of(entry.value)
     case _                               => Nil
 
 final class Figure private[pyrocosm] (val id: Text, val alt: List[Inline], svg0: Text):

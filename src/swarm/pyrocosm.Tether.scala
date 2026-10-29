@@ -186,7 +186,11 @@ class Tether
             case snapshot: Wire.Snapshot =>
               last = now()
               told = snapshot.self
-              side0 = if snapshot.self.node.shares(host.self.node) then Tether.Side.Local else Tether.Side.Remote
+
+              side0 =
+                if snapshot.self.node.shares(host.self.node) then Tether.Side.Local
+                else Tether.Side.Remote
+
               Journal.log(Event.Received(snapshot, peer))
               host.snapshotted(this, snapshot.self, snapshot.known)
 
@@ -240,7 +244,7 @@ class Tether
     send(Wire.Ping(id, sent, note))
     val pong: Optional[Wire.Pong] = safely(promise.await(Tether.patience))
     mutex { asked = asked.filter(_(0) != id) }
-    pong.let { pong => (pong, now() - sent) }
+    pong.let: pong => (pong, now() - sent)
 
   // Asks the other end to do `command`, and waits for its reply, which `read` delivers; nothing
   // if none came in time.

@@ -24,122 +24,9 @@ package pyrocosm
 
 import soundness.*
 
-import strategies.throwUnsafely
 import dysasymptotics.linearSize
 import errorDiagnostics.emptyDiagnostics
-
-// The web's colours by role: the same solarized values the terminal theme uses, as the seed of
-// one palette for both media. Emitted once as CSS custom properties (`variables`), so every rule
-// in `WebStyles` refers to a role by `var(--pyro-…)` and a second theme is a second `:root` block.
-trait WebTheme:
-  def background: Chroma
-  def surface: Chroma       // cards and panels
-  def foreground: Chroma
-  def muted: Chroma
-  def border: Chroma
-  def tone(tone: Tone): Chroma
-  def accent(accent: Token.Accent): Chroma
-  def key: Chroma
-  def reference: Chroma
-  def figure: Chroma
-  def units: Chroma
-  def link: Chroma
-  def selection: Chroma
-
-  // The text on an accent-filled surface, a button's face: the background by default, which
-  // is dark on a dark theme's bright accent and light on a light theme's deep one.
-  def onAccent: Chroma = background
-
-  // Titles, which may be darker than prose; a button's face and the text on it, which need
-  // not be the accent: the default theme's buttons are yellow with black text.
-  def title: Chroma = foreground
-  def button: Chroma = tone(Tone.Accent)
-  def onButton: Chroma = onAccent
-
-  // The menu bar along the top of every page, and its text: dark with white text by default.
-  def menubar: Chroma = foreground
-  def onMenubar: Chroma = background
-
-  // A code block's own ground and text, and the token accents on that ground: a light theme
-  // may set code on a dark ground, with brighter accents than its prose carries. By default a
-  // code block is a surface in the theme's own colours.
-  def codeBackground: Chroma = surface
-  def codeForeground: Chroma = foreground
-  def codeAccent(accent: Token.Accent): Chroma = this.accent(accent)
-
-  // A stack trace's colours: the file, the method and the line, and the five accents its
-  // packages take in order of first appearance. Digression's own by default, which suit a dark
-  // ground; a light theme overrides them with deeper values.
-  def traceFile: Chroma = Chroma(0x5f9e9f)
-  def traceMethod: Chroma = Chroma(0xabcfdf)
-  def traceLine: Chroma = Chroma(0x47d1cc)
-
-  def traceAccents: List[Chroma] =
-    List(Chroma(0xf84020), Chroma(0xd88600), Chroma(0xfefe00), Chroma(0xfeae00), Chroma(0xaefe00))
-
-  // The page has three modes, which a button in the masthead cycles through: *mixed* (the
-  // theme's own colours: a light page with code on a dark ground), *light* (the same page,
-  // code on a light ground, its accents the same hues deepened until they read against it)
-  // and *dark* (the theme's `dark` variant: a dark page, code on the dark ground). A theme
-  // with no dark variant is its own, and shows the same in both.
-  def dark: WebTheme = scala.caps.unsafe.unsafeAssumePure(this)
-  def lightCodeBackground: Chroma = surface
-  def lightCodeForeground: Chroma = foreground
-  def lightCodeAccent(accent: Token.Accent): Chroma = WebTheme.contrasting(codeAccent(accent), lightCodeBackground)
-
-  // Inline code sits among prose, so in the mixed mode it takes the light ground rather than
-  // the block's dark one; a dark theme sets it to its block's ground.
-  def inlineCodeBackground: Chroma = lightCodeBackground
-
-  // Every colour of this theme, by the custom property it sets.
-  def colours: List[(Text, Chroma)] =
-    val roles: List[(Text, Chroma)] =
-      List
-        ( t"bg" -> background, t"surface" -> surface, t"fg" -> foreground, t"muted" -> muted,
-          t"border" -> border, t"key" -> key, t"reference" -> reference, t"figure" -> figure,
-          t"units" -> units, t"link" -> link, t"selection" -> selection,
-          t"on-accent" -> onAccent, t"code-bg" -> codeBackground, t"code-fg" -> codeForeground,
-          t"title" -> title, t"button" -> button, t"on-button" -> onButton,
-          t"menubar" -> menubar, t"on-menubar" -> onMenubar )
-
-    val tones: List[(Text, Chroma)] =
-      Tone.values.foldLeft(Nil: List[(Text, Chroma)]) { (acc, tone0) => acc :+ (t"tone-${tone0.toString.tt.lower}" -> tone(tone0)) }
-
-    val accents: List[(Text, Chroma)] =
-      Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]) { (acc, accent0) => acc :+ (t"accent-${accent0.toString.tt.lower}" -> accent(accent0)) }
-
-    val trace: List[(Text, Chroma)] =
-      List(t"trace-file" -> traceFile, t"trace-method" -> traceMethod, t"trace-line" -> traceLine)
-      + traceAccents.indexed.map { (chroma, index) => t"trace-accent-${index.n1}" -> chroma }
-
-    roles + tones + accents + codeColours + List(t"inline-bg" -> inlineCodeBackground)
-
-  // A code block's colours alone: its ground, its text and its token accents.
-  def codeColours: List[(Text, Chroma)] =
-    List(t"code-bg" -> codeBackground, t"code-fg" -> codeForeground)
-    + Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]) { (acc, accent0) => acc :+ (t"code-accent-${accent0.toString.tt.lower}" -> codeAccent(accent0)) }
-
-  // The light mode's code colours, on the light ground.
-  def lightCodeColours: List[(Text, Chroma)] =
-    List(t"code-bg" -> lightCodeBackground, t"code-fg" -> lightCodeForeground, t"inline-bg" -> lightCodeBackground)
-    + Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]) { (acc, accent0) => acc :+ (t"code-accent-${accent0.toString.tt.lower}" -> lightCodeAccent(accent0)) }
-
-  // The `:root` block, which is the mixed mode, and the light and dark modes' blocks, keyed
-  // by the `data-mode` the script sets on the document. Cataclysm's `css` interpolator checks
-  // a substituted value against the property's grammar and has no notion of a custom
-  // property, so the blocks are read from text at runtime, where a `--name` declaration is
-  // accepted with any value.
-  def variables: Css =
-    def block(selector: Text, colours: List[(Text, Chroma)]): Text =
-      val declarations: Text = colours.map { (name, chroma) => t"--pyro-$name: ${WebTheme.hex(chroma)}" }.join(t"; ")
-      t"$selector { $declarations }"
-
-    List
-      ( block(t":root", colours),
-        block(t"[data-mode=\"light\"]", lightCodeColours),
-        block(t"[data-mode=\"dark\"]", dark.colours) )
-    . join(t" ")
-    . read[Css]
+import strategies.throwUnsafely
 
 object WebTheme:
   given default: WebTheme = Ember
@@ -175,25 +62,30 @@ object WebTheme:
 
     if d == 0.0 then (0.0, 0.0, l) else
       val s: Double = if l > 0.5 then d/(2 - max - min) else d/(max + min)
+
       val h: Double =
         if max == r then ((g - b)/d + (if g < b then 6 else 0))/6
         else if max == g then ((b - r)/d + 2)/6
         else ((r - g)/d + 4)/6
+
       (h, s, l)
 
   private def rgb(h: Double, s: Double, l: Double): Chroma =
     def hue(p: Double, q: Double, t0: Double): Double =
       val t: Double = if t0 < 0 then t0 + 1 else if t0 > 1 then t0 - 1 else t0
+
       if t < 1.0/6 then p + (q - p)*6*t
       else if t < 0.5 then q
       else if t < 2.0/3 then p + (q - p)*(2.0/3 - t)*6
       else p
 
-    val (r, g, b): (Double, Double, Double) =
+    val rgb: (Double, Double, Double) =
       if s == 0.0 then (l, l, l) else
         val q: Double = if l < 0.5 then l*(1 + s) else l + s - l*s
         val p: Double = 2*l - q
         (hue(p, q, h + 1.0/3), hue(p, q, h), hue(p, q, h - 1.0/3))
+
+    val (r, g, b) = rgb
 
     def channel(value: Double): Int = (value*255 + 0.5).toInt.max(0).min(255)
     Chroma((channel(r) << 16) | (channel(g) << 8) | channel(b))
@@ -207,6 +99,7 @@ object WebTheme:
 
     def recur(l: Double): Chroma =
       val candidate: Chroma = rgb(h, s, l)
+
       if contrast(candidate, ground) >= ratio || l <= 0.0 || l >= 1.0 then candidate
       else recur(if darker then l - 0.02 else l + 0.02)
 
@@ -425,3 +318,139 @@ object WebTheme:
       case Token.Accent.Error    => red
       case Token.Accent.Unparsed => base0
       case Token.Accent.Command  => orange
+
+// The web's colours by role: the same solarized values the terminal theme uses, as the seed of
+// one palette for both media. Emitted once as CSS custom properties (`variables`), so every rule
+// in `WebStyles` refers to a role by `var(--pyro-…)` and a second theme is a second `:root` block.
+trait WebTheme:
+  def background: Chroma
+  def surface: Chroma       // cards and panels
+  def foreground: Chroma
+  def muted: Chroma
+  def border: Chroma
+  def tone(tone: Tone): Chroma
+  def accent(accent: Token.Accent): Chroma
+  def key: Chroma
+  def reference: Chroma
+  def figure: Chroma
+  def units: Chroma
+  def link: Chroma
+  def selection: Chroma
+
+  // The text on an accent-filled surface, a button's face: the background by default, which
+  // is dark on a dark theme's bright accent and light on a light theme's deep one.
+  def onAccent: Chroma = background
+
+  // Titles, which may be darker than prose; a button's face and the text on it, which need
+  // not be the accent: the default theme's buttons are yellow with black text.
+  def title: Chroma = foreground
+  def button: Chroma = tone(Tone.Accent)
+  def onButton: Chroma = onAccent
+
+  // The menu bar along the top of every page, and its text: dark with white text by default.
+  def menubar: Chroma = foreground
+  def onMenubar: Chroma = background
+
+  // A code block's own ground and text, and the token accents on that ground: a light theme
+  // may set code on a dark ground, with brighter accents than its prose carries. By default a
+  // code block is a surface in the theme's own colours.
+  def codeBackground: Chroma = surface
+  def codeForeground: Chroma = foreground
+  def codeAccent(accent: Token.Accent): Chroma = this.accent(accent)
+
+  // A stack trace's colours: the file, the method and the line, and the five accents its
+  // packages take in order of first appearance. Digression's own by default, which suit a dark
+  // ground; a light theme overrides them with deeper values.
+  def traceFile: Chroma = Chroma(0x5f9e9f)
+  def traceMethod: Chroma = Chroma(0xabcfdf)
+  def traceLine: Chroma = Chroma(0x47d1cc)
+
+  def traceAccents: List[Chroma] =
+    List(Chroma(0xf84020), Chroma(0xd88600), Chroma(0xfefe00), Chroma(0xfeae00), Chroma(0xaefe00))
+
+  // The page has three modes, which a button in the masthead cycles through: *mixed* (the
+  // theme's own colours: a light page with code on a dark ground), *light* (the same page,
+  // code on a light ground, its accents the same hues deepened until they read against it)
+  // and *dark* (the theme's `dark` variant: a dark page, code on the dark ground). A theme
+  // with no dark variant is its own, and shows the same in both.
+  def dark: WebTheme = scala.caps.unsafe.unsafeAssumePure(this)
+  def lightCodeBackground: Chroma = surface
+  def lightCodeForeground: Chroma = foreground
+
+  def lightCodeAccent(accent: Token.Accent): Chroma =
+    WebTheme.contrasting(codeAccent(accent), lightCodeBackground)
+
+  // Inline code sits among prose, so in the mixed mode it takes the light ground rather than
+  // the block's dark one; a dark theme sets it to its block's ground.
+  def inlineCodeBackground: Chroma = lightCodeBackground
+
+  // Every colour of this theme, by the custom property it sets.
+  def colours: List[(Text, Chroma)] =
+    val roles: List[(Text, Chroma)] =
+      List
+        ( t"bg" -> background, t"surface" -> surface, t"fg" -> foreground, t"muted" -> muted,
+          t"border" -> border, t"key" -> key, t"reference" -> reference, t"figure" -> figure,
+          t"units" -> units, t"link" -> link, t"selection" -> selection,
+          t"on-accent" -> onAccent, t"code-bg" -> codeBackground, t"code-fg" -> codeForeground,
+          t"title" -> title, t"button" -> button, t"on-button" -> onButton,
+          t"menubar" -> menubar, t"on-menubar" -> onMenubar )
+
+    val tones: List[(Text, Chroma)] =
+      Tone.values.foldLeft(Nil: List[(Text, Chroma)]): (acc, tone0) =>
+        acc :+ (t"tone-${tone0.toString.tt.lower}" -> tone(tone0))
+
+    val accents: List[(Text, Chroma)] =
+      Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]): (acc, accent0) =>
+        acc :+ (t"accent-${accent0.toString.tt.lower}" -> accent(accent0))
+
+    val traceNames: List[(Text, Chroma)] =
+      List(t"trace-file" -> traceFile, t"trace-method" -> traceMethod, t"trace-line" -> traceLine)
+
+    val traceAccented: List[(Text, Chroma)] =
+      traceAccents.indexed.map: (chroma, index) => t"trace-accent-${index.n1}" -> chroma
+
+    val trace: List[(Text, Chroma)] = traceNames + traceAccented
+
+    roles + tones + accents + codeColours + List(t"inline-bg" -> inlineCodeBackground)
+
+  // A code block's colours alone: its ground, its text and its token accents.
+  def codeColours: List[(Text, Chroma)] =
+    val accents: List[(Text, Chroma)] =
+      Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]): (acc, accent0) =>
+        acc :+ (t"code-accent-${accent0.toString.tt.lower}" -> codeAccent(accent0))
+
+    List(t"code-bg" -> codeBackground, t"code-fg" -> codeForeground) + accents
+
+  // The light mode's code colours, on the light ground.
+  def lightCodeColours: List[(Text, Chroma)] =
+    val grounds: List[(Text, Chroma)] =
+      List
+        ( t"code-bg" -> lightCodeBackground,
+          t"code-fg" -> lightCodeForeground,
+          t"inline-bg" -> lightCodeBackground )
+
+    val accents: List[(Text, Chroma)] =
+      Token.Accent.values.foldLeft(Nil: List[(Text, Chroma)]): (acc, accent0) =>
+        acc :+ (t"code-accent-${accent0.toString.tt.lower}" -> lightCodeAccent(accent0))
+
+    grounds + accents
+
+  // The `:root` block, which is the mixed mode, and the light and dark modes' blocks, keyed
+  // by the `data-mode` the script sets on the document. Cataclysm's `css` interpolator checks
+  // a substituted value against the property's grammar and has no notion of a custom
+  // property, so the blocks are read from text at runtime, where a `--name` declaration is
+  // accepted with any value.
+  def variables: Css =
+    def block(selector: Text, colours: List[(Text, Chroma)]): Text =
+      val declarations: Text =
+        colours.map { (name, chroma) => t"--pyro-$name: ${WebTheme.hex(chroma)}" }.join(t"; ")
+
+      t"$selector { $declarations }"
+
+    List
+      ( block(t":root", colours),
+        block(t"[data-mode=\"light\"]", lightCodeColours),
+        block(t"[data-mode=\"dark\"]", dark.colours) )
+
+    . join(t" ")
+    . read[Css]

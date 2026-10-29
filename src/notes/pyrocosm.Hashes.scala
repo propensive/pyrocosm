@@ -28,4 +28,5 @@ import soundness.*
 // and an abbreviation would be ambiguous in both.
 private[pyrocosm] object Hashes:
   def valid(text: Text): Boolean =
-    text.length == 40 && text.s.forall { char => (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') }
+    text.length == 40 &&
+      text.s.forall: char => (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')

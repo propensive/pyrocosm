@@ -35,7 +35,9 @@ object Amounts:
       else if value.abs >= 10 then 1
       else 2
 
-    java.lang.String.format(java.util.Locale.ROOT, s"%.${decimals}f", java.lang.Double.valueOf(value)).nn.tt
+    java.lang.String
+    . format(java.util.Locale.ROOT, s"%.${decimals}f", java.lang.Double.valueOf(value))
+    . nn.tt
 
   // An amount in base units, scaled to the unit a reader would choose: seconds down to
   // nanoseconds, bytes up to gigabytes; anything else is shown as it came.

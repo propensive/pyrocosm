@@ -25,7 +25,6 @@ package pyrocosm
 import soundness.*
 
 import alphabets.hexLowerCase
-import charsets.utf8Charset
 import httpBackends.javaNetHttp
 import internetAccess.online
 import logging.silentLogging
@@ -44,8 +43,7 @@ object Release:
   // if the version or build is missing, or the build is not a number.
   def parse(text: Text): Optional[Release] =
     val rows: List[List[Text]] =
-      text.cut(t"\n").map(_.trim).filter: line =>
-        line != t"" && !line.starts(t"#")
+      text.cut(t"\n").map(_.trim).filter: line => line != t"" && !line.starts(t"#")
       . map(_.cut(t"\t"))
 
     def field(key: Text): Optional[Text] =
@@ -66,7 +64,8 @@ object Release:
     field(t"version").let: version =>
       field(t"build").let { build => safely(build.as[Long]) }.let: build =>
         val signedBy: Optional[Text] =
-          field(t"signed-by").let { key => if key == t"" then Unset else key }
+          field(t"signed-by").let: key => if key == t"" then Unset else key
+
         Release(version, build, signedBy, executables)
 
   // Fetches and parses the manifest of `name`'s newest release; `Unset` if it cannot be fetched
@@ -97,8 +96,10 @@ object Release:
       else if arch == t"aarch64" || arch == t"arm64" then t"arm64"
       else Unset
 
-    system.let: system =>
-      architecture.let { architecture => t"$system-$architecture" }
+    def label(system: Text): Optional[Text] =
+      architecture.let: architecture => t"$system-$architecture"
+
+    system.let(label(_))
 
 // A published release of a tool, as its `upgrade.tsv` manifest describes it (see
 // propensive/.github#32): the version, the build id its executables carry — the number the

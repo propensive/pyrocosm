@@ -49,9 +49,13 @@ object Token:
     var prefix: Int = 0
     while prefix < shortest && a.charAt(prefix) == b.charAt(prefix) do prefix += 1
     var suffix: Int = 0
-    while suffix < shortest - prefix && a.charAt(a.length - 1 - suffix) == b.charAt(b.length - 1 - suffix)
+
+    while suffix < shortest - prefix &&
+      a.charAt(a.length - 1 - suffix) == b.charAt(b.length - 1 - suffix)
     do suffix += 1
-    Control.Field.Splice(prefix, a.length - prefix - suffix, b.substring(prefix, b.length - suffix).nn.tt)
+
+    val replacement: Text = b.substring(prefix, b.length - suffix).nn.tt
+    Control.Field.Splice(prefix, a.length - prefix - suffix, replacement)
 
   private def wordish(char: Char): Boolean = char.isLetterOrDigit || char == '_'
   private def wordy(text: Text): Boolean = text.length > 0 && text.all(wordish(_))
@@ -61,7 +65,7 @@ object Token:
   // quote does not.
   private def extendable(accent: Accent): Boolean = accent match
     case Accent.Term | Accent.Typal | Accent.Number | Accent.Keyword | Accent.Unparsed => true
-    case _                                                                            => false
+    case _                                                                             => false
 
   // Whether anything at all typed inside the token belongs to it: the inside of a string, and
   // unparsed text, are coloured as they are whatever is typed there.
@@ -83,22 +87,30 @@ object Token:
     // The removal: each token keeps whatever of it lies outside the range.
     val cut: List[Token] =
       var offset: Int = 0
+
       tokens.bind: (token: Token) =>
         val a: Int = offset
         val b: Int = a + token.text.length
         offset = b
+
         if b <= start || a >= end then List(token) else
           val kept: String =
-            token.text.s.substring(0, (start - a).max(0)).nn + token.text.s.substring((end - a).min(token.text.length)).nn
+            token.text.s.substring(0, (start - a).max(0)).nn +
+              token.text.s.substring((end - a).min(token.text.length)).nn
+
           if kept.isEmpty then Nil else List(token.copy(text = kept.tt))
 
     if splice.inserted == t"" then cut else
       val inserted: Text = splice.inserted
       val word: Boolean = wordy(inserted)
 
-      def within(token: Token): Boolean = absorbent(token.accent) || (word && extendable(token.accent))
+      def within(token: Token): Boolean =
+        absorbent(token.accent) || (word && extendable(token.accent))
+
       def grows(token: Token): Boolean =
-        word && extendable(token.accent) && token.text.length > 0 && wordish(token.text.s.charAt(token.text.length - 1))
+        word && extendable(token.accent) && token.text.length > 0 &&
+          wordish(token.text.s.charAt(token.text.length - 1))
+
       def precedes(token: Token): Boolean =
         word && extendable(token.accent) && token.text.length > 0 && wordish(token.text.s.charAt(0))
 
@@ -112,23 +124,34 @@ object Token:
             // At a boundary: the token before grows if it can, else this one takes the text at
             // its head if it can, else the text stands between them.
             before match
-              case last :: others if grows(last) => (last.copy(text = t"${last.text}$inserted") :: others).reverse + after
+              case last :: others if grows(last) =>
+                (last.copy(text = t"${last.text}$inserted") :: others).reverse + after
+
               case _ =>
-                if precedes(token) then before.reverse + (token.copy(text = t"$inserted${token.text}") :: rest)
+                if precedes(token)
+                then before.reverse + (token.copy(text = t"$inserted${token.text}") :: rest)
                 else before.reverse + (plain(inserted) :: after)
           else if start < b then
             // Strictly inside the token: it absorbs the text, or is split around it.
             val head: String = token.text.s.substring(0, start - a).nn
             val tail: String = token.text.s.substring(start - a).nn
-            if within(token) then before.reverse + (token.copy(text = t"$head$inserted$tail") :: rest)
-            else before.reverse + (token.copy(text = head.tt) :: plain(inserted) :: token.copy(text = tail.tt) :: rest)
-          else place(token :: before, rest, b)
+
+            def split: List[Token] =
+              token.copy(text = head.tt) :: plain(inserted) :: token.copy(text = tail.tt) :: rest
+
+            if within(token)
+            then before.reverse + (token.copy(text = t"$head$inserted$tail") :: rest)
+            else before.reverse + split
+          else
+            place(token :: before, rest, b)
 
         case _ =>
           // At the very end: the last token grows, or a new one follows it.
           before match
-            case last :: rest if grows(last) => (last.copy(text = t"${last.text}$inserted") :: rest).reverse
-            case _                           => (plain(inserted) :: before).reverse
+            case last :: rest if grows(last) =>
+              (last.copy(text = t"${last.text}$inserted") :: rest).reverse
+
+            case _ => (plain(inserted) :: before).reverse
 
       place(Nil, cut, 0)
 
@@ -144,10 +167,6 @@ case class Token
     link:    Optional[Inline.Destination] = Unset,
     chained: Boolean                      = false )
 
-// The language of a piece of code, which decides how it was tokenised and how it is labelled.
-// Open, so that an application can name a language the model has never heard of.
-case class Language(name: Text)
-
 object Language:
   val Scala: Language = Language("scala")
   val Java: Language = Language("java")
@@ -159,3 +178,7 @@ object Language:
   val Markdown: Language = Language("markdown")
   val Shell: Language = Language("shell")
   val Plain: Language = Language("plain")
+
+// The language of a piece of code, which decides how it was tokenised and how it is labelled.
+// Open, so that an application can name a language the model has never heard of.
+case class Language(name: Text)

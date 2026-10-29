@@ -71,14 +71,20 @@ object Trees:
         val key: List[Token] = List(term(ast.objectKey(index).tt), symbol(t": "))
         jsonNode(key, ast.objectValue(index), depth + 1)
 
-      val label = prefix + List(symbol(t"{")) + count(ast.objectSize, t"field", t"fields") + List(symbol(t"}"))
+      val label =
+        prefix + List(symbol(t"{")) + count(ast.objectSize, t"field", t"fields") +
+          List(symbol(t"}"))
+
       node(Language.Json, label, children, depth)
 
     else if ast.isArray then
       val children = indices(ast.arrayLength).map: (index: Int) =>
         jsonNode(List(symbol(t"[$index] ")), ast.arrayElement(index), depth + 1)
 
-      val label = prefix + List(symbol(t"[")) + count(ast.arrayLength, t"element", t"elements") + List(symbol(t"]"))
+      val label =
+        prefix + List(symbol(t"[")) + count(ast.arrayLength, t"element", t"elements") +
+          List(symbol(t"]"))
+
       node(Language.Json, label, children, depth)
 
     else
@@ -101,7 +107,8 @@ object Trees:
 
     else if ast.isObject then
       val children = indices(ast.objectSize).map: (index: Int) =>
-        yamlNode(List(term(ast.objectKey(index).tt), symbol(t": ")), ast.objectValue(index), depth + 1)
+        yamlNode
+          ( List(term(ast.objectKey(index).tt), symbol(t": ")), ast.objectValue(index), depth + 1 )
 
       node(Language.Yaml, prefix + count(ast.objectSize, t"key", t"keys"), children, depth)
 
@@ -132,19 +139,27 @@ object Trees:
       val children = indices(ast.entries).map: (index: Int) =>
         cborNode(List(cborKey(ast.key(index)), symbol(t": ")), ast.value(index), depth + 1)
 
-      val label = prefix + List(symbol(t"{")) + count(ast.entries, t"entry", t"entries") + List(symbol(t"}"))
+      val label =
+        prefix + List(symbol(t"{")) + count(ast.entries, t"entry", t"entries") + List(symbol(t"}"))
+
       node(Language.Cbor, label, children, depth)
 
     else if ast.isArray then
       val children = indices(ast.elements).map: (index: Int) =>
         cborNode(List(symbol(t"[$index] ")), ast.element(index), depth + 1)
 
-      val label = prefix + List(symbol(t"[")) + count(ast.elements, t"element", t"elements") + List(symbol(t"]"))
+      val label =
+        prefix + List(symbol(t"[")) + count(ast.elements, t"element", t"elements") +
+          List(symbol(t"]"))
+
       node(Language.Cbor, label, children, depth)
 
     else if ast.isTag then
       val tag = ast.tag
-      val label = prefix + List(keyword(t"tag"), symbol(t"("), number(tag.tag.toString.tt), symbol(t")"))
+
+      val label =
+        prefix + List(keyword(t"tag"), symbol(t"("), number(tag.tag.toString.tt), symbol(t")"))
+
       val tagged: Cbor.Ast = Cbor.Ast(tag.value.asInstanceOf[Cbor.CborTypes])
       node(Language.Cbor, label, List(cborNode(Nil, tagged, depth + 1)), depth)
 
@@ -183,12 +198,13 @@ object Trees:
     case Xml.Fragment(nodes*) =>
       val roots: List[Xml.Node] = List.from(nodes)
       Block.Tree(roots.filter(significant).map { (node: Xml.Node) => xmlNode(node, 0) })
-    case node: Xml.Node       => Block.Tree(List(xmlNode(node, 0)))
+
+    case node: Xml.Node => Block.Tree(List(xmlNode(node, 0)))
 
   // Whitespace between elements is layout, not content.
   private def significant(node: Xml.Node): Boolean = node match
     case Xml.Text(text) => text.trim.length > 0
-    case _                        => true
+    case _              => true
 
   private def xmlNode(node0: Xml.Node, depth: Int): Block.TreeNode = node0 match
     case Xml.Element(label, attributes, children0) =>
@@ -210,20 +226,30 @@ object Trees:
           node(Language.Xml, opening + List(symbol(t">"), string(text.trim)) + closing, Nil, depth)
 
         case _ =>
-          node(Language.Xml, opening + List(symbol(t">")), children.map { (child: Xml.Node) => xmlNode(child, depth + 1) }, depth)
+          val nested = children.map: (child: Xml.Node) => xmlNode(child, depth + 1)
+          node(Language.Xml, opening + List(symbol(t">")), nested, depth)
 
     case Xml.Text(text) => node(Language.Xml, List(string(text.trim)), Nil, depth)
-    case Xml.Cdata(text)    => node(Language.Xml, List(symbol(t"<![CDATA["), string(text), symbol(t"]]>")), Nil, depth)
-    case Xml.Comment(text)  => node(Language.Xml, List(plain(t"<!--$text-->")), Nil, depth, Tone.Muted)
-    case Xml.Doctype(text)  => node(Language.Xml, List(keyword(t"<!DOCTYPE "), plain(text), keyword(t">")), Nil, depth, Tone.Muted)
+
+    case Xml.Cdata(text) =>
+      node(Language.Xml, List(symbol(t"<![CDATA["), string(text), symbol(t"]]>")), Nil, depth)
+
+    case Xml.Comment(text) =>
+      node(Language.Xml, List(plain(t"<!--$text-->")), Nil, depth, Tone.Muted)
+
+    case Xml.Doctype(text) =>
+      val tokens: List[Token] = List(keyword(t"<!DOCTYPE "), plain(text), keyword(t">"))
+      node(Language.Xml, tokens, Nil, depth, Tone.Muted)
 
     case Xml.ProcessingInstruction(target, data) =>
-      node(Language.Xml, List(symbol(t"<?"), term(target), plain(t" $data"), symbol(t"?>")), Nil, depth, Tone.Muted)
+      val tokens: List[Token] = List(symbol(t"<?"), term(target), plain(t" $data"), symbol(t"?>"))
+      node(Language.Xml, tokens, Nil, depth, Tone.Muted)
 
     case header: Xml.Header =>
-      val encoding: Text = header.encoding.lay(t"") { (encoding: Text) => t" encoding=\"$encoding\"" }
+      val encoding: Text = header.encoding.lay(t""): (encoding: Text) => t" encoding=\"$encoding\""
       val declaration: Text = t" version=\"${header.version}\"$encoding"
-      node(Language.Xml, List(symbol(t"<?xml"), plain(declaration), symbol(t"?>")), Nil, depth, Tone.Muted)
+      val tokens: List[Token] = List(symbol(t"<?xml"), plain(declaration), symbol(t"?>"))
+      node(Language.Xml, tokens, Nil, depth, Tone.Muted)
 
   // ── TEL ───────────────────────────────────────────────────────────────────────────────
 
@@ -235,17 +261,27 @@ object Trees:
 
   private def telCompound(compound: Tel.Compound, depth: Int): Block.TreeNode =
     val atoms0: List[Tel.Atom] = compound.atoms.to[List]
-    val atoms: List[Token] = atoms0.bind { (atom: Tel.Atom) => List(plain(t" "), telAtom(atom)) }
-    val remark: List[Token] = compound.remark.lay(Nil: List[Token]) { (remark: Text) => List(plain(t"  # $remark")) }
+    val atoms: List[Token] = atoms0.bind: (atom: Tel.Atom) => List(plain(t" "), telAtom(atom))
+
+    val remark: List[Token] =
+      compound.remark.lay(Nil: List[Token]): (remark: Text) => List(plain(t"  # $remark"))
+
     val blocks: List[Tel.Block] = compound.children.to[List]
-    val children: List[Block.TreeNode] = blocks.bind { (block: Tel.Block) => telBlock(block, depth + 1) }
+
+    val children: List[Block.TreeNode] =
+      blocks.bind: (block: Tel.Block) => telBlock(block, depth + 1)
+
     node(Language.Tel, List(term(compound.keyword)) + atoms + remark, children, depth)
 
   private def telBlock(block: Tel.Block, depth: Int): List[Block.TreeNode] =
     val comments0: List[Tel.Comment] = block.comments.to[List]
     val compounds: List[Tel.Compound] = block.compounds.to[List]
-    val comments: List[Block.TreeNode] = comments0.map { (comment: Tel.Comment) => node(Language.Tel, List(plain(t"# ${comment.text}")), Nil, depth, Tone.Muted) }
-    comments + compounds.map { (compound: Tel.Compound) => telCompound(compound, depth) }
+
+    val comments: List[Block.TreeNode] =
+      comments0.map: (comment: Tel.Comment) =>
+        node(Language.Tel, List(plain(t"# ${comment.text}")), Nil, depth, Tone.Muted)
+
+    comments + compounds.map: (compound: Tel.Compound) => telCompound(compound, depth)
 
   private def telAtom(atom: Tel.Atom): Token = atom match
     case Tel.Atom.Inline(text, _)     => plain(text)

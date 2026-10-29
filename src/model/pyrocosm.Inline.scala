@@ -84,8 +84,8 @@ enum Inline:
   case Link(destination: Inline.Destination, content: List[Inline])
   case Math(math: archimedes.Math)
   case Symbol(glyph: Glyph)
-  case Reference(id: Text)                          // an identifier or hash, e.g. a test id
-  case Amount(value: Double, units: Text)           // a quantity in base units; the renderer scales it
+  case Reference(id: Text)                  // an identifier or hash, e.g. a test id
+  case Amount(value: Double, units: Text)   // a quantity in base units; the renderer scales it
   case Numeral(value: Double, precision: Optional[Int] = Unset)
   // A small image set in the line with the text, by URL; `alt` is what a medium without images
   // shows, and what a plain rendering says.
@@ -106,21 +106,21 @@ enum Inline:
   case Break()
 
   def plain: Text = this match
-    case Textual(text)        => text
-    case Phrase(content)      => Inline.plain(content)
-    case Emphasis(content)    => Inline.plain(content)
-    case Strong(content)      => Inline.plain(content)
-    case Toned(_, content)    => Inline.plain(content)
-    case Snippet(_, tokens)   => tokens.map { (token: Token) => token.text }.join
-    case Keystroke(keypress)  => keypress.show
-    case Link(_, content)     => Inline.plain(content)
-    case Math(_)              => "…"
-    case Symbol(glyph)        => glyph.toString.tt
-    case Reference(id)        => id
-    case Amount(value, units) => t"${value.toString} $units"
-    case Numeral(value, _)    => value.toString.tt
-    case Icon(_, alt)         => alt
+    case Textual(text)         => text
+    case Phrase(content)       => Inline.plain(content)
+    case Emphasis(content)     => Inline.plain(content)
+    case Strong(content)       => Inline.plain(content)
+    case Toned(_, content)     => Inline.plain(content)
+    case Snippet(_, tokens)    => tokens.map { (token: Token) => token.text }.join
+    case Keystroke(keypress)   => keypress.show
+    case Link(_, content)      => Inline.plain(content)
+    case Math(_)               => "…"
+    case Symbol(glyph)         => glyph.toString.tt
+    case Reference(id)         => id
+    case Amount(value, units)  => t"${value.toString} $units"
+    case Numeral(value, _)     => value.toString.tt
+    case Icon(_, alt)          => alt
     case Annotated(content, _) => Inline.plain(content)
-    case Import(_, _)         => t""
-    case Bookmark(_, _)       => t""
-    case Break()              => "\n"
+    case Import(_, _)          => t""
+    case Bookmark(_, _)        => t""
+    case Break()               => "\n"

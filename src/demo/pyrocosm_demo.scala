@@ -30,16 +30,15 @@ import scala.caps
 // import beats a package member declared in another file.
 import soundness.{Control as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
 
-
-import dysasymptotics.{linearAccess, linearSize}
-import strategies.throwUnsafely
 import backstops.silentBackstop
-import tableStyles.thickTableStyle
+import dysasymptotics.{linearAccess, linearSize}
 import interpreters.posixInterpreter
-import textMetrics.uniformMetric
-import probates.cancelProbate
-import threads.platformThreads
 import palettes.solarizedDarkGaugePalette
+import probates.cancelProbate
+import strategies.throwUnsafely
+import tableStyles.thickTableStyle
+import textMetrics.uniformMetric
+import threads.platformThreads
 import webserverErrorPages.minimalErrorPage
 
 // The gallery: one interface with every kind of node, every role and priority, a ticking gauge,
@@ -65,10 +64,13 @@ object Samples:
   case class Benchmark(name: Text, mean: Double, ratio: Double)
 
   val samples: List[Benchmark] =
-    List(Benchmark(t"parse", 0.00042, 1.0), Benchmark(t"encode", 0.0011, 2.6), Benchmark(t"decode", 0.00087, 2.1))
+    List
+      ( Benchmark(t"parse", 0.00042, 1.0),
+        Benchmark(t"encode", 0.0011, 2.6),
+        Benchmark(t"decode", 0.00087, 2.1) )
 
   val benchmarks: List[(Benchmark, Action)] =
-    samples.map { (benchmark: Benchmark) => benchmark -> Action(benchmark.name) }
+    samples.map: (benchmark: Benchmark) => benchmark -> Action(benchmark.name)
 
   def results: Block =
     Block.Table
@@ -97,9 +99,11 @@ object Samples:
         Suite(t"web", 23, 1.1, t"warned", Tone.Warning),
         Suite(t"notes", 5, 0.2, t"skipped", Unset) )
 
-  val suites: List[(Suite, Action)] = suiteSamples.map { (suite: Suite) => suite -> Action(suite.name) }
+  val suites: List[(Suite, Action)] =
+    suiteSamples.map: (suite: Suite) => suite -> Action(suite.name)
 
-  private def inlineCode(text: Text, accent: Token.Accent): Inline = Inline.Snippet(Language.Scala, List(Token(text, accent)))
+  private def inlineCode(text: Text, accent: Token.Accent): Inline =
+    Inline.Snippet(Language.Scala, List(Token(text, accent)))
 
   // Three frames of one definition: a body filled in, then a parameter added and a line
   // inserted before the body, so that tokens move across lines as well as along them. Each
@@ -107,7 +111,8 @@ object Samples:
   // A crude tokenizer for the sample: words, a `t"…"` string, runs of spaces, and each
   // punctuation character on its own, so that the animation moves tokens, not phrases.
   private def frameLines(text: Text): List[Block.Line] =
-    val pattern = java.util.regex.Pattern.compile("""t?"[^"]*"|[A-Za-z_][A-Za-z0-9_]*|[0-9]+| +|.""").nn
+    val pattern =
+      java.util.regex.Pattern.compile("""t?"[^"]*"|[A-Za-z_][A-Za-z0-9_]*|[0-9]+| +|.""").nn
 
     text.cut(t"\n").map: (line: Text) =>
       val matcher = pattern.matcher(line.s).nn
@@ -119,7 +124,7 @@ object Samples:
         val accent: Token.Accent = word match
           case t"def" | t"val"                    => Token.Accent.Keyword
           case t"Int" | t"Text"                   => Token.Accent.Typal
-          case word if word.contains(t"\"")     => Token.Accent.String
+          case word if word.contains(t"\"")       => Token.Accent.String
           case word if word.trim == t""           => Token.Accent.Unparsed
           case t"=" | t":" | t"*" | t"," | t"?"   => Token.Accent.Symbol
           case t"(" | t")"                        => Token.Accent.Parens
@@ -134,7 +139,9 @@ object Samples:
       List
         ( frameLines(t"def greet(name: Text): Text = ???"),
           frameLines(t"def greet(name: Text): Text =\n  t\"Hello, $$name\""),
-          frameLines(t"def greet(name: Text, times: Int): Text =\n  val greeting = t\"Hello, $$name\"\n  greeting * times") )
+          frameLines
+            ( t"def greet(name: Text, times: Int): Text =\n  val greeting = t\"Hello, $$name\"\n" +
+              t"  greeting * times" ) )
 
     val details: List[Block.Slide.Detail] =
       List
@@ -145,10 +152,16 @@ object Samples:
               Unset,
               11.0,
               Unset,
-              List(Block.Note(0, 22, 27, Block.Note.Style.Highlight, Inline.text(t"the new parameter"))) ) )
+              List
+                ( Block.Note
+                    ( 0, 22, 27, Block.Note.Style.Highlight,
+                      Inline.text(t"the new parameter") ) ) ) )
 
     val animation: Block.Animation = Block.Animation.of(frames, details)
-    Block.Code(Language.Scala, frames.head.or(Nil), animation.slides.head.lay(Nil)(_.notes), Unset, animation)
+
+    Block.Code
+      ( Language.Scala, frames.head.or(Nil), animation.slides.head.lay(Nil)(_.notes), Unset,
+        animation )
 
   // Two values trading shapes at once: one spreading over lines, the other recombining; timed
   // after the definition above, so the page's clock steps both.
@@ -177,15 +190,21 @@ object Samples:
     Block.Code(Language.Scala, frames.head.or(Nil), Nil, Unset, Block.Animation.of(frames, details))
 
   // Every case of an enum, as a list, through its `Enumerable` evidence.
-  private def cases[enumeration <: scala.reflect.Enum: Enumerable as enumerable]: List[enumeration] =
+  private def cases[enumeration <: scala.reflect.Enum: Enumerable as enumerable]
+  :   List[enumeration] =
+
     enumerable.values.to[List]
 
   private def toned(tone: Tone, text: Text): Inline = Inline.Toned(tone, Inline.text(text))
 
   // The phrasing `items`, each followed by `separator` but the last, which `terminal` follows.
-  private def punctuated(items: List[List[Inline]], separator: Text = t", ", terminal: Text = t"."): List[Inline] =
+  private def punctuated
+    ( items: List[List[Inline]], separator: Text = t", ", terminal: Text = t"." )
+  :   List[Inline] =
+
     val joined: List[Inline] =
-      items.indexed.bind { (item, index) => if index.n0 == 0 then item else Inline.Textual(separator) :: item }
+      items.indexed.bind: (item, index) =>
+        if index.n0 == 0 then item else Inline.Textual(separator) :: item
 
     val end: List[Inline] = List(Inline.Textual(terminal))
     joined + end
@@ -210,7 +229,11 @@ object Samples:
               Inline.Textual(t", a symbol "),
               Inline.Symbol(Glyph.Check),
               Inline.Textual(t" and some code "),
-              Inline.Snippet(Language.Scala, List(Token(t"val", Token.Accent.Keyword), Token.plain(t" "), Token(t"x", Token.Accent.Term))),
+              Inline.Snippet
+                ( Language.Scala,
+                  List
+                    ( Token(t"val", Token.Accent.Keyword), Token.plain(t" "),
+                      Token(t"x", Token.Accent.Term) ) ),
               Inline.Textual(t".") ),
         // A qualified name written in full, which the purview elides once its package is
         // imported by the toggle beside it; and a bookmark of this page.
@@ -222,7 +245,14 @@ object Samples:
 
           List
             ( Inline.Textual(t"The type "),
-              Inline.Snippet(Language.Scala, List(segment(t"com", Token.Accent.Term, t"/api/com", false), dot, segment(t"example", Token.Accent.Term, t"/api/com.example", true), dot, segment(t"Foo", Token.Accent.Typal, t"/api/com.example.Foo", true))),
+              Inline.Snippet
+                ( Language.Scala,
+                  List
+                    ( segment(t"com", Token.Accent.Term, t"/api/com", false),
+                      dot,
+                      segment(t"example", Token.Accent.Term, t"/api/com.example", true),
+                      dot,
+                      segment(t"Foo", Token.Accent.Typal, t"/api/com.example.Foo", true) ) ),
               Inline.Textual(t" is written in full until its package is imported: "),
               Inline.Import(t"/api/com.example", t"com.example"),
               Inline.Textual(t" — and this page can be kept to hand: "),
@@ -231,26 +261,77 @@ object Samples:
         Block.Code
           ( Language.Scala,
             List
-              ( Block.Line(List(Token(t"def", Token.Accent.Keyword), Token.plain(t" "), Token(t"greet", Token.Accent.Term, Token.Role.Binding), Token(t"(", Token.Accent.Parens), Token(t"name", Token.Accent.Term), Token(t": ", Token.Accent.Symbol), Token(t"Text", Token.Accent.Typal), Token(t")", Token.Accent.Parens), Token(t" = ", Token.Accent.Symbol), Token(t"t\"Hello, $$name\"", Token.Accent.String))) ),
+              ( Block.Line
+                  ( List
+                      ( Token(t"def", Token.Accent.Keyword),
+                        Token.plain(t" "),
+                        Token(t"greet", Token.Accent.Term, Token.Role.Binding),
+                        Token(t"(", Token.Accent.Parens),
+                        Token(t"name", Token.Accent.Term),
+                        Token(t": ", Token.Accent.Symbol),
+                        Token(t"Text", Token.Accent.Typal),
+                        Token(t")", Token.Accent.Parens),
+                        Token(t" = ", Token.Accent.Symbol),
+                        Token(t"t\"Hello, $$name\"", Token.Accent.String) ) ) ),
             List(Block.Note(0, 4, 9, Block.Note.Style.Highlight)) ),
-        Block.Notice(Tone.Warning, Inline.text(t"A notice"), List(Block.paragraph(t"With a rule beneath."), Block.Rule())),
-        Block.Listing(false, List(Block.Item(List(Block.paragraph(t"first"))), Block.Item(List(Block.paragraph(t"second"))))),
-        Block.Record(List(Block.Entry(Inline.text(t"name"), List(Block.paragraph(t"gallery"))), Block.Entry(Inline.text(t"version"), List(Block.paragraph(t"0.1.0")))), Inline.text(t"Record")),
-        Block.Tree(List(Block.TreeNode(Inline.text(t"root"), List(Block.TreeNode(Inline.text(t"leaf")), Block.TreeNode(Inline.text(t"branch"), List(Block.TreeNode(Inline.text(t"leaf")))))))),
-        j"""{"name": "gallery", "modules": ["model", "terminal", "web"], "theme": {"dark": true, "accent": {"hue": 210, "chroma": 0.1}}}""".exhibit,
+        Block.Notice
+          ( Tone.Warning, Inline.text(t"A notice"),
+            List(Block.paragraph(t"With a rule beneath."), Block.Rule()) ),
+        Block.Listing
+          ( false,
+            List
+              ( Block.Item(List(Block.paragraph(t"first"))),
+                Block.Item(List(Block.paragraph(t"second"))) ) ),
+        Block.Record
+          ( List
+              ( Block.Entry(Inline.text(t"name"), List(Block.paragraph(t"gallery"))),
+                Block.Entry(Inline.text(t"version"), List(Block.paragraph(t"0.1.0"))) ),
+            Inline.text(t"Record") ),
+        Block.Tree
+          ( List
+              ( Block.TreeNode
+                  ( Inline.text(t"root"),
+                    List
+                      ( Block.TreeNode(Inline.text(t"leaf")),
+                        Block.TreeNode
+                          ( Inline.text(t"branch"),
+                            List(Block.TreeNode(Inline.text(t"leaf"))) ) ) ) ) ),
+        manifest.exhibit,
         Block.Graph
-          ( List(Block.Vertex(t"a", Inline.text(t"model")), Block.Vertex(t"b", Inline.text(t"terminal")), Block.Vertex(t"c", Inline.text(t"web"))),
+          ( List
+              ( Block.Vertex(t"a", Inline.text(t"model")),
+                Block.Vertex(t"b", Inline.text(t"terminal")),
+                Block.Vertex(t"c", Inline.text(t"web")) ),
             List(Block.Edge(t"b", t"a"), Block.Edge(t"c", t"a")) ),
-        Block.Chart(Block.Chart.Kind.Sparkline, List(Block.Series(Inline.text(t"load"), List(1.0, 3.0, 2.0, 5.0, 4.0, 6.0, 3.0)))),
-        Block.Chart(Block.Chart.Kind.Bars, List(Block.Series(Inline.text(t"sizes"), List(12.0, 30.0, 7.0)))),
-        Block.Disclosure(Inline.text(t"More"), List(Block.paragraph(t"Hidden by default in a browser; shown here.")), true) )
+        Block.Chart
+          ( Block.Chart.Kind.Sparkline,
+            List(Block.Series(Inline.text(t"load"), List(1.0, 3.0, 2.0, 5.0, 4.0, 6.0, 3.0))) ),
+        Block.Chart
+          ( Block.Chart.Kind.Bars,
+            List(Block.Series(Inline.text(t"sizes"), List(12.0, 30.0, 7.0))) ),
+        Block.Disclosure
+          ( Inline.text(t"More"),
+            List(Block.paragraph(t"Hidden by default in a browser; shown here.")),
+            true ) )
+
+  // A sample document for the overview, exhibited as a tree.
+  private def manifest =
+    j"""
+      { "name": "gallery", "modules": ["model", "terminal", "web"],
+        "theme": {"dark": true, "accent": {"hue": 210, "chroma": 0.1}} }
+    """
 
   def typography: List[Block] =
     List
       ( Block.Heading(1, Inline.text(t"Typography")),
-        Block.paragraph(t"Titles are set in Marcellus, prose in Yantramanav, and code and labels in Sono: at fixed width for code, at variable width for the small tracked capitals of labels and buttons."),
+        Block.paragraph
+          ( t"Titles are set in Marcellus, prose in Yantramanav, and code and labels in Sono: " +
+            t"at fixed width for code, at variable width for the small tracked capitals of " +
+            t"labels and buttons." ),
         Block.Heading(2, Inline.text(t"A second-level heading")),
-        Block.paragraph(t"Headings step down by level, each in the title face, with the space above them growing with their rank."),
+        Block.paragraph
+          ( t"Headings step down by level, each in the title face, with the space above them " +
+            t"growing with their rank." ),
         Block.Heading(3, Inline.text(t"A third-level heading")),
         Block.Heading(4, Inline.text(t"A fourth-level heading")),
         Block.Paragraph:
@@ -258,11 +339,15 @@ object Samples:
             ( Inline.Textual(t"Prose may carry "),
               Inline.Emphasis(Inline.text(t"emphasis")),
               Inline.Textual(t", a link to "),
-              Inline.Link(Inline.Destination.External(t"https://propensive.dev/pyrocosm/"), Inline.text(t"the website")),
+              Inline.Link
+                ( Inline.Destination.External(t"https://propensive.dev/pyrocosm/"),
+                  Inline.text(t"the website") ),
               Inline.Textual(t" and one which "),
               Inline.Link(Inline.Destination.Internal(link), Inline.text(t"acts within the page")),
               Inline.Textual(t"; an "),
-              Inline.Annotated(Inline.text(t"annotated term"), Inline.text(t"a phrase whose note is shown when it is pointed at")),
+              Inline.Annotated
+                ( Inline.text(t"annotated term"),
+                  Inline.text(t"a phrase whose note is shown when it is pointed at") ),
               Inline.Textual(t" carries its note"),
               Inline.Textual(t". Keystrokes such as "),
               Inline.Keystroke(Keypress.Ctrl('C')),
@@ -281,10 +366,22 @@ object Samples:
               Inline.Textual(t" keeps its precision; and mathematics "),
               Inline.Math(unsafely(Ergo.parse(t"(x↗2 + y↗2)"))),
               Inline.Textual(t" is set in a mathematical face.") ),
-        Block.Quotation(List(Block.paragraph(t"A quotation is set apart with a rule at its side, in the muted colour."))),
+        Block.Quotation
+          ( List
+              ( Block.paragraph
+                  ( t"A quotation is set apart with a rule at its side, in the muted colour." ) ) ),
         Block.Heading(2, Inline.text(t"Listings")),
-        Block.Listing(true, List(Block.Item(List(Block.paragraph(t"An ordered listing"))), Block.Item(List(Block.paragraph(t"numbers its items"))), Block.Item(List(Block.paragraph(t"in the text face"))))),
-        Block.Listing(false, List(Block.Item(List(Block.paragraph(t"An unordered listing"))), Block.Item(List(Block.paragraph(t"sets its items plainly, without bullets"))))),
+        Block.Listing
+          ( true,
+            List
+              ( Block.Item(List(Block.paragraph(t"An ordered listing"))),
+                Block.Item(List(Block.paragraph(t"numbers its items"))),
+                Block.Item(List(Block.paragraph(t"in the text face"))) ) ),
+        Block.Listing
+          ( false,
+            List
+              ( Block.Item(List(Block.paragraph(t"An unordered listing"))),
+                Block.Item(List(Block.paragraph(t"sets its items plainly, without bullets"))) ) ),
         Block.Rule(),
         Block.paragraph(t"A rule between blocks is a hairline in the border colour.") )
 
@@ -296,12 +393,16 @@ object Samples:
 
     val notices: List[Block] = each.map: (tone, name) =>
       val article = if name.starts(t"a") || name.starts(t"i") then t"An" else t"A"
-      Block.Notice(tone, Inline.text(t"$article $name notice"), List(Block.paragraph(t"Its edge and title take the tone, and its background is tinted with it.")))
+
+      val body: Text =
+        t"Its edge and title take the tone, and its background is tinted with it."
+
+      Block.Notice(tone, Inline.text(t"$article $name notice"), List(Block.paragraph(body)))
 
     val glyphs: List[List[Inline]] = cases[Glyph].map: (glyph: Glyph) =>
       List(Inline.Symbol(glyph), Inline.Textual(t" "), Inline.Textual(glyph.toString.tt.lower))
 
-    val phrasing: List[List[Inline]] = each.map { (tone, name) => List(toned(tone, name)) }
+    val phrasing: List[List[Inline]] = each.map: (tone, name) => List(toned(tone, name))
 
     val intro: List[Block] =
       List
@@ -323,26 +424,38 @@ object Samples:
               Block.Column(Inline.text(t"Time"), Block.Alignment.End, Block.Sizing.Rigid, true),
               Block.Column(Inline.text(t"Outcome")) ),
           suites.map: (suite, action) =>
+            val outcome: Inline =
+              suite.tone.lay(Inline.Textual(suite.outcome)): tone => toned(tone, suite.outcome)
+
             Block.Row
               ( List
                   ( Block.Cell(Inline.text(suite.name)),
                     Block.Cell(List(Inline.Numeral(suite.tests.toDouble, 0))),
                     Block.Cell(List(Inline.Amount(suite.seconds, t"s"))),
-                    Block.Cell(List(suite.tone.lay(Inline.Textual(suite.outcome)) { tone => toned(tone, suite.outcome) })) ),
+                    Block.Cell(List(outcome)) ),
                 suite.tone,
                 action ),
           Inline.text(t"Test suites by outcome; select a row to see it in the detail panel") )
 
     List
       ( Block.Heading(1, Inline.text(t"Tables and records")),
-        Block.paragraph(t"Column headers are small tracked capitals; rows are divided by hairlines; numeric columns align to the right in tabular figures; a toned row is tinted, and an actionable one lifts under the pointer."),
+        Block.paragraph
+          ( t"Column headers are small tracked capitals; rows are divided by hairlines; " +
+            t"numeric columns align to the right in tabular figures; a toned row is tinted, " +
+            t"and an actionable one lifts under the pointer." ),
         table,
         Block.Heading(2, Inline.text(t"Records")),
         Block.Record
           ( List
               ( Block.Entry(Inline.text(t"version"), List(Block.paragraph(t"0.2.1"))),
                 Block.Entry(Inline.text(t"licence"), List(Block.paragraph(t"Apache 2.0"))),
-                Block.Entry(Inline.text(t"upstream"), List(Block.Paragraph(List(Inline.Textual(t"Soundness "), Inline.Reference(t"0.67.0"))))) ),
+                Block.Entry
+                  ( Inline.text(t"upstream"),
+                    List
+                      ( Block.Paragraph
+                          ( List
+                              ( Inline.Textual(t"Soundness "),
+                                Inline.Reference(t"0.67.0") ) ) ) ) ),
             Inline.text(t"Release") ),
         Block.Heading(2, Inline.text(t"Trees and graphs")),
         Block.Tree
@@ -351,33 +464,63 @@ object Samples:
                   ( Inline.text(t"pyrocosm"),
                     List
                       ( Block.TreeNode(Inline.text(t"model"), tone = Tone.Success),
-                        Block.TreeNode(Inline.text(t"terminal"), List(Block.TreeNode(Inline.text(t"fixtures"), tone = Tone.Warning))),
-                        Block.TreeNode(Inline.text(t"web"), List(Block.TreeNode(Inline.text(t"styles")), Block.TreeNode(Inline.text(t"frontend"), tone = Tone.Failure))) ) ) ) ),
+                        Block.TreeNode
+                          ( Inline.text(t"terminal"),
+                            List(Block.TreeNode(Inline.text(t"fixtures"), tone = Tone.Warning)) ),
+                        Block.TreeNode
+                          ( Inline.text(t"web"),
+                            List
+                              ( Block.TreeNode(Inline.text(t"styles")),
+                                Block.TreeNode
+                                  ( Inline.text(t"frontend"), tone = Tone.Failure ) ) ) ) ) ) ),
         Block.Graph
           ( List
               ( Block.Vertex(t"a", Inline.text(t"model"), Tone.Success),
                 Block.Vertex(t"b", Inline.text(t"terminal"), Tone.Info),
                 Block.Vertex(t"c", Inline.text(t"web"), Tone.Info),
                 Block.Vertex(t"d", Inline.text(t"demo"), Tone.Accent) ),
-            List(Block.Edge(t"b", t"a"), Block.Edge(t"c", t"a"), Block.Edge(t"d", t"b"), Block.Edge(t"d", t"c")) ) )
+            List
+              ( Block.Edge(t"b", t"a"), Block.Edge(t"c", t"a"), Block.Edge(t"d", t"b"),
+                Block.Edge(t"d", t"c") ) ) )
 
   def codeSection: List[Block] =
     val greet =
       Block.Line
         ( List
-            ( Token(t"def", Token.Accent.Keyword), Token.plain(t" "), Token(t"greet", Token.Accent.Term, Token.Role.Binding),
-              Token(t"(", Token.Accent.Parens), Token(t"name", Token.Accent.Term), Token(t": ", Token.Accent.Symbol),
-              Token(t"Text", Token.Accent.Typal), Token(t")", Token.Accent.Parens), Token(t": ", Token.Accent.Symbol),
-              Token(t"Text", Token.Accent.Typal), Token(t" = ", Token.Accent.Symbol), Token(t"t\"Hello, $$name\"", Token.Accent.String) ) )
+            ( Token(t"def", Token.Accent.Keyword),
+              Token.plain(t" "),
+              Token(t"greet", Token.Accent.Term, Token.Role.Binding),
+              Token(t"(", Token.Accent.Parens),
+              Token(t"name", Token.Accent.Term),
+              Token(t": ", Token.Accent.Symbol),
+              Token(t"Text", Token.Accent.Typal),
+              Token(t")", Token.Accent.Parens),
+              Token(t": ", Token.Accent.Symbol),
+              Token(t"Text", Token.Accent.Typal),
+              Token(t" = ", Token.Accent.Symbol),
+              Token(t"t\"Hello, $$name\"", Token.Accent.String) ) )
 
     val count =
-      Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" "), Token(t"count", Token.Accent.Term, Token.Role.Binding), Token(t" = ", Token.Accent.Symbol), Token(t"42", Token.Accent.Number)))
+      Block.Line
+        ( List
+            ( Token(t"val", Token.Accent.Keyword),
+              Token.plain(t" "),
+              Token(t"count", Token.Accent.Term, Token.Role.Binding),
+              Token(t" = ", Token.Accent.Symbol),
+              Token(t"42", Token.Accent.Number) ) )
 
     val call =
-      Block.Line(List(Token(t"greet", Token.Accent.Term), Token(t"(", Token.Accent.Parens), Token(t"oops", Token.Accent.Error), Token(t")", Token.Accent.Parens)))
+      Block.Line
+        ( List
+            ( Token(t"greet", Token.Accent.Term), Token(t"(", Token.Accent.Parens),
+              Token(t"oops", Token.Accent.Error), Token(t")", Token.Accent.Parens) ) )
 
     val imported =
-      Block.Line(List(Token(t"import", Token.Accent.Keyword), Token.plain(t" "), Token(t"legacy", Token.Accent.Term), Token(t".", Token.Accent.Symbol), Token(t"*", Token.Accent.Symbol)))
+      Block.Line
+        ( List
+            ( Token(t"import", Token.Accent.Keyword), Token.plain(t" "),
+              Token(t"legacy", Token.Accent.Term), Token(t".", Token.Accent.Symbol),
+              Token(t"*", Token.Accent.Symbol) ) )
 
     val notes =
       List
@@ -401,43 +544,96 @@ object Samples:
 
     List
       ( Block.Heading(1, Inline.text(t"Code and output")),
-        Block.paragraph(t"A code block sits on the page colour behind a hairline, each token accented by its kind. Notes mark spans of a line: a highlight, a parameter, an error and a caution; hover one for its caption."),
+        Block.paragraph
+          ( t"A code block sits on the page colour behind a hairline, each token accented by " +
+            t"its kind. Notes mark spans of a line: a highlight, a parameter, an error and a " +
+            t"caution; hover one for its caption." ),
         Block.Code(Language.Scala, List(greet, count, call, imported), notes),
-        Block.Paragraph(Inline.Textual(t"Inline code takes the same accents: ") :: punctuated(accents)),
+        Block.Paragraph
+          ( Inline.Textual(t"Inline code takes the same accents: ") :: punctuated(accents) ),
         Block.Heading(2, Inline.text(t"Animation")),
-        Block.paragraph(t"An animated block is a sequence of frames: each token keeps its identity across them, so a step moves what stays, fades in what arrives and fades out what departs, wherever the lines put them. A frame may be labelled, and may mark some of its code: the marks fade out before a step and the next frame's fade in after it. Step with the buttons, or the arrow keys when the block is focused; space plays. A frame may also have a time on the page's one clock, whose bar appears at the foot of the page: play it, or press space outside any block, and every timed block steps when its frames fall due; stepping a block by hand pauses it."),
+        Block.paragraph
+          ( t"An animated block is a sequence of frames: each token keeps its identity across " +
+            t"them, so a step moves what stays, fades in what arrives and fades out what " +
+            t"departs, wherever the lines put them. A frame may be labelled, and may mark " +
+            t"some of its code: the marks fade out before a step and the next frame's fade in " +
+            t"after it. Step with the buttons, or the arrow keys when the block is focused; " +
+            t"space plays. A frame may also have a time on the page's one clock, whose bar " +
+            t"appears at the foot of the page: play it, or press space outside any block, and " +
+            t"every timed block steps when its frames fall due; stepping a block by hand " +
+            t"pauses it." ),
         animated,
-        Block.paragraph(t"A value spread over several lines, by a fade rather than a morph: the slide goes, and the next appears."),
+        Block.paragraph
+          ( t"A value spread over several lines, by a fade rather than a morph: the slide " +
+            t"goes, and the next appears." ),
         spread,
-        Block.paragraph(t"Two lists trading shapes: the tokens joining the line that remains slide along their own lines first and drop in; those reaching new lines leave first and slide along them."),
+        Block.paragraph
+          ( t"Two lists trading shapes: the tokens joining the line that remains slide along " +
+            t"their own lines first and drop in; those reaching new lines leave first and " +
+            t"slide along them." ),
         traded,
         Block.Heading(2, Inline.text(t"Diagnostics")),
-        Block.paragraph(t"A diagnostic names its place and its severity, says what is wrong, and shows the lines concerned, numbered from where they came in their file, with the place marked: a segment is underlined, a position is pointed at, and a caption follows the mark."),
+        Block.paragraph
+          ( t"A diagnostic names its place and its severity, says what is wrong, and shows " +
+            t"the lines concerned, numbered from where they came in their file, with the " +
+            t"place marked: a segment is underlined, a position is pointed at, and a caption " +
+            t"follows the mark." ),
         Block.Diagnostic
           ( Tone.Failure,
             Block.Location(t"src/greet.scala", 3, 7),
-            List(Block.Paragraph(List(Inline.Textual(t"Not found: "), inlineCode(t"oops", Token.Accent.Term)))),
-            List(Block.Code(Language.Scala, List(greet, count, call), List(Block.Note(2, 6, 10, Block.Note.Style.Erroneous)), 1)) ),
+            List
+              ( Block.Paragraph
+                  ( List
+                      ( Inline.Textual(t"Not found: "),
+                        inlineCode(t"oops", Token.Accent.Term) ) ) ),
+            List
+              ( Block.Code
+                  ( Language.Scala, List(greet, count, call),
+                    List(Block.Note(2, 6, 10, Block.Note.Style.Erroneous)), 1 ) ) ),
         Block.Diagnostic
           ( Tone.Warning,
             Block.Location(t"src/greet.scala", 4, 8),
-            List(Block.Paragraph(List(inlineCode(t"legacy", Token.Accent.Term), Inline.Textual(t" is deprecated: import "), inlineCode(t"modern", Token.Accent.Term), Inline.Textual(t" instead, which has the same members and none of the surprises.")))),
-            List(Block.Code(Language.Scala, List(call, imported), List(Block.Note(1, 7, 7, Block.Note.Style.Caution, Inline.text(t"deprecated since 2.0"))), 3)),
+            List
+              ( Block.Paragraph
+                  ( List
+                      ( inlineCode(t"legacy", Token.Accent.Term),
+                        Inline.Textual(t" is deprecated: import "),
+                        inlineCode(t"modern", Token.Accent.Term),
+                        Inline.Textual
+                          ( t" instead, which has the same members and none of the " +
+                            t"surprises." ) ) ) ),
+            List
+              ( Block.Code
+                  ( Language.Scala, List(call, imported),
+                    List
+                      ( Block.Note
+                          ( 1, 7, 7, Block.Note.Style.Caution,
+                            Inline.text(t"deprecated since 2.0") ) ),
+                    3 ) ),
             List(Block.paragraph(t"Deprecations become errors in the next release.")) ),
         Block.Heading(2, Inline.text(t"Captured output")),
-        Block.paragraph(t"A program's output is shown verbatim behind a gutter naming its stream: info for standard output, failure for standard error."),
+        Block.paragraph
+          ( t"A program's output is shown verbatim behind a gutter naming its stream: info " +
+            t"for standard output, failure for standard error." ),
         Block.Output(t"compiling 3 sources\ndone in 1.2 s\n"),
         Block.Output(t"warning: unused import legacy.*\n", error = true),
         Block.Heading(2, Inline.text(t"Stack traces")),
-        Block.paragraph(t"A stack trace is laid out as Soundness lays one out in a terminal: each package takes an accent in turn, the class's last segment is bold, a repeated class or file recedes, the location is one word aligned on its colon, and each cause follows the last."),
+        Block.paragraph
+          ( t"A stack trace is laid out as Soundness lays one out in a terminal: each package " +
+            t"takes an accent in turn, the class's last segment is bold, a repeated class or " +
+            t"file recedes, the location is one word aligned on its colon, and each cause " +
+            t"follows the last." ),
         trace )
 
   // A real trace, of an exception with a cause, thrown and caught here.
   def trace: Block =
-    def inner(): Nothing = throw IllegalStateException("the index was rebuilt while it was being read")
+    def inner(): Nothing =
+      throw IllegalStateException("the index was rebuilt while it was being read")
 
     def outer(): Nothing throws java.io.IOException =
-      try inner() catch case error: IllegalStateException => throw java.io.IOException("could not read the index", error)
+      try inner()
+      catch case error: IllegalStateException =>
+        throw java.io.IOException("could not read the index", error)
 
     try outer() catch case error: java.io.IOException => Block.Trace.of(StackTrace(error))
 
@@ -448,35 +644,50 @@ object Samples:
       Block.Gauge(Status.Standing(standing), Inline.text(standing.toString.tt.lower))
 
     val steps =
-      Status.Steps(all.map { (standing: Standing) => Step(Inline.text(standing.toString.tt.lower), standing) })
+      Status.Steps:
+        all.map: (standing: Standing) => Step(Inline.text(standing.toString.tt.lower), standing)
 
-    val stepped: List[Block] = List(Block.Heading(3, Inline.text(t"Steps")), Block.Gauge(steps, Inline.text(t"steps")))
+    val stepped: List[Block] =
+      List(Block.Heading(3, Inline.text(t"Steps")), Block.Gauge(steps, Inline.text(t"steps")))
 
     val intro: List[Block] =
       List
         ( Block.Heading(1, Inline.text(t"Charts and gauges")),
-        Block.paragraph(t"A chart is a description list of its series: a sparkline is a run of block glyphs, a bar is a meter drawn by the browser against the largest value."),
-        Block.Chart
-          ( Block.Chart.Kind.Sparkline,
-            List
-              ( Block.Series(Inline.text(t"load"), List(1.0, 3.0, 2.0, 5.0, 4.0, 6.0, 3.0, 4.0, 7.0, 5.0)),
-                Block.Series(Inline.text(t"memory"), List(4.0, 4.0, 5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0)) ) ),
-        Block.Chart
-          ( Block.Chart.Kind.Bars,
-            List
-              ( Block.Series(Inline.text(t"model"), List(42.0)),
-                Block.Series(Inline.text(t"terminal"), List(17.0)),
-                Block.Series(Inline.text(t"web"), List(23.0)) ) ),
-        Block.Chart(Block.Chart.Kind.Histogram, List(Block.Series(Inline.text(t"latency"), List(2.0, 9.0, 14.0, 8.0, 5.0, 3.0, 1.0, 1.0)))),
-        Block.Heading(2, Inline.text(t"Gauges")),
-        Block.paragraph(t"A gauge shows a status: a fraction, an indeterminate wait, a reckoning against a total or without one, a duration elapsed or remaining, a standing, or a run of steps."),
-        Block.Gauge(Status.Fraction(0.65), Inline.text(t"fraction")),
-        Block.Gauge(Status.Indeterminate(), Inline.text(t"indeterminate")),
-        Block.Gauge(Status.Reckoning(17, 120), Inline.text(t"reckoning")),
-        Block.Gauge(Status.Reckoning(17, Unset), Inline.text(t"count")),
-        Block.Gauge(Status.Elapsed(96.5), Inline.text(t"elapsed")),
-        Block.Gauge(Status.Remaining(12.0), Inline.text(t"remaining")),
-        Block.Heading(3, Inline.text(t"Standings")) )
+          Block.paragraph
+            ( t"A chart is a description list of its series: a sparkline is a run of block " +
+              t"glyphs, a bar is a meter drawn by the browser against the largest value." ),
+          Block.Chart
+            ( Block.Chart.Kind.Sparkline,
+              List
+                ( Block.Series
+                    ( Inline.text(t"load"),
+                      List(1.0, 3.0, 2.0, 5.0, 4.0, 6.0, 3.0, 4.0, 7.0, 5.0) ),
+                  Block.Series
+                    ( Inline.text(t"memory"),
+                      List(4.0, 4.0, 5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0) ) ) ),
+          Block.Chart
+            ( Block.Chart.Kind.Bars,
+              List
+                ( Block.Series(Inline.text(t"model"), List(42.0)),
+                  Block.Series(Inline.text(t"terminal"), List(17.0)),
+                  Block.Series(Inline.text(t"web"), List(23.0)) ) ),
+          Block.Chart
+            ( Block.Chart.Kind.Histogram,
+              List
+                ( Block.Series
+                    ( Inline.text(t"latency"), List(2.0, 9.0, 14.0, 8.0, 5.0, 3.0, 1.0, 1.0) ) ) ),
+          Block.Heading(2, Inline.text(t"Gauges")),
+          Block.paragraph
+            ( t"A gauge shows a status: a fraction, an indeterminate wait, a reckoning " +
+              t"against a total or without one, a duration elapsed or remaining, a standing, " +
+              t"or a run of steps." ),
+          Block.Gauge(Status.Fraction(0.65), Inline.text(t"fraction")),
+          Block.Gauge(Status.Indeterminate(), Inline.text(t"indeterminate")),
+          Block.Gauge(Status.Reckoning(17, 120), Inline.text(t"reckoning")),
+          Block.Gauge(Status.Reckoning(17, Unset), Inline.text(t"count")),
+          Block.Gauge(Status.Elapsed(96.5), Inline.text(t"elapsed")),
+          Block.Gauge(Status.Remaining(12.0), Inline.text(t"remaining")),
+          Block.Heading(3, Inline.text(t"Standings")) )
 
     intro + standings + stepped
 
@@ -485,18 +696,24 @@ object Samples:
   // as a void element but not `line`, so a self-closing `line` does not parse.
   def bars(heights: List[Int]): Text =
     val fills = List(t"#d9480f", t"#b45309", t"#6d4c9f")
+
     val rects = heights.zip(fills).indexed.map: (pair, index) =>
       val (height, fill) = pair
       val x = 40 + index.n0*90
-      t"""<rect x="${x.toString}" y="${(100 - height).toString}" width="60" height="${height.toString}" fill="$fill" rx="3"/>"""
+
+      t"""<rect x="${x.toString}" y="${(100 - height).toString}" width="60" """ +
+        t"""height="${height.toString}" fill="$fill" rx="3"/>"""
 
     t"""<g id="bars">${rects.join}</g>"""
 
   def drawing(heights: List[Int]): Text =
-    t"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="480" height="180" role="img">${bars(heights)}"""
-    + t"""<rect x="20" y="100" width="280" height="1" fill="currentColor" fill-opacity="0.3"/>"""
-    + t"""<g fill="currentColor" font-family="Inter, sans-serif" font-size="7" text-anchor="middle">"""
-    + t"""<text x="70" y="114">model</text><text x="160" y="114">terminal</text><text x="250" y="114">web</text></g></svg>"""
+    t"""<svg xmlns="http://www.w3.org/2000/svg" """ +
+      t"""viewBox="0 0 320 120" width="480" height="180" role="img">${bars(heights)}""" +
+      t"""<rect x="20" y="100" width="280" height="1" fill="currentColor" fill-opacity="0.3"/>""" +
+      t"""<g fill="currentColor" font-family="Inter, sans-serif" font-size="7" """ +
+      t"""text-anchor="middle">""" +
+      t"""<text x="70" y="114">model</text><text x="160" y="114">terminal</text>""" +
+      t"""<text x="250" y="114">web</text></g></svg>"""
 
   val heights: List[Int] = List(80, 50, 65)
   val throughput: Figure = Figure(Inline.text(t"Throughput by module"), drawing(heights))
@@ -504,12 +721,16 @@ object Samples:
   def drawings: List[Block] =
     List
       ( Block.Heading(1, Inline.text(t"Drawings")),
-        Block.paragraph(t"A figure is an SVG drawing the page revises in place: this one's bars glide to new heights every few seconds, and its caption is set small and muted."),
+        Block.paragraph
+          ( t"A figure is an SVG drawing the page revises in place: this one's bars glide to " +
+            t"new heights every few seconds, and its caption is set small and muted." ),
         Block.Figure(throughput),
         Block.Disclosure
           ( Inline.text(t"How it is drawn"),
             List
-              ( Block.paragraph(t"The application replaces the group of bars by its id; the stylesheet transitions a rectangle's geometry, so the browser animates the change."),
+              ( Block.paragraph
+                  ( t"The application replaces the group of bars by its id; the stylesheet " +
+                    t"transitions a rectangle's geometry, so the browser animates the change." ),
                 code(t"figure.replace(part, markup, svg)") ) ) )
 
   // The tour, in order. `overview` is what `gallery static` prints. Lazy, as the drawings
@@ -533,7 +754,8 @@ object Samples:
       if filter != t"" && !section.name.lower.contains(filter.lower) then Nil
       else
         val label: List[Inline] =
-          if index.n0 == current then List(Inline.Toned(Tone.Accent, List(Inline.Emphasis(Inline.text(section.name)))))
+          if index.n0 == current
+          then List(Inline.Toned(Tone.Accent, List(Inline.Emphasis(Inline.text(section.name)))))
           else Inline.text(section.name)
 
         List(Block.Item(List(Block.Paragraph(label)), section.action))
@@ -551,23 +773,45 @@ object Samples:
       choice:     Control.Choice )
   :   Interface =
 
+    val buttons: List[Control] =
+      List
+        ( Control.Button(Inline.text(t"Previous"), previous),
+          Control.Button(Inline.text(t"Next"), next),
+          Control.Button(Inline.text(t"Disabled"), disabled, Live(false)),
+          choice )
+
     Interface
       ( Inline.text(t"Pyrocosm gallery"),
         List
-          ( Panel(Panel.Id(t"nav"), Panel.Role.Navigation, Inline.text(t"Sections"), navigation, Panel.Priority.Important, controls = List(filter)),
+          ( Panel
+              ( Panel.Id(t"nav"), Panel.Role.Navigation, Inline.text(t"Sections"), navigation,
+                Panel.Priority.Important, controls = List(filter) ),
             Panel
               ( Panel.Id(t"main"), Panel.Role.Primary, Unset, matter, Panel.Priority.Essential,
-                controls = List(Control.Button(Inline.text(t"Previous"), previous), Control.Button(Inline.text(t"Next"), next), Control.Button(Inline.text(t"Disabled"), disabled, Live(false)), choice) ),
-            Panel(Panel.Id(t"detail"), Panel.Role.Detail, Inline.text(t"Detail"), detail, Panel.Priority.Peripheral),
-            Panel(Panel.Id(t"log"), Panel.Role.Log, Inline.text(t"Log"), log, Panel.Priority.Important, controls = List(note), hints = Hints(hints.Follow, hints.terminal.MaxRows(8))),
-            Panel(Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]), Panel.Priority.Essential, controls = List(field)) ),
-        List(Control.Button(Inline.text(t"Append"), append), Control.Button(Inline.text(t"Clear"), clear), Control.Toggle(verbose, Inline.text(t"Verbose"))),
+                controls = buttons ),
+            Panel
+              ( Panel.Id(t"detail"), Panel.Role.Detail, Inline.text(t"Detail"), detail,
+                Panel.Priority.Peripheral ),
+            Panel
+              ( Panel.Id(t"log"), Panel.Role.Log, Inline.text(t"Log"), log,
+                Panel.Priority.Important, controls = List(note),
+                hints = Hints(hints.Follow, hints.terminal.MaxRows(8)) ),
+            Panel
+              ( Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]),
+                Panel.Priority.Essential, controls = List(field) ) ),
+        List
+          ( Control.Button(Inline.text(t"Append"), append),
+            Control.Button(Inline.text(t"Clear"), clear),
+            Control.Toggle(verbose, Inline.text(t"Verbose")) ),
         List(Shortcut(Keypress.Ctrl('L'), clear, Inline.text(t"clear the log"))),
         purview = Purview() )
 
   // A toy tokeniser and completer, standing in for a compiler.
-  private val keywords: List[Text] = List(t"val", t"def", t"if", t"else", t"then", t"import", t"given")
-  private val words: List[Text] = List(t"println", t"print", t"printf", t"parse", t"partition", t"pyrocosm")
+  private val keywords: List[Text] =
+    List(t"val", t"def", t"if", t"else", t"then", t"import", t"given")
+
+  private val words: List[Text] =
+    List(t"println", t"print", t"printf", t"parse", t"partition", t"pyrocosm")
 
   // The tokens of one line: words by accent, with the spaces between them.
   def tokenize(line: Text): List[Token] =
@@ -577,6 +821,7 @@ object Samples:
         else if word.starts(t"\"") then Token.Accent.String
         else if word.s.forall(_.isDigit) && word != t"" then Token.Accent.Number
         else Token.Accent.Term
+
       val space: List[Token] = if index.n0 == 0 then Nil else List(Token.plain(t" "))
       space + List(Token(word, accent))
 
@@ -593,31 +838,47 @@ object Samples:
 
     val before = text.s.substring(0, caret.min(text.length)).nn
     val stem = before.reverse.takeWhile(_.isLetter).reverse.tt
+
     val completions =
       if stem.length < 2 then Nil
-      else words.filter(_.starts(stem)).map { (word: Text) => Control.Field.Completion(word, t"term", t"…") }
+      else
+        words.filter(_.starts(stem)).map: (word: Text) =>
+          Control.Field.Completion(word, t"term", t"…")
 
     // A `/`-command completes as a whole line, as a REPL's do.
     val commands: List[Text] = List(t"/session", t"/set", t"/quit")
+
     val commanded: List[Control.Field.Completion] =
-      if text.starts(t"/") && !text.contains(t" ") then commands.filter(_.starts(text)).map { (command: Text) => Control.Field.Completion(command, t"command", t"", whole = true) }
-      else Nil
+      if text.starts(t"/") && !text.contains(t" ") then
+        commands.filter(_.starts(text)).map: (command: Text) =>
+          Control.Field.Completion(command, t"command", t"", whole = true)
+      else
+        Nil
 
     // Prose, rather than code: several words and no keyword. A REPL would submit it elsewhere.
     val parts: List[Text] = text.cut(t" ")
     val prose: Boolean = parts.count(_ != t"") >= 3 && !parts.exists(keywords.has(_))
 
     // What the line has brought into scope, as a REPL reports it: every `val x` so far.
-    val bindings: List[Text] = parts.zip(parts.skip(1)).sweep { case (t"val", name) if name != t"" => name }
+    val bindings: List[Text] =
+      parts.zip(parts.skip(1)).sweep { case (t"val", name) if name != t"" => name }
 
     val read: List[Block] =
-      if prose then List(Block.Paragraph(List(Inline.Toned(Tone.Muted, Inline.text(t"reads as prose"))))) else Nil
+      if prose
+      then List(Block.Paragraph(List(Inline.Toned(Tone.Muted, Inline.text(t"reads as prose")))))
+      else Nil
 
     val scope: List[Inline] = bindings.indexed.bind: (name: Text, index: Ordinal) =>
       val comma: List[Inline] = if index.n0 == 0 then Nil else List(Inline.Textual(t", "))
+
       val binding: List[Inline] =
-        List(Inline.Snippet(Language.Scala, List(Token(name, Token.Accent.Term, Token.Role.Binding),
-            Token(t": ", Token.Accent.Symbol), Token(t"Int", Token.Accent.Typal))))
+        List
+          ( Inline.Snippet
+              ( Language.Scala,
+                List
+                  ( Token(name, Token.Accent.Term, Token.Role.Binding),
+                    Token(t": ", Token.Accent.Symbol),
+                    Token(t"Int", Token.Accent.Typal) ) ) )
 
       comma + binding
 
@@ -632,7 +893,10 @@ object Samples:
       val at = line.s.indexOf("oops")
       if at < 0 then Nil else List(Block.Note(index.n0, at, at + 4, Block.Note.Style.Erroneous))
 
-    Control.Field.Decoration(tokens, commanded + completions, incomplete = text.s.count(_ == '(') > text.s.count(_ == ')'), detail = detail, marks = marks)
+    val incomplete: Boolean = text.s.count(_ == '(') > text.s.count(_ == ')')
+
+    Control.Field.Decoration
+      ( tokens, commanded + completions, incomplete = incomplete, detail = detail, marks = marks )
 
 // One session of the gallery: the live cells, the ticking gauge, the code field and the event
 // handler. Built once per run, and handed to whichever frontend the arguments choose, so the
@@ -644,16 +908,24 @@ class GallerySession():
   val matter: Live[List[Block]] = Live(Samples.overview)
 
   val field: Control.Field =
-    Control.Field(Samples.prompt, Control.Field.Kind.Code(Language.Scala), notification = Control.Field.Notify.Keystrokes, placeholder = t"type here")
+    Control.Field
+      ( Samples.prompt, Control.Field.Kind.Code(Language.Scala),
+        notification = Control.Field.Notify.Keystrokes, placeholder = t"type here" )
 
   val filter: Control.Field =
-    Control.Field(Samples.filter, Control.Field.Kind.Line, notification = Control.Field.Notify.Keystrokes, placeholder = t"Filter sections")
+    Control.Field
+      ( Samples.filter, Control.Field.Kind.Line, notification = Control.Field.Notify.Keystrokes,
+        placeholder = t"Filter sections" )
 
   val note: Control.Field =
-    Control.Field(Samples.note, Control.Field.Kind.Multiline, placeholder = t"Add a note to the log; Enter submits")
+    Control.Field
+      ( Samples.note, Control.Field.Kind.Multiline,
+        placeholder = t"Add a note to the log; Enter submits" )
 
   val choice: Control.Choice =
-    Control.Choice(Samples.section, Samples.sections.map { (section: Samples.Section) => Inline.text(section.name) })
+    Control.Choice
+      ( Samples.section,
+        Samples.sections.map { (section: Samples.Section) => Inline.text(section.name) } )
 
   val interface: Interface =
     Samples.interface(navigation, matter, log, detail, field, filter, note, choice)
@@ -674,13 +946,19 @@ class GallerySession():
       matter() = section.content
       navigation() = Samples.navigation(current, filtered)
       choice.current() = current
-      detail() = List
-        ( Block.Record
-            ( List
-                ( Block.Entry(Inline.text(t"section"), List(Block.paragraph(section.name))),
-                  Block.Entry(Inline.text(t"position"), List(Block.paragraph(t"${(current + 1).toString} of ${size.toString}"))),
-                  Block.Entry(Inline.text(t"blocks"), List(Block.paragraph(section.content.size.toString.tt))) ),
-              Inline.text(section.name) ) )
+
+      detail() =
+        List
+          ( Block.Record
+              ( List
+                  ( Block.Entry(Inline.text(t"section"), List(Block.paragraph(section.name))),
+                    Block.Entry
+                      ( Inline.text(t"position"),
+                        List(Block.paragraph(t"${(current + 1).toString} of ${size.toString}")) ),
+                    Block.Entry
+                      ( Inline.text(t"blocks"),
+                        List(Block.paragraph(section.content.size.toString.tt)) ) ),
+                Inline.text(section.name) ) )
 
   private val ticker = Thread(new Runnable:
     def run(): Unit =
@@ -691,11 +969,19 @@ class GallerySession():
 
         // Two activities in the masthead, each a link to a log entry: one always in flight, and
         // one which finishes, and is gone, for part of every cycle.
-        val alpha = Activity(t"alpha", Inline.text(t"alpha tests"), Status.Fraction(fraction), Inline.Destination.Internal(Samples.alpha), List(Inline.Toned(Tone.Success, Inline.text(t"green so far"))))
-        val beta: List[Activity] =
-          if ticks % 200 < 120
-          then List(Activity(t"beta", Inline.text(t"beta build"), Status.Reckoning((ticks % 120).toLong, 120L), Inline.Destination.Internal(Samples.beta), List(Inline.Toned(Tone.Failure, Inline.text(t"2 failures")))))
-          else Nil
+        val alpha =
+          Activity
+            ( t"alpha", Inline.text(t"alpha tests"), Status.Fraction(fraction),
+              Inline.Destination.Internal(Samples.alpha),
+              List(Inline.Toned(Tone.Success, Inline.text(t"green so far"))) )
+
+        val failing =
+          Activity
+            ( t"beta", Inline.text(t"beta build"), Status.Reckoning((ticks % 120).toLong, 120L),
+              Inline.Destination.Internal(Samples.beta),
+              List(Inline.Toned(Tone.Failure, Inline.text(t"2 failures"))) )
+
+        val beta: List[Activity] = if ticks % 200 < 120 then List(failing) else Nil
 
         interface.activities() = alpha :: beta
 
@@ -731,21 +1017,36 @@ class GallerySession():
       log.append(Block.paragraph(t"Followed the link within the page."))
 
     case Event.Pressed(action) =>
-      Samples.sections.indexed.seek(_(0).action == action).let { (_, index) => show(index.n0) }
+      Samples.sections.indexed.seek(_(0).action == action).let: (_, index) => show(index.n0)
 
       Samples.benchmarks.seek(_(1) == action).let: (benchmark, _) =>
-        detail() = List(Block.Record(List(Block.Entry(Inline.text(t"name"), List(Block.paragraph(benchmark.name))), Block.Entry(Inline.text(t"mean"), List(Block.Paragraph(List(Inline.Amount(benchmark.mean, t"s")))))), Inline.text(benchmark.name)))
+        val mean: Block = Block.Paragraph(List(Inline.Amount(benchmark.mean, t"s")))
+
+        detail() =
+          List
+            ( Block.Record
+                ( List
+                    ( Block.Entry(Inline.text(t"name"), List(Block.paragraph(benchmark.name))),
+                      Block.Entry(Inline.text(t"mean"), List(mean)) ),
+                  Inline.text(benchmark.name) ) )
 
       Samples.suites.seek(_(1) == action).let: (suite, _) =>
-        val outcome: Inline = suite.tone.lay(Inline.Textual(suite.outcome)) { tone => Inline.Toned(tone, Inline.text(suite.outcome)) }
-        detail() = List
-          ( Block.Record
-              ( List
-                  ( Block.Entry(Inline.text(t"suite"), List(Block.paragraph(suite.name))),
-                    Block.Entry(Inline.text(t"tests"), List(Block.Paragraph(List(Inline.Numeral(suite.tests.toDouble, 0))))),
-                    Block.Entry(Inline.text(t"time"), List(Block.Paragraph(List(Inline.Amount(suite.seconds, t"s"))))),
-                    Block.Entry(Inline.text(t"outcome"), List(Block.Paragraph(List(outcome)))) ),
-                Inline.text(suite.name) ) )
+        val outcome: Inline =
+          suite.tone.lay(Inline.Textual(suite.outcome)): tone =>
+            Inline.Toned(tone, Inline.text(suite.outcome))
+
+        val tests: Block = Block.Paragraph(List(Inline.Numeral(suite.tests.toDouble, 0)))
+        val time: Block = Block.Paragraph(List(Inline.Amount(suite.seconds, t"s")))
+
+        detail() =
+          List
+            ( Block.Record
+                ( List
+                    ( Block.Entry(Inline.text(t"suite"), List(Block.paragraph(suite.name))),
+                      Block.Entry(Inline.text(t"tests"), List(tests)),
+                      Block.Entry(Inline.text(t"time"), List(time)),
+                      Block.Entry(Inline.text(t"outcome"), List(Block.Paragraph(List(outcome)))) ),
+                  Inline.text(suite.name) ) )
 
       log.append(Block.paragraph(t"Pressed ${action.label}."))
 
@@ -782,14 +1083,25 @@ object Repl:
   // terminal each has one of its own.
   def apply()(using Monitor, Probate): (Interface, Event -> Unit) =
     val transcript: Live[List[Block]] = Live(Nil)
-    val field = Control.Field(Input(t"repl"), Control.Field.Kind.Code(Language.Scala), notification = Control.Field.Notify.Keystrokes, placeholder = t"type Scala; Tab completes; Escape leaves", history = Live(List(t"val earlier = 1")))
+
+    val field =
+      Control.Field
+        ( Input(t"repl"), Control.Field.Kind.Code(Language.Scala),
+          notification = Control.Field.Notify.Keystrokes,
+          placeholder  = t"type Scala; Tab completes; Escape leaves",
+          history      = Live(List(t"val earlier = 1")) )
 
     val interface =
       Interface
         ( Inline.text(t"Pyrocosm REPL"),
           List
-            ( Panel(Panel.Id(t"transcript"), Panel.Role.Transcript, Unset, transcript, Panel.Priority.Essential, hints = Hints(hints.terminal.Border.None)),
-              Panel(Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]), Panel.Priority.Essential, controls = List(field), hints = Hints(hints.terminal.Border.None)) ),
+            ( Panel
+                ( Panel.Id(t"transcript"), Panel.Role.Transcript, Unset, transcript,
+                  Panel.Priority.Essential, hints = Hints(hints.terminal.Border.None) ),
+              Panel
+                ( Panel.Id(t"prompt"), Panel.Role.Prompt, Unset, Live(Nil: List[Block]),
+                  Panel.Priority.Essential, controls = List(field),
+                  hints = Hints(hints.terminal.Border.None) ) ),
           hints = Hints(hints.terminal.Occupancy.Inline) )
 
     var count = 0
@@ -804,19 +1116,29 @@ object Repl:
           val n = count
           field.history.append(text)
           val marks = Samples.decorate(text, text.length).marks
+
           val code = Samples.code(text) match
             case Block.Code(language, lines, _, _, _, _) => Block.Code(language, lines, marks)
-            case other                          => other
+            case other                                   => other
 
-          val pending = Block.Group(List(code, Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))))
+          val evaluating: Block = Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))
+          val pending = Block.Group(List(code, evaluating))
           transcript.append(pending)
           field.decoration() = Control.Field.Decoration()
 
           async:
             snooze(1.5*Second)
             val output = Block.Output(t"printed by the program\nand a second line\n")
-            val settled = Block.Group(List(code, output, Block.Output(t"a complaint\n", error = true), Block.Paragraph(List(Inline.Toned(Tone.Success, Inline.text(t"res$n: Int = ${text.length.toString}"))))))
-            transcript.amend { entries => entries.map { (entry: Block) => if entry eq pending then settled else entry } }
+            val complaint: Block = Block.Output(t"a complaint\n", error = true)
+            val result: Text = t"res$n: Int = ${text.length.toString}"
+
+            val reported: Block =
+              Block.Paragraph(List(Inline.Toned(Tone.Success, Inline.text(result))))
+
+            val settled = Block.Group(List(code, output, complaint, reported))
+
+            transcript.amend: entries =>
+              entries.map: (entry: Block) => if entry eq pending then settled else entry
 
       case _ =>
         ()
@@ -831,8 +1153,8 @@ object Repl:
 val Gallery: Tool =
   Tool
     ( t"gallery",
-      prose = t"The Pyrocosm gallery shows every node of the Pyrocosm model, in the terminal or "
-            + t"in a browser, as the fixture for judging how each appears.",
+      prose = t"The Pyrocosm gallery shows every node of the Pyrocosm model, in the terminal or " +
+        t"in a browser, as the fixture for judging how each appears.",
       web   = GalleryWeb )
 
 // The gallery served by the daemon, at most once: `serve` returns when `stop` is called.
@@ -855,7 +1177,8 @@ object GalleryWeb extends Tool.Web:
 
 // `gallery` or `gallery terminal` runs the interface in the terminal; `gallery serve [port]`
 // serves it as a web page; `gallery static [columns] [section]` prints the overview, or one
-// section of the tour, once, for a look without a terminal session. The standard subcommands are handled first, by `Tool`.
+// section of the tour, once, for a look without a terminal session. The standard subcommands
+// are handled first, by `Tool`.
 // The gallery's entry point: an object with a plain `main`, rather than a `@main` method, so
 // that it can declare its use of the global `Watcher` the daemon watches its state files with
 // (a top-level definition can carry no `uses` clause). The work of an invocation is a method
@@ -885,17 +1208,22 @@ object gallery uses surveillance.Watcher:
 
     given Stdio = caps.unsafe.unsafeAssumePure(invocation.stdio)
 
-    val words: List[Text] = invocation.arguments.map { (argument: Argument) => argument() }
-    def number(default: Int): Int = words.at(Sec).let { (word: Text) => safely(word.as[Int]) }.or(default)
+    val words: List[Text] = invocation.arguments.map: (argument: Argument) => argument()
+
+    def number(default: Int): Int =
+      words.at(Sec).let { (word: Text) => safely(word.as[Int]) }.or(default)
 
     words.at(Prim) match
       // `gallery static [columns] [section]`: the overview, or the named section of the tour.
       case t"static" =>
         val renderer = TerminalRenderer()
         val name: Optional[Text] = words.at(Ter)
-        val section: Optional[Samples.Section] = name.let { (name: Text) => Samples.sections.seek(_.name.lower == name.lower) }
+
+        val section: Optional[Samples.Section] =
+          name.let: (name: Text) => Samples.sections.seek(_.name.lower == name.lower)
+
         val blocks: List[Block] = section.lay(Samples.overview)(_.content)
-        renderer.blocks(blocks, number(100)).each { (line: Teletype) => Out.println(line) }
+        renderer.blocks(blocks, number(100)).each: (line: Teletype) => Out.println(line)
         Exit.Ok
 
       // `gallery repl`: the REPL in the terminal.
@@ -904,30 +1232,37 @@ object gallery uses surveillance.Watcher:
           import parasite.probates.cancelProbate
           val (interface, handle) = Repl()
           TerminalFrontend().run(interface)(handle)
+
         Exit.Ok
 
       // `gallery serve [port]` serves the gallery, one interface for every tab; `gallery serve
       // repl [port]` serves the REPL, a session per tab.
       case t"serve" =>
         val repl: Boolean = words.at(Sec) == t"repl"
-        val port = words.at(if repl then Ter else Sec).let { (word: Text) => safely(word.as[Int]) }.or(8080)
+        val portWord: Optional[Text] = words.at(if repl then Ter else Sec)
+        val port = portWord.let { (word: Text) => safely(word.as[Int]) }.or(8080)
+
         supervise:
           import parasite.probates.cancelProbate
           // On port 0 the front-end takes a free port behind the machine's hub, which serves it
           // under the gallery's path.
-          val where: Text = if port == 0 then t"behind the hub, at /gallery/" else t"at http://localhost:${port.toString}/"
+          val where: Text =
+            if port == 0 then t"behind the hub, at /gallery/"
+            else t"at http://localhost:${port.toString}/"
 
           if repl then
             Out.println(t"Serving the Pyrocosm REPL $where")
-            WebFrontend(port).serve(() => Repl())
+            WebFrontend(port).serve: () => Repl()
           else
             val session = GallerySession()
             Out.println(t"Serving the Pyrocosm gallery $where")
             WebFrontend(port).run(session.interface)(session.handle)
+
         Exit.Ok
 
       case _ =>
         supervise:
           val session = GallerySession()
           TerminalFrontend().run(session.interface)(session.handle)
+
         Exit.Ok

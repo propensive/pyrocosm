@@ -39,11 +39,14 @@ object Block:
   // `Columnar` strategies on the terminal; the web maps them to `1fr`, `max-content` and
   // container queries.
   enum Sizing:
-    case Stretch                                        // absorbs the spare width; at most one per table
-    case Rigid                                          // never narrower than its content: figures
-    case Paragraph                                      // wraps
-    case Collapsible(priority: Double)                  // vanishes below a threshold; higher goes first
-    case Fixed(percent: Int)                            // a share of the table's width, whatever its content; the table's columns then line up with another's
+    case Stretch                        // absorbs the spare width; at most one per table
+    case Rigid                          // never narrower than its content: figures
+    case Paragraph                      // wraps
+    case Collapsible(priority: Double)  // vanishes below a threshold; higher goes first
+
+    // a share of the table's width, whatever its content; the table's columns then line up with
+    // another's
+    case Fixed(percent: Int)
 
   enum Alignment:
     case Start, End, Center, Justify
@@ -119,7 +122,8 @@ object Block:
         // An area ends on a column of its last line; a run of whole lines, at the end of the
         // last, which `Int.MaxValue` stands for until the line's length is known.
         val endColumn: Int =
-          if span.mode == Span.Mode.Lines then Int.MaxValue else span.endColumn.lay(startColumn)(_.n0)
+          if span.mode == Span.Mode.Lines then Int.MaxValue
+          else span.endColumn.lay(startColumn)(_.n0)
 
         val last: Optional[Int] = if endLine > startLine.n0 then endLine else Unset
         Note(startLine.n0, startColumn, endColumn, style, caption, last)
@@ -150,17 +154,23 @@ object Block:
     // a whole file becomes one on an excerpt of it, and one on a prompt's text a note on a
     // transcript's indented copy.
     def shifted(lines: Int = 0, columns: Int = 0): Note =
-      copy(line = line - lines, start = start + columns, end = end + columns, last = last.let(_ - lines))
+      copy
+        ( line  = line - lines,
+          start = start + columns,
+          end   = end + columns,
+          last  = last.let(_ - lines) )
 
   object Code:
     // The lines around `notes` cut from the whole of a source, `context` lines either side,
     // numbered from where in the source they came; the notes move with them. Nothing is cut
     // when there are no notes: the whole is shown, numbered from its first line.
     def excerpt(language: Language, lines: List[Line], notes: List[Note], context: Int = 1): Code =
-      val first: Int = notes.map(_.line).minimum.let { (line: Int) => (line - context).max(0) }.or(0)
+      val first: Int =
+        notes.map(_.line).minimum.let { (line: Int) => (line - context).max(0) }.or(0)
 
       val limit: Int =
-        notes.map(_.lastLine).maximum.let { (line: Int) => (line + context + 1).min(lines.size) }.or(lines.size)
+        notes.map(_.lastLine).maximum.let: (line: Int) => (line + context + 1).min(lines.size)
+        . or(lines.size)
 
       val shown: List[Line] = lines.skip(first).keep(limit - first)
       Code(language, shown, notes.map(_.shifted(lines = first)), first + 1)
@@ -246,8 +256,7 @@ object Block:
       val break: Token = Token(t"\n", Token.Accent.Unparsed)
 
       val sequences: List[List[Token]] =
-        frames.map: (lines: List[Line]) =>
-          lines.map(_.tokens).join(List(break)) + List(break)
+        frames.map: (lines: List[Line]) => lines.map(_.tokens).join(List(break)) + List(break)
 
       val evolved: List[Evolution.Atom[Token]] = evolve(sequences).sequence
 
@@ -257,7 +266,9 @@ object Block:
         counter += 1
         t"$prefix${counter.toString.tt}"
 
-      val ids: List[Text] = evolved.map { (atom: Evolution.Atom[Token]) => fresh(if atom.value == break then t"l" else t"a") }
+      val ids: List[Text] =
+        evolved.map: (atom: Evolution.Atom[Token]) =>
+          fresh(if atom.value == break then t"l" else t"a")
 
       val atoms: List[Atom] =
         evolved.zip(ids).filter(_(0).value != break).map: (atom: Evolution.Atom[Token], id: Text) =>
@@ -277,13 +288,16 @@ object Block:
             if atom.value == break then
               lineNames = (f, id) :: lineNames
               line += 1
-            else placements = Placement(f, line, id) :: placements
+            else
+              placements = Placement(f, line, id) :: placements
 
       val described: List[Slide] =
         frames.indexed.map: (_, index: Ordinal) =>
           val names: List[Text] = lineNames.reverse.filter(_(0) == index.n0).map(_(1))
           val detail: Slide.Detail = details.at(index).or(Slide.Detail())
-          Slide(index.n0, detail.label, detail.hold, names, detail.at, detail.language, detail.notes)
+
+          Slide
+            ( index.n0, detail.label, detail.hold, names, detail.at, detail.language, detail.notes )
 
       val placed: List[Placement] = placements.reverse
 
@@ -291,6 +305,7 @@ object Block:
       def lineOf(slide: Slide): Map[Text, Text] =
         placed.filter(_.slide == slide.index).map: (placement: Placement) =>
           placement.atom -> slide.lines.skip(placement.line).head.or(t"?")
+
         . to[Map]
 
       val transitions: List[Transition] =
@@ -341,22 +356,24 @@ object Block:
       def recur(line: Int, acc: List[List[Atom]]): List[List[Atom]] =
         if line >= count then acc.reverse else
           val row: List[Atom] =
-            placed.filter(_.line == line).map { (placement: Placement) => byId(placement.atom) }
+            placed.filter(_.line == line).map: (placement: Placement) => byId(placement.atom)
             . sweep { case atom: Atom => atom }
 
           recur(line + 1, row :: acc)
 
       recur(0, Nil)
 
-  // Where a diagnostic points: a file, and a line and column within it, counted from one as a
-  // compiler and an editor count them.
-  case class Location(path: Text, line: Optional[Int] = Unset, column: Optional[Int] = Unset):
-    def text: Text = line.lay(path) { (line: Int) => column.lay(t"$path:$line") { (column: Int) => t"$path:$line:$column" } }
-
   object Location:
     // The location of a zero-based `Span` in `path`, or the file alone for an empty span.
     def of(path: Text, span: Span): Location =
       Location(path, span.startLine.let(_.n1), span.startColumn.let(_.n1))
+
+  // Where a diagnostic points: a file, and a line and column within it, counted from one as a
+  // compiler and an editor count them.
+  case class Location(path: Text, line: Optional[Int] = Unset, column: Optional[Int] = Unset):
+    def text: Text =
+      line.lay(path): (line: Int) =>
+        column.lay(t"$path:$line"): (column: Int) => t"$path:$line:$column"
 
   object Diagnostic:
     // A TEL error as a diagnostic: its message as the message; and, given the text it was read
@@ -407,16 +424,20 @@ object Block:
 
   object Graph:
     def of(dag: Dag[Vertex]): Graph =
-      val edges: List[Edge] = dag.edges.map { (edge: (Vertex, Vertex)) => Edge(edge(0).id, edge(1).id) }.to[List]
+      val edges: List[Edge] =
+        dag.edges.map { (edge: (Vertex, Vertex)) => Edge(edge(0).id, edge(1).id) }.to[List]
+
       Graph(dag.nodes.to[List], edges)
 
     extension (graph: Graph)
       // A `Dag` is acyclic by construction, so a graph whose edges close a cycle raises.
       def dag: Dag[Vertex] raises Dag.Error =
-        val byId: Map[Text, Vertex] = graph.vertices.map { (vertex: Vertex) => vertex.id -> vertex }.to[Map]
+        val byId: Map[Text, Vertex] =
+          graph.vertices.map { (vertex: Vertex) => vertex.id -> vertex }.to[Map]
 
         Dag(graph.vertices.to[Set]): (vertex: Vertex) =>
-          graph.edges.filter(_.from == vertex.id).map { (edge: Edge) => byId(edge.to) }.sweep { case vertex: Vertex => vertex }
+          graph.edges.filter(_.from == vertex.id).map: (edge: Edge) => byId(edge.to)
+          . sweep { case vertex: Vertex => vertex }
           . to[Set]
 
   object Chart:
@@ -460,7 +481,9 @@ object Block:
     // The stack's namespaces in order of first appearance, each numbered from zero: what both
     // renderers colour by, so a package takes the same accent in either medium.
     def accents(stack: Stack): Map[Text, Int] =
-      stack.frames.map(_.namespace).distinct.indexed.map { (namespace, index) => namespace -> index.n0 }.to[Map]
+      stack.frames.map(_.namespace).distinct.indexed
+      . map: (namespace, index) => namespace -> index.n0
+      . to[Map]
 
     // The last segment of an owner, `Ξ` marking an object, and everything before it.
     private def pivot(owner: Text): Int = owner.s.lastIndexOf(".")
@@ -497,7 +520,7 @@ object Block:
 
       def chain(stackTrace: StackTrace, done: List[Stack]): List[Stack] =
         val next = stack(stackTrace) :: done
-        stackTrace.cause.lay(next.reverse) { cause => chain(cause, next) }
+        stackTrace.cause.lay(next.reverse): cause => chain(cause, next)
 
       Trace(chain(stackTrace, Nil))
 
@@ -512,7 +535,8 @@ object Block:
 
 enum Block:
   case Paragraph(content: List[Inline])
-  case Heading(level: Int, content: List[Inline], id: Optional[Text] = Unset)  // `id`: an anchor, as `Row.id`
+  // `id`: an anchor, as `Row.id`
+  case Heading(level: Int, content: List[Inline], id: Optional[Text] = Unset)
   case Listing(ordered: Boolean, items: List[Block.Item])
   case Quotation(content: List[Block])
   // A rule stands between what precedes and follows it, or marks an edge: `Above` is drawn
@@ -532,7 +556,10 @@ enum Block:
       start:     Optional[Int]             = Unset,
       animation: Optional[Block.Animation] = Unset,
       id:        Optional[Text]            = Unset )
-  case Table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] = Unset)
+
+  case Table
+    ( columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] = Unset )
+
   case Record(entries: List[Block.Entry], title: Optional[List[Inline]] = Unset)
   case Notice(tone: Tone, title: Optional[List[Inline]], content: List[Block])
   case Disclosure(summary: List[Inline], content: List[Block], open: Boolean = false)
@@ -560,5 +587,6 @@ enum Block:
       message:  List[Block],
       excerpt:  List[Block] = Nil,
       detail:   List[Block] = Nil )
-  case Group(content: List[Block])                      // a run of blocks which belong together
-  case Output(text: Text, error: Boolean = false)      // captured standard output or error, verbatim
+
+  case Group(content: List[Block])                 // a run of blocks which belong together
+  case Output(text: Text, error: Boolean = false)  // captured standard output or error, verbatim

@@ -41,8 +41,10 @@ extension (commit: Commit)
   // the umbrella.)
   def recordings[value: Recordable](using notes: Notes): List[value] raises Notes.Error =
     def recur(fingerprints: List[Fingerprint], done: List[value]): List[value] = fingerprints match
-      case head :: tail => notes.read[value](head).lay(recur(tail, done)) { value => recur(tail, value :: done) }
-      case _            => done.reverse
+      case head :: tail =>
+        notes.read[value](head).lay(recur(tail, done)): value => recur(tail, value :: done)
+
+      case _ => done.reverse
 
     recur(notes.fingerprints(commit), Nil)
 

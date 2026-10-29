@@ -22,25 +22,25 @@
                                                                                                   */
 package pyrocosm
 
-import java.util.concurrent as juc
-
 // Excluded from the umbrella: `Control` (coaxial), `Origin` and `Service`, which would outrank
 // this package's own definitions.
-import soundness.{Control as _, Origin as _, Service as _, *}
-
-import perihelion.{Message, wsClient, wsSessional}
+import soundness.*
 
 import attributives.textAttributive
 import codepages.utf8Codepage
 import denominative.capped
-import dysasymptotics.{linearAccess, linearSize}
+import dysasymptotics.linearAccess
 import formatting.compactCssFormatting
 import htmlDoms.whatwg
 import htmlDoms.whatwg.*
 import internetAccess.online
 import logging.silentLogging
-import nomenclature.CssClass.nominative
+import perihelion.{Message, wsClient, wsSessional}
 import strategies.throwUnsafely
+
+object Portal:
+  // How long a browser's first message waits for the tool's socket to open.
+  val patience: Duration = 5.0*Second
 
 // The machine's one web origin, which the hub serves: every tool's front-end under it, at
 // `/<tool>/`, reached by the port the tool's node advertises; a page naming the tools at `/`;
@@ -76,12 +76,15 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
 
   // The port the tool of this name serves its front-end on, on this machine, if it does.
   private def upstream(tool: Text): Optional[Int] =
-    hub.nodes().seek { advert => advert.node.tool == tool && advert.node.shares(hub.node) } match
+    def local(advert: Advert): Boolean = advert.node.tool == tool && advert.node.shares(hub.node)
+
+    hub.nodes().seek(local(_)) match
       case advert: Advert => advert.services.seek(_.name == t"serve").let(_.port).or(Unset)
       case _              => Unset
 
   private def websocket(request: Http.Request): Boolean =
-    request.textHeaders.exists { header => header.key.lower == t"upgrade" && header.value.lower == t"websocket" }
+    request.textHeaders.exists: header =>
+      header.key.lower == t"upgrade" && header.value.lower == t"websocket"
 
   // Binds the origin and serves it in the background: the port, or nothing if it could not be
   // bound.
@@ -94,10 +97,14 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
 
         path match
           case t"/" | t"/index.html" =>
-            Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(landing.in[Data]))
+            Http.Ok
+              ( List(Http.Header(t"content-type", t"text/html; charset=utf-8")),
+                Http.Body.Fixed(landing.in[Data]) )
 
           case t"/pyrocosm.css" =>
-            Http.Ok(List(Http.Header(t"content-type", t"text/css; charset=utf-8")), Http.Body.Fixed(stylesheet.in[Data]))
+            Http.Ok
+              ( List(Http.Header(t"content-type", t"text/css; charset=utf-8")),
+                Http.Body.Fixed(stylesheet.in[Data]) )
 
           case t"/mcp" =>
             aggregator.answer(request0)
@@ -107,7 +114,8 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
 
             upstream(tool) match
               case port: Int =>
-                if websocket(request0) then tunnel(tool, port, request0) else forward(tool, port, request0)
+                if websocket(request0) then tunnel(tool, port, request0)
+                else forward(tool, port, request0)
 
               case _ =>
                 Http.Response(Http.NotFound)(t"No tool named $tool is running on this machine")
@@ -125,10 +133,15 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
   private def forward(tool: Text, port: Int, request: Http.Request): Http.Response =
     val body: Data = Loopback.bounded(request)
     val headers: List[Http.Header] = request.textHeaders.filter(endToEnd(_))
-    val upstream: Http.Request = Http.Request(request.method, 1.1, request.host, request.target, headers, () => Stream(body))
 
-    Loopback.exchange(port, upstream).lay(Http.Response(Http.BadGateway)(t"The $tool front-end did not answer")): response =>
-      response.status(response.textHeaders.filter(endToEnd(_)), Http.Body.Fixed(response.body.stream.memoize))
+    val upstream: Http.Request =
+      Http.Request(request.method, 1.1, request.host, request.target, headers, () => Stream(body))
+
+    val failure: Text = t"The $tool front-end did not answer"
+
+    Loopback.exchange(port, upstream).lay(Http.Response(Http.BadGateway)(failure)): response =>
+      val passed: List[Http.Header] = response.textHeaders.filter(endToEnd(_))
+      response.status(passed, Http.Body.Fixed(response.body.stream.memoize))
 
   // A browser's socket tunnelled to the tool's: what the browser sends goes to the tool, what
   // the tool sends comes back, and either end closing closes the other. The tool's end is lent
@@ -159,7 +172,9 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
           while reading do input.refill(demand) match
             case count: Int =>
               if count > 0 then
-                val data: Data = input.lend { region => range => region.materialize(range.capped(count)) }
+                val data: Data =
+                  input.lend: region => range => region.materialize(range.capped(count))
+
                 input.skip(count)
                 websocket.channel.send(Message.Text(data.utf8))
 
@@ -171,7 +186,7 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
     // The browser going closes the tool's socket, which ends the task above.
     async:
       safely(websocket.task.await())
-      safely(upstream.await(Portal.patience)).let { connection => safely(connection.close()) }
+      safely(upstream.await(Portal.patience)).let: connection => safely(connection.close())
 
     websocket
 
@@ -184,16 +199,17 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
 
     def item(advert: Advert, href: Optional[Text]): Html of "li" =
       val label: Text = t"${advert.node.tool} ${advert.node.version}"
-      href.lay(Li(label)) { href => Li(A(href = href)(label)) }
+      href.lay(Li(label)): href => Li(A(href = href)(label))
 
     def listing(title: Text, items: List[Html of "li"]): Html of Flow =
       if items.nil then Html.Fragment[Flow]() else Html.Fragment[Flow](H2(title), Ul(items*))
 
     val here: List[Html of "li"] =
-      local.filter(_.services.exists(_.name == t"serve")).map { advert => item(advert, t"/${advert.node.tool}/") }
+      local.filter(_.services.exists(_.name == t"serve")).map: advert =>
+        item(advert, t"/${advert.node.tool}/")
 
     val elsewhere: List[Html of "li"] =
-      remote.map { advert => item(advert, advert.url.let { url => t"$url${advert.node.tool}/" }) }
+      remote.map: advert => item(advert, advert.url.let { url => t"$url${advert.node.tool}/" })
 
     val page: Html of "html" =
       Html
@@ -208,7 +224,3 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
                   listing(t"Tools on other machines", elsewhere) ) ) )
 
     t"<!DOCTYPE html>${page.show}"
-
-object Portal:
-  // How long a browser's first message waits for the tool's socket to open.
-  val patience: Duration = 5.0*Second

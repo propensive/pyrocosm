@@ -23,6 +23,7 @@
 package pyrocosm
 
 import java.util.concurrent as juc
+
 import scala.collection.concurrent.TrieMap
 
 import soundness.*
@@ -38,52 +39,6 @@ import logging.silentLogging
 import probates.cancelProbate
 import systems.javaBaseSystem
 import textSanitizers.skipSanitizer
-
-// A command-line tool built on Pyrocosm, as its daemon knows it: the command's name, which is
-// also the name of its configuration directories, the prose that opens its manpage, and the
-// web front-end it can serve, if it has one. There is one `Tool` per application, and its
-// `standard` method gives the application the subcommands every Pyrocosm tool shares —
-// `about`, `install`, `upgrade`, `quit` and `--version` — and the configuration files every tool
-// reads, without touching how the application defines its own subcommands and flags.
-//
-// Configuration comes from two TEL files: the repository's `.pyrocosm/<name>/config.tel`,
-// found by walking up from the invocation's working directory exactly as `.git` is found, so a
-// tool can be invoked from anywhere inside a project; and the user's own
-// `$XDG_CONFIG_HOME/<name>/config.tel` (`~/.config/<name>/config.tel` by default). The
-// repository's file takes priority over the user's. Both feed the `Configurator` cascade an
-// exoskeleton `Setting` reads, after its command-line flag, a `<NAME>_`-prefixed environment
-// variable and a `<name>.`-prefixed system property.
-//
-// The SCHEMA of a `config.tel` is the settings themselves: each `Setting`'s camelCase name
-// maps to a kebab-case TEL keyword (the same derivation as its `--flag`). Three value rules:
-//
-//   classpath out/tests.jar     # a keyword with an atom: the setting's value is that atom
-//   fail-fast                   # a bare keyword (a TEL flag): reads as `true`
-//   classpath out/util.jar      # a REPEATED keyword: the atoms join with ':', so a multi-entry
-//                               # classpath is written one entry per line
-//
-// Two keywords are read by `Tool` itself, for a tool with a `web` front-end: `port` is the
-// port it serves on, and a bare `serve` asks for the front-end to be launched when the daemon
-// starts, so that it is simply there, for as long as the daemon lives, without a `serve`
-// command ever being run. A third, `no-upgrade-check`, turns off the daily check for a newer
-// release (below).
-//
-// UPGRADES. Once a day, in the background of the daemon, a released tool fetches the manifest of
-// its newest release (`Release`). When that is newer than the running build, the `upgrade`
-// subcommand is offered by tab-completion; it is accepted at any time, and fails with
-// `NoUpgrade` when there is nothing newer. `upgrade` downloads the executable for this platform,
-// checks its digest, and stages it for the launcher (`Upgrade.stage`), which verifies its
-// signature against the key in the RUNNING executable and swaps it in at the start of the next
-// invocation — so the daemon never replaces itself, and the launcher's verdict is read, reported
-// once, and acknowledged by the next invocation (`report`). A development build, whose version
-// is not a release's, never checks.
-case class Tool
-  ( name: Text, prose: Text, web: Optional[Tool.Web] = Unset, services: List[Tool.Service] = Nil ):
-
-  // Every daemon-lifetime service the tool offers: its web front-end, if any, the rest, and the
-  // swarm's own two, which every tool has.
-  def allServices: List[Tool.Service] =
-    web.lay(services) { web => web :: services } + Tool.swarmServices(this)
 
 object Tool:
   // A service the daemon runs for as long as it lives, once a configuration asks for it: a bare
@@ -106,7 +61,9 @@ object Tool:
     def keyword: Text = t"serve"
     def portKeyword: Text = t"port"
     def serve(port: Int)(using Monitor, Probate): Unit
-    def serve(port: Int, settings: Text => Optional[Text])(using Monitor, Probate): Unit = serve(port)
+
+    def serve(port: Int, settings: Text => Optional[Text])(using Monitor, Probate): Unit =
+      serve(port)
 
   // A `Status` must be an `object`, not a `val` (soundness#1811), so that the precise union of
   // an `execute` block's result type documents it in the manpage's EXIT STATUS section.
@@ -127,14 +84,20 @@ object Tool:
     // `upgrade` is always accepted, but SUGGESTED only while a newer release is known: the
     // hidden twin is what `standard` matches against otherwise (`upgradeCommand`).
     val Upgrade = Subcommand("upgrade", "replace this executable with the newest release")
+
     val HiddenUpgrade =
       Subcommand("upgrade", "replace this executable with the newest release", hidden = true)
+
     val Version = Flag[Unit]("version", false, List('v'), "show the version")
     val Force = Flag[Unit]("force", false, List('f'), "overwrite an installed manpage")
 
     // The swarm every tool's daemon is a node of (`Swarm`), and the subcommands of `swarm`.
-    val Swarm = Subcommand("swarm", "see the other Pyrocosm tools running, here and on other machines")
-    val Invite = Subcommand("invite", "invite another machine to join this one's swarm, in one word")
+    val Swarm =
+      Subcommand("swarm", "see the other Pyrocosm tools running, here and on other machines")
+
+    val Invite =
+      Subcommand("invite", "invite another machine to join this one's swarm, in one word")
+
     val Join = Subcommand("join", "accept another machine's invitation, and stay linked to it")
     val Listen = Subcommand("listen", "accept other machines, as this machine's gateway")
     val Connect = Subcommand("connect", "keep a link to a configured machine open")
@@ -150,14 +113,16 @@ object Tool:
     // How long an invitation may be accepted for: `--expires 30m`, `2h`, `1d`; an hour unless
     // said otherwise.
     val Expires =
-      Setting[Text](t"inviteExpiry", t"how long the invitation may be accepted for, as 30m, 2h or 1d")
+      Setting[Text]
+        ( t"inviteExpiry", t"how long the invitation may be accepted for, as 30m, 2h or 1d" )
 
     val Follow =
       Flag[Unit]("follow", false, proscenium.List('f'), "keep showing events until Ctrl+C")
 
     // The least a logged event must matter for `swarm log` to show it.
     val Threshold =
-      Setting[Text](t"logLevel", t"show only events at this level or above: fine, info, warn or fail")
+      Setting[Text]
+        ( t"logLevel", t"show only events at this level or above: fine, info, warn or fail" )
 
     // The port this machine accepts other machines on: `--port` or `-p` on the command line,
     // and `swarm-port` in a config file, since plain `port` is the web front-end's.
@@ -194,7 +159,7 @@ object Tool:
   // a single tactic would be captured by both the path-reader given and the TEL aggregator,
   // which separation checking rejects as overlapping hidden capabilities.
   private def parse(file: Path on Linux): Optional[Tel] =
-    safely(file.read[Data]).let { data => safely(data.read[Tel]) }
+    safely(file.read[Data]).let: data => safely(data.read[Tel])
 
   // The parsed document at `file`, freshly stat-checked on every call: one `stat` yields both
   // the modification time and the size, so the change check costs a single filesystem
@@ -240,6 +205,7 @@ object Tool:
   // Reads (and so registers) a setting, for the same reason.
   private def settingValue(setting: Setting of Text)(using Cli, Interpreter, Configurator)
   :   Optional[Text] =
+
     setting()
 
   // The ports of the services launched in this daemon, by tool name and keyword, for the
@@ -255,7 +221,9 @@ object Tool:
     while iterator.hasNext do
       val entry = iterator.next.nn
       val key: Text = entry.getKey.nn
-      if key.starts(prefix) then found = pyrocosm.Service(key.skip(prefix.length), entry.getValue.nn) :: found
+
+      if key.starts(prefix)
+      then found = pyrocosm.Service(key.skip(prefix.length), entry.getValue.nn) :: found
 
     List(found.reverse*)
 
@@ -270,7 +238,6 @@ object Tool:
     def port: Int = Wire.port
 
     @scala.caps.unsafe.untrackedCaptures
-    
     private var stopped: Optional[Promise[Unit]] = Unset
 
     def serve(number: Int, settings: Text => Optional[Text])(using Monitor, Probate): Unit =
@@ -291,7 +258,6 @@ object Tool:
     def port: Int = 0
 
     @scala.caps.unsafe.untrackedCaptures
-    
     private var stopped: Optional[Promise[Unit]] = Unset
 
     // A service has no invocation, and so no project: the machines are those the user's own
@@ -302,8 +268,10 @@ object Tool:
       val names: List[Text] = settings(t"connect").lay(Nil: List[Text])(_.cut(t":"))
       val waiting: Promise[Unit] = Promise()
       stopped = waiting
+
       Swarm.of(tool.name).let: swarm =>
         known.filter { machine => names.has(machine.name) }.each: machine => swarm.connect(machine)
+
       safely(waiting.attend())
 
     def stop(): Unit = stopped.let(_.offer(()))
@@ -449,8 +417,8 @@ object Tool:
     // `Cli` and `Resident` that are also passed here, which separation checking (on in
     // the tools' builds) rejects. The flags are read through `present`, below, and never here.
     inline def standard(inline dispatch: Configurator ?=> Execution)
-       (using cli: Cli, service: Resident, monitor: Monitor, environment: Environment)
-       (using Interpreter)
+      ( using cli: Cli, service: Resident, monitor: Monitor, environment: Environment )
+      ( using Interpreter )
     :   Execution =
 
       val directory: Text = cli.workingDirectory.directory()
@@ -491,47 +459,56 @@ object Tool:
             // The `swarm` subcommands: each arm reads what it needs through the non-inline
             // helpers and hands the work to `Swarming`, so that the inlined dispatch stays small.
             case Tool.ui.Swarm() :: Tool.ui.Invite() :: _ =>
-              val port: Int = Tool.settingValue(Tool.ui.SwarmPort).let { text => safely(text.as[Int]) }.or(Wire.port)
+              val port: Int =
+                Tool.settingValue(Tool.ui.SwarmPort).let: text => safely(text.as[Int])
+                . or(Wire.port)
+
               val token: Optional[Text] = configurator.read(t"swarmToken")
               val expires: Optional[Text] = Tool.settingValue(Tool.ui.Expires)
               execute(tool.swarmInvite(port, token, expires))
 
             case Tool.ui.Swarm() :: Tool.ui.Join() :: rest =>
-              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              val words: List[Text] = rest.map: (argument: Argument) => argument()
               execute(tool.swarmJoin(words))
 
             case Tool.ui.Swarm() :: Tool.ui.Listen() :: _ =>
-              val port: Int = Tool.settingValue(Tool.ui.SwarmPort).let { text => safely(text.as[Int]) }.or(Wire.port)
+              val port: Int =
+                Tool.settingValue(Tool.ui.SwarmPort).let: text => safely(text.as[Int])
+                . or(Wire.port)
+
               val token: Optional[Text] = configurator.read(t"swarmToken")
               execute(tool.swarmListen(port, token))
 
             case Tool.ui.Swarm() :: Tool.ui.Connect() :: rest =>
               val known: List[Machine] = Swarming.machines(tool, directory)
               Tool.suggestMachines(rest, known)
-              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              val words: List[Text] = rest.map: (argument: Argument) => argument()
               execute(tool.swarmConnect(words, known))
 
             case Tool.ui.Swarm() :: Tool.ui.Disconnect() :: rest =>
               val known: List[Machine] = Swarming.machines(tool, directory)
               Tool.suggestMachines(rest, known)
-              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              val words: List[Text] = rest.map: (argument: Argument) => argument()
               execute(tool.swarmDisconnect(words))
 
             case Tool.ui.Swarm() :: Tool.ui.Ping() :: rest =>
               val known: List[Machine] = Swarming.machines(tool, directory)
               Tool.suggestMachines(rest, known)
-              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              val words: List[Text] = rest.map: (argument: Argument) => argument()
               execute(tool.swarmPing(words, known))
 
             case Tool.ui.Swarm() :: Tool.ui.Identity() :: _ =>
-              val port: Int = Tool.settingValue(Tool.ui.SwarmPort).let { text => safely(text.as[Int]) }.or(Wire.port)
+              val port: Int =
+                Tool.settingValue(Tool.ui.SwarmPort).let: text => safely(text.as[Int])
+                . or(Wire.port)
+
               execute(tool.swarmIdentity(port))
 
             case Tool.ui.Swarm() :: Tool.ui.Peers() :: _ =>
               execute(tool.swarmPeers())
 
             case Tool.ui.Swarm() :: Tool.ui.Revoke() :: rest =>
-              val words: List[Text] = rest.map { (argument: Argument) => argument() }
+              val words: List[Text] = rest.map: (argument: Argument) => argument()
               execute(tool.swarmRevoke(words))
 
             case Tool.ui.Swarm() :: Tool.ui.Log() :: _ =>
@@ -555,9 +532,12 @@ object Tool:
                     case _: Invocation => tool.refresh(force = true)
                     case _             => ()
 
+                  // The release is tested for by type, and `Unset` falls through to the
+                  // default case: a value pattern for `Unset` is not seen, under
+                  // `-Ycheck-all-patmat`, to cover the opaque type `Unset`.
                   tool.available match
-                    case Unset             => execute(tool.noUpgrade())
-                    case release: Release  => execute(tool.stage(release))
+                    case release: Release => execute(tool.stage(release))
+                    case _                => execute(tool.noUpgrade())
 
                 case _ =>
                   dispatch
@@ -571,7 +551,7 @@ object Tool:
     // task runs under the daemon's own monitor, which the `cli` block supplies, so it outlives
     // the client that happened to start it.
     private def launch()
-       (using cli: Cli, monitor: Monitor, configurator: Configurator, environment: Environment)
+      ( using cli: Cli, monitor: Monitor, configurator: Configurator, environment: Environment )
     :   Unit =
 
       cli match
@@ -583,7 +563,12 @@ object Tool:
           // services this daemon has launched. The leaf starts a hub again should the hub go.
           Presence.shared.prefix() = t"/${tool.name}"
           Hubs.ensure(tool.name, tool.version)
-          Swarm.start(tool.name, tool.version, () => Tool.offered(tool), revive = () => Hubs.ensure(tool.name, tool.version))
+
+          Swarm.start
+            ( tool.name,
+              tool.version,
+              () => Tool.offered(tool),
+              revive = () => Hubs.ensure(tool.name, tool.version) )
 
           tool.allServices.each: (service: Service) =>
             val wanted: Boolean = configurator.read(service.keyword).present
@@ -592,14 +577,14 @@ object Tool:
             if wanted && Tool.serving.putIfAbsent(key, service) == null
             then
               val port: Int =
-                configurator.read(service.portKeyword).let { text => safely(text.as[Int]) }
+                configurator.read(service.portKeyword).let: text => safely(text.as[Int])
                 . or(service.port)
 
               // The task outlives the invocation whose configurator this reads through, and a
               // task may retain only what is durable, so the reader is vouched pure here: a
               // setting is read from the daemon's configuration, which outlives every client.
               val settings: Text -> Optional[Text] =
-                scala.caps.unsafe.unsafeAssumePure((name: Text) => configurator.read(name))
+                scala.caps.unsafe.unsafeAssumePure: (name: Text) => configurator.read(name)
 
               Tool.ports.put(key, port)
               async(service.serve(port, settings))
@@ -610,7 +595,7 @@ object Tool:
     // Runs `service` interactively from an invocation (`<tool> serve`, `<tool> listen`), unless
     // the daemon already runs it, in which case nothing more is needed; returns when it stops.
     def run(service: Service, port: Int)
-       (using monitor: Monitor, probate: Probate, configurator: Configurator)
+      ( using monitor: Monitor, probate: Probate, configurator: Configurator )
     :   Unit =
 
       val key: Text = Text(s"${tool.name.s}/${service.keyword.s}")
@@ -618,6 +603,7 @@ object Tool:
 
       if Tool.serving.putIfAbsent(key, service) == null then
         Tool.ports.put(key, port)
+
         try service.serve(port, settings) finally
           Tool.serving.remove(key)
           Tool.ports.remove(key)
@@ -627,7 +613,7 @@ object Tool:
     // so it outlives the invocation that started it, and it never raises: a failed check leaves
     // the last known release in place.
     private def check()
-       (using monitor: Monitor, configurator: Configurator, environment: Environment)
+      ( using monitor: Monitor, configurator: Configurator, environment: Environment )
     :   Unit =
 
       val wanted: Boolean =
@@ -645,7 +631,7 @@ object Tool:
       safely(Xdg.cacheHome[Path on Linux] / Name[Linux](tool.name))
 
     private def manifestCache(using Environment): Optional[Path on Linux] =
-      tool.cacheDirectory.let { directory => safely(directory / Name[Linux](t"upgrade.tsv")) }
+      tool.cacheDirectory.let: directory => safely(directory / Name[Linux](t"upgrade.tsv"))
 
     // The newest release, from the cache if it is fresh enough and `force` is not set, and
     // otherwise fetched (and cached). Whatever is learned is remembered for `available`; `Unset`
@@ -657,6 +643,7 @@ object Tool:
         if force then Unset else cache.let: file =>
           safely(summon[FilesystemBackend on Linux].stat(file, true)).let: stat =>
             val age: Long = java.lang.System.currentTimeMillis() - stat.modified
+
             if age < Tool.checkInterval then safely(file.read[Text]).let(Release.parse(_))
             else Unset
 
@@ -669,8 +656,7 @@ object Tool:
                 if !directory.existent() then directory.create[Directory](CreateFlag.Parents)
                 (directory / Name[Linux](t"upgrade.tsv")).write(text)
 
-      release.let: release =>
-        Tool.releases.put(tool.name, release)
+      release.let: release => Tool.releases.put(tool.name, release)
 
       release
 
@@ -681,8 +667,7 @@ object Tool:
         val newer: Boolean =
           if resident.buildId > 0 then release.build > resident.buildId
           else
-            tool.releaseVersion.let: current =>
-              safely(release.version.as[Semver]).let(current < _)
+            tool.releaseVersion.let: current => safely(release.version.as[Semver]).let(current < _)
             . or(false)
 
         if newer then release else Unset
@@ -741,31 +726,30 @@ object Tool:
         val platform: Optional[Text] = Release.platform
         val executable: Optional[Release.Executable] = platform.let(release.executable(_))
 
-        executable match
-          case Unset =>
-            Out.println(t"${tool.name} ${release.version} has no executable for this platform")
-            Tool.UpgradeFailed
+        def failed(message: Text): Tool.UpgradeFailed.type =
+          Out.println(message)
+          Tool.UpgradeFailed
 
-          case executable: Release.Executable =>
-            Out.println(t"Downloading ${tool.name} ${release.version} for ${platform.or(t"?")}...")
+        val missing: Text = t"${tool.name} ${release.version} has no executable for this platform"
 
-            Release.download(executable) match
-              case Unset =>
-                Out.println(t"The download failed, or did not have the digest the release promised")
+        executable.lay[Tool.UpgradeFailed.type | Exit](failed(missing)): executable =>
+          Out.println(t"Downloading ${tool.name} ${release.version} for ${platform.or(t"?")}...")
+
+          val corrupt: Text =
+            t"The download failed, or did not have the digest the release promised"
+
+          Release.download(executable).lay[Tool.UpgradeFailed.type | Exit](failed(corrupt)): data =>
+            recover:
+              case error: Upgrade.Error =>
+                Out.println(t"The upgrade could not be staged: ${error.message}")
                 Tool.UpgradeFailed
 
-              case data: Data =>
-                recover:
-                  case error: Upgrade.Error =>
-                    Out.println(t"The upgrade could not be staged: ${error.message}")
-                    Tool.UpgradeFailed
-
-                . protect:
-                    Upgrade.stage(data)
-                    val name: Text = tool.name
-                    val version: Text = release.version
-                    Out.println(t"$name $version is staged, and takes effect when $name next runs")
-                    Exit.Ok
+            . protect:
+                Upgrade.stage(data)
+                val name: Text = tool.name
+                val version: Text = release.version
+                Out.println(t"$name $version is staged, and takes effect when $name next runs")
+                Exit.Ok
 
     private def showVersion()(using invocation: Invocation): Exit =
       given Stdio = invocation.stdio
@@ -773,7 +757,10 @@ object Tool:
       Exit.Ok
 
     private def about(directory: Text)
-       (using invocation: Invocation, service: Resident, environment: Environment, monitor: Monitor)
+      ( using invocation:  Invocation,
+              service:     Resident,
+              environment: Environment,
+              monitor:     Monitor )
     :   Exit =
 
       given Stdio = invocation.stdio
@@ -782,6 +769,7 @@ object Tool:
 
       val user: Text = tool.userFile.let: file =>
         if file.existent() then file.encode else t"${file.encode} (absent)"
+
       . or(t"unknown")
 
       val upgrade: Optional[Text] = tool.available.let: release =>
@@ -828,7 +816,8 @@ object Tool:
         swarm.listening.lay(t"no"): port => t"accepting other machines on port ${port.show}"
 
       val hub: Optional[Text] = swarm.let: swarm =>
-        swarm.hub.lay(t"not linked"): node => t"pid ${node.pid.show}, started by version ${node.version}"
+        swarm.hub.lay(t"not linked"): node =>
+          t"pid ${node.pid.show}, started by version ${node.version}"
 
       val details: List[Tool.Fact] =
         Tool.facts
@@ -868,8 +857,8 @@ object Tool:
     // completions installs even when the tool is not yet on the `PATH`, so a freshly-built binary
     // can set itself up before being installed as a command.
     private def install(force: Boolean)
-       (using invocation: Invocation, service: Resident)
-       (using erased permit: Effectful)
+      ( using invocation: Invocation, service: Resident )
+      ( using erased permit: Effectful )
     :   Tool.InstallFailed.type | Exit =
 
       given Stdio = invocation.stdio
@@ -903,7 +892,7 @@ object Tool:
     // The `swarm` subcommands, each a thin wrapper around `Swarming` with the invocation's
     // standard streams in scope.
     private def swarmInvite(port: Int, token: Optional[Text], expires: Optional[Text])
-       (using invocation: Invocation, monitor: Monitor, environment: Environment)
+      ( using invocation: Invocation, monitor: Monitor, environment: Environment )
     :   Swarming.Swarmed =
 
       given Stdio = invocation.stdio
@@ -912,10 +901,11 @@ object Tool:
       if expires.present && lifetime.absent then
         Out.println(t"an expiry is a whole number and a unit: 30m, 2h, 1d")
         Tool.UsageError
-      else Swarming.invite(tool, port, token, lifetime.or(3600.0*Second))
+      else
+        Swarming.invite(tool, port, token, lifetime.or(3600.0*Second))
 
     private def swarmJoin(words: List[Text])
-       (using invocation: Invocation, monitor: Monitor, environment: Environment)
+      ( using invocation: Invocation, monitor: Monitor, environment: Environment )
     :   Swarming.Swarmed =
 
       given Stdio = invocation.stdio
@@ -923,19 +913,20 @@ object Tool:
       words match
         case word :: name :: _ => Swarming.join(tool, word, name)
         case word :: _         => Swarming.join(tool, word, Unset)
-        case _                 =>
+
+        case _ =>
           Out.println(t"Usage: ${tool.name} swarm join <invitation> [name]")
           Tool.UsageError
 
     private def swarmListen(port: Int, token: Optional[Text])
-       (using invocation: Invocation, monitor: Monitor, environment: Environment)
+      ( using invocation: Invocation, monitor: Monitor, environment: Environment )
     :   Swarming.Swarmed =
 
       given Stdio = invocation.stdio
       Swarming.listen(tool, port, token)
 
     private def swarmConnect(words: List[Text], known: List[Machine])
-       (using invocation: Invocation, monitor: Monitor)
+      ( using invocation: Invocation, monitor: Monitor )
     :   Swarming.Connected =
 
       given Stdio = invocation.stdio
@@ -944,7 +935,8 @@ object Tool:
         case name :: _ =>
           known.seek(_.name == name) match
             case machine: Machine => Swarming.connect(tool, machine)
-            case _                =>
+
+            case _ =>
               Out.println(t"no machine named $name is configured")
               Tool.NoMachine
 
@@ -962,7 +954,7 @@ object Tool:
         case _         => Swarming.deafen(tool)
 
     private def swarmPing(words: List[Text], known: List[Machine])
-       (using invocation: Invocation, monitor: Monitor)
+      ( using invocation: Invocation, monitor: Monitor )
     :   Exit | Tool.RemoteFailed.type | Tool.NoMachine.type | Tool.UsageError.type =
 
       given Stdio = invocation.stdio
@@ -971,7 +963,8 @@ object Tool:
         case name :: note =>
           known.seek(_.name == name) match
             case machine: Machine => Swarming.ping(tool, machine, note.join(t" "))
-            case _                =>
+
+            case _ =>
               Out.println(t"no machine named $name is configured")
               Tool.NoMachine
 
@@ -991,19 +984,21 @@ object Tool:
       given Stdio = invocation.stdio
       Swarming.peers(tool)
 
-    private def swarmRevoke(words: List[Text])(using invocation: Invocation, environment: Environment)
+    private def swarmRevoke(words: List[Text])
+      ( using invocation: Invocation, environment: Environment )
     :   Swarming.Swarmed =
 
       given Stdio = invocation.stdio
 
       words match
         case name :: _ => Swarming.revoke(tool, name)
-        case _         =>
+
+        case _ =>
           Out.println(t"Usage: ${tool.name} swarm revoke <name>")
           Tool.UsageError
 
     private def swarmLog(follow: Boolean, level: Level)
-       (using invocation: Invocation, resident: Resident, monitor: Monitor)
+      ( using invocation: Invocation, resident: Resident, monitor: Monitor )
     :   Exit =
 
       given Stdio = invocation.stdio
@@ -1028,3 +1023,49 @@ object Tool:
       Out.println(t"${tool.name}: stopping the daemon")
       service.shutdown()
       Exit.Ok
+
+// A command-line tool built on Pyrocosm, as its daemon knows it: the command's name, which is
+// also the name of its configuration directories, the prose that opens its manpage, and the
+// web front-end it can serve, if it has one. There is one `Tool` per application, and its
+// `standard` method gives the application the subcommands every Pyrocosm tool shares —
+// `about`, `install`, `upgrade`, `quit` and `--version` — and the configuration files every tool
+// reads, without touching how the application defines its own subcommands and flags.
+//
+// Configuration comes from two TEL files: the repository's `.pyrocosm/<name>/config.tel`,
+// found by walking up from the invocation's working directory exactly as `.git` is found, so a
+// tool can be invoked from anywhere inside a project; and the user's own
+// `$XDG_CONFIG_HOME/<name>/config.tel` (`~/.config/<name>/config.tel` by default). The
+// repository's file takes priority over the user's. Both feed the `Configurator` cascade an
+// exoskeleton `Setting` reads, after its command-line flag, a `<NAME>_`-prefixed environment
+// variable and a `<name>.`-prefixed system property.
+//
+// The SCHEMA of a `config.tel` is the settings themselves: each `Setting`'s camelCase name
+// maps to a kebab-case TEL keyword (the same derivation as its `--flag`). Three value rules:
+//
+//   classpath out/tests.jar     # a keyword with an atom: the setting's value is that atom
+//   fail-fast                   # a bare keyword (a TEL flag): reads as `true`
+//   classpath out/util.jar      # a REPEATED keyword: the atoms join with ':', so a multi-entry
+//                               # classpath is written one entry per line
+//
+// Two keywords are read by `Tool` itself, for a tool with a `web` front-end: `port` is the
+// port it serves on, and a bare `serve` asks for the front-end to be launched when the daemon
+// starts, so that it is simply there, for as long as the daemon lives, without a `serve`
+// command ever being run. A third, `no-upgrade-check`, turns off the daily check for a newer
+// release (below).
+//
+// UPGRADES. Once a day, in the background of the daemon, a released tool fetches the manifest of
+// its newest release (`Release`). When that is newer than the running build, the `upgrade`
+// subcommand is offered by tab-completion; it is accepted at any time, and fails with
+// `NoUpgrade` when there is nothing newer. `upgrade` downloads the executable for this platform,
+// checks its digest, and stages it for the launcher (`Upgrade.stage`), which verifies its
+// signature against the key in the RUNNING executable and swaps it in at the start of the next
+// invocation — so the daemon never replaces itself, and the launcher's verdict is read, reported
+// once, and acknowledged by the next invocation (`report`). A development build, whose version
+// is not a release's, never checks.
+case class Tool
+  ( name: Text, prose: Text, web: Optional[Tool.Web] = Unset, services: List[Tool.Service] = Nil ):
+
+  // Every daemon-lifetime service the tool offers: its web front-end, if any, the rest, and the
+  // swarm's own two, which every tool has.
+  def allServices: List[Tool.Service] =
+    web.lay(services) { web => web :: services } + Tool.swarmServices(this)

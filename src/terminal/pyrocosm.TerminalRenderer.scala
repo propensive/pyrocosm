@@ -27,18 +27,17 @@ package pyrocosm
 // member declared in another file.
 import soundness.{Standing as _, Step as _, Token as _, *}
 
-import dysasymptotics.{linearAccess, linearSize}
-
-import sortingAlgorithms.timsort
 import columnAttenuation.ignoreAttenuation
-import laneDagStyles.boxDrawingLaneDagStyle
-import treeStyles.roundedTreeStyle
-import processions.checklistProcession
-import sparklines.blockSparkline
-import timers.compactElapsed
-import monotonous.alphabets.base64Standard
+import dysasymptotics.{linearAccess, linearSize}
 import hallucination.allRasterFormats
+import laneDagStyles.boxDrawingLaneDagStyle
+import monotonous.alphabets.base64Standard
+import processions.checklistProcession
+import sortingAlgorithms.timsort
+import sparklines.blockSparkline
 import teletypeables.graphicalTeletype
+import timers.compactElapsed
+import treeStyles.roundedTreeStyle
 
 // The static half of the terminal frontend: phrasing to a styled line, and a block to styled
 // lines at a width. Everything effectful (repainting, focus, scrolling) is in the fixtures; this
@@ -49,7 +48,8 @@ object TerminalRenderer:
   // same design as Ultimatum's `brailleRingSpinner`, added there alongside this and defined
   // here until the release carrying it; the ASCII line is its fallback.
   private[pyrocosm] def ring(using Gauging): Fraction is Gaugeable =
-    ultimatum.Spinner.each(t"⣸⢹⠻⠟⡏⣇⣦⣴", 80, Gaugeable.Glyphs.Unicode, ultimatum.Spinner.each(t"-\\|/", 130, Gaugeable.Glyphs.Ascii)).gaugeable
+    val ascii = ultimatum.Spinner.each(t"-\\|/", 130, Gaugeable.Glyphs.Ascii)
+    ultimatum.Spinner.each(t"⣸⢹⠻⠟⡏⣇⣦⣴", 80, Gaugeable.Glyphs.Unicode, ascii).gaugeable
 
   // The columnars fume's tables use: `Stretch` absorbs the spare width so a table spans the
   // line; `Rigid` never shrinks, so figures never wrap.
@@ -108,7 +108,10 @@ object TerminalRenderer:
 // but for a paragraph's last line and any line whose slack would open rivers; off by default,
 // since a log or a board reads better ragged.
 // The `purview` is the reader's: a qualified name's imported prefix is elided, as the web does.
-class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val justify: Boolean = false, val purview: Purview = Purview())
+class TerminalRenderer
+  ( val theme:   TerminalTheme = TerminalTheme.default,
+    val justify: Boolean       = false,
+    val purview: Purview       = Purview() )
   ( using metric:      Text is Measurable,
           hyphenation: Hyphenation,
           tableStyle:  TableStyle,
@@ -129,7 +132,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
   private def faint(text: Teletype): Teletype = tint(theme.muted)(text)
 
   private def joined(parts: List[Teletype]): Teletype =
-    parts.fold(e"") { (joined: Teletype, part: Teletype) => joined.append(part) }
+    parts.fold(e""): (joined: Teletype, part: Teletype) => joined.append(part)
 
   def blank: Teletype = e""
 
@@ -149,7 +152,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     case Inline.Emphasis(content)     => e"$Italic(${phrase(content)})"
     case Inline.Strong(content)       => bold(phrase(content))
     case Inline.Toned(tone, content)  => toned(tone)(phrase(content))
-    case Inline.Snippet(_, tokens0)      => tokens(tokens0)
+    case Inline.Snippet(_, tokens0)   => tokens(tokens0)
     case Inline.Keystroke(keypress)   => bold(tint(theme.key)(Teletype(keypress.show)))
     case Inline.Reference(id)         => tint(theme.reference)(Teletype(id))
     case Inline.Break()               => Teletype(t"\n")
@@ -157,10 +160,12 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     case Inline.Icon(_, _)            => blank   // a terminal has no images; `plain` says the alt
     case Inline.Import(_, _)          => blank   // nothing to click, and no purview to keep
     case Inline.Bookmark(_, _)        => blank
-    case Inline.Annotated(content, _) => phrase(content)   // a terminal has no hover; the note is for the page
+    // A terminal has no hover; the note is for the page.
+    case Inline.Annotated(content, _) => phrase(content)
 
     case Inline.Link(destination, content) =>
       val text = e"$Underline(${phrase(content)})"
+
       destination match
         case Inline.Destination.External(_)  => tint(theme.link)(text)
         case Inline.Destination.Internal(_)  => tint(theme.tone(Tone.Accent))(text)
@@ -184,7 +189,8 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     ( blocks: List[Block], width: Int, tick: Tick = Tick.zero, selected: Optional[Action] = Unset )
   :   List[Teletype] =
 
-    val rendered: List[List[Teletype]] = blocks.map { (block0: Block) => block(block0, width, tick, selected) }
+    val rendered: List[List[Teletype]] =
+      blocks.map: (block0: Block) => block(block0, width, tick, selected)
 
     rendered.indexed.bind: (lines: List[Teletype], index: Ordinal) =>
       val separator: List[Teletype] = if index.n0 == 0 then Nil else List(blank)
@@ -206,6 +212,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
     (current.reverse :: done).reverse.bind: (line: List[Inline]) =>
       val rows: List[Teletype] = Flow.wrap(phrase(line), width.max(1)).to[List]
+
       if !justify then rows else
         rows.indexed.map: (row: Teletype, index: Ordinal) =>
           if index.n0 == rows.size - 1 then row else justified(row, width)
@@ -225,10 +232,14 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       words.indexed.bind: (word: Teletype, index: Ordinal) =>
         if index.n0 == gaps then List(word)
         else List(word, Teletype(t" "*(1 + base + (if index.n0 < extra then 1 else 0))))
+
       . fold(blank)(_ + _)
 
-  private def indented(lines: List[Teletype], prefix: Teletype, continuation: Teletype): List[Teletype] =
-    lines.indexed.map { (line: Teletype, index: Ordinal) => (if index.n0 == 0 then prefix else continuation).append(line) }
+  private def indented(lines: List[Teletype], prefix: Teletype, continuation: Teletype)
+  :   List[Teletype] =
+
+    lines.indexed.map: (line: Teletype, index: Ordinal) =>
+      (if index.n0 == 0 then prefix else continuation).append(line)
 
   // A data: URI's image as lines of half-block glyphs, one column per pixel, cropped to the
   // width (a terminal cannot shrink an image; the rows are not cropped, the terminal scrolls).
@@ -254,13 +265,14 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
       case Block.Heading(level, content, _) =>
         val text = phrase(content)
+
         if level <= 1 then List(bold(e"$Underline($text)"))
         else if level == 2 then List(bold(text))
         else List(bold(faint(text)))
 
       case Block.Listing(ordered, items) =>
         val marks: List[Text] =
-          if ordered then items.indexed.map { (_, index) => t"${index.n1}. " }
+          if ordered then items.indexed.map: (_, index) => t"${index.n1}. "
           else items.map { (_: Block.Item) => t"${glyph(Glyph.Bullet)} " }
 
         val indent = marks.map(_.length).maximum.or(2)
@@ -274,14 +286,16 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
       case Block.Quotation(content) =>
         val bar = faint(Teletype(if glyphs == Gaugeable.Glyphs.Ascii then t"| " else t"▎ "))
-        blocks(content, width - 2, tick, selected).map { (line: Teletype) => bar.append(line) }
+        blocks(content, width - 2, tick, selected).map: (line: Teletype) => bar.append(line)
 
       case Block.Rule(side) =>
         val ascii = glyphs == Gaugeable.Glyphs.Ascii
+
         val rule = side match
           case Block.Side.Above   => if ascii then t"_" else t"⎽"
           case Block.Side.Below   => if ascii then t"-" else t"⎺"
           case Block.Side.Between => if ascii then t"-" else t"─"
+
         List(faint(Teletype(rule*width)))
 
       // An animated block is its slides in sequence, since a terminal cannot step them: each
@@ -293,10 +307,14 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
           animation.slides.indexed.bind: (slide: Block.Slide, index: Ordinal) =>
             val rows: List[Block.Line] =
               animation.lines(index.n0).map: (atoms: List[Block.Atom]) =>
-                Block.Line(atoms.map { (atom: Block.Atom) => Token(atom.text, atom.accent, atom.role) })
+                Block.Line:
+                  atoms.map: (atom: Block.Atom) => Token(atom.text, atom.accent, atom.role)
 
             val place: Teletype = faint(Teletype(t"step ${(index.n0 + 1).show} of ${count.show}"))
-            val heading: Teletype = if slide.label.nil then place else e"$place  ${bold(phrase(slide.label))}"
+
+            val heading: Teletype =
+              if slide.label.nil then place else e"$place  ${bold(phrase(slide.label))}"
+
             val separator: List[Teletype] = if index.n0 == 0 then Nil else List(blank)
             separator + (heading :: code(rows, slide.notes, Unset, width))
 
@@ -305,7 +323,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
       case Block.Record(entries, title) =>
         val keyWidth = entries.map(_.key).map(phrase).map(_.length).maximum.or(0)
-        val heading = title.lay(Nil: List[Teletype]) { title => List(bold(phrase(title))) }
+        val heading = title.lay(Nil: List[Teletype]): title => List(bold(phrase(title)))
 
         val body = entries.bind: (entry: Block.Entry) =>
           val key = bold(phrase(entry.key).pad(keyWidth))
@@ -316,8 +334,12 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
       case Block.Notice(tone, title, content) =>
         val bar = toned(tone)(Teletype(if glyphs == Gaugeable.Glyphs.Ascii then t"| " else t"▌ "))
-        val heading = title.lay(Nil: List[Teletype]) { title => List(bar.append(bold(toned(tone)(phrase(title))))) }
-        heading + blocks(content, width - 2, tick, selected).map { (line: Teletype) => bar.append(line) }
+
+        val heading = title.lay(Nil: List[Teletype]): title =>
+          List(bar.append(bold(toned(tone)(phrase(title)))))
+
+        heading +
+          blocks(content, width - 2, tick, selected).map: (line: Teletype) => bar.append(line)
 
       // A diagnostic stands behind a bar in its tone, as a notice does: a headline naming the
       // place and the severity, in the convention of a compiler's own report, then its
@@ -329,9 +351,12 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
         val headline: Teletype =
           location.lay(e"$bar$mark $word"): (location: Block.Location) =>
-            e"$bar$mark ${bold(tint(theme.reference)(Teletype(location.text)))}${faint(Teletype(t":"))} $word"
+            val place = bold(tint(theme.reference)(Teletype(location.text)))
+            e"$bar$mark $place${faint(Teletype(t":"))} $word"
 
-        headline :: blocks(message + excerpt + detail, width - 2, tick, selected).map { (line: Teletype) => bar.append(line) }
+        headline ::
+          blocks(message + excerpt + detail, width - 2, tick, selected).map: (line: Teletype) =>
+            bar.append(line)
 
       case Block.Disclosure(summary, content, open) =>
         val marker =
@@ -339,13 +364,18 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
           else (if open then t"▾ " else t"▸ ")
 
         val head = faint(Teletype(marker)).append(phrase(summary))
-        if open then head :: blocks(content, width - 2, tick, selected).map { (line: Teletype) => Teletype(t"  ").append(line) }
-        else List(head)
+
+        if open then
+          head :: blocks(content, width - 2, tick, selected).map: (line: Teletype) =>
+            Teletype(t"  ").append(line)
+        else
+          List(head)
 
       // An image carried inline (a data: URI) is drawn in colour, two pixel rows per line, or
       // described if it cannot be decoded; one elsewhere is described, with where it is.
       case Block.Image(source, alt) =>
         val described: Teletype = faint(e"$Italic([$alt])")
+
         if source.starts(t"data:") then picture(source, width).or(List(described))
         else List(described.append(faint(Teletype(t" $source"))))
 
@@ -368,7 +398,10 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
         diagram.render(treeLabel(selected))(using style).to[List]
 
       case Block.Graph(vertices, edges) =>
-        safely(LaneDagDiagram(Block.Graph(vertices, edges).dag)).lay(vertices.map { (vertex: Block.Vertex) => vertexLabel(selected)(vertex) }): diagram =>
+        def fallback: List[Teletype] =
+          vertices.map: (vertex: Block.Vertex) => vertexLabel(selected)(vertex)
+
+        safely(LaneDagDiagram(Block.Graph(vertices, edges).dag)).lay(fallback): diagram =>
           val style = boxDrawingLaneDagStyle[Teletype]
           diagram.render(vertexLabel(selected))(using style)
 
@@ -383,7 +416,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
       // A group's members belong together: no blank line between them.
       case Block.Group(content) =>
-        content.bind { (member: Block) => this.block(member, width, tick, selected) }
+        content.bind: (member: Block) => this.block(member, width, tick, selected)
 
       // Captured output, verbatim: every visual row of every line behind a gutter naming the
       // stream (blue for standard output, red for standard error), and wrapped hard at the
@@ -393,7 +426,9 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
         val inner = (width - 2).max(1)
         val lines: List[Text] = text.cut(t"\n")
         val trimmed: List[Text] = if lines.last == t"" then lines.keep(lines.size - 1) else lines
-        trimmed.bind { (line: Text) => hardWrap(Teletype(line), inner).map { (row: Teletype) => gutter.append(row) } }
+
+        trimmed.bind: (line: Text) =>
+          hardWrap(Teletype(line), inner).map: (row: Teletype) => gutter.append(row)
 
   private def treeLabel(selected: Optional[Action])(node: Block.TreeNode): Teletype =
     val label = node.tone.lay(phrase(node.label))(toned(_)(phrase(node.label)))
@@ -441,18 +476,21 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
   // Beneath a line, a row for each caret or captioned note that ends on it: `╱╲` beneath a
   // caret's position, or `‾` under each column a note of width marks, with the caption after
   // it, wrapped to the room that remains and continued beneath its own first word.
-  private def code(lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int], width: Int)
+  private def code
+    ( lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int], width: Int )
   :   List[Teletype] =
 
     val ascii: Boolean = glyphs == Gaugeable.Glyphs.Ascii
-    val digits: Int = start.lay(0) { (first: Int) => (first + lines.size - 1).show.length }
+    val digits: Int = start.lay(0): (first: Int) => (first + lines.size - 1).show.length
     val margin: Int = if start.present then digits + 2 else 0
     val inner: Int = (width - margin).max(1)
     val divider: Text = if ascii then t"|" else t"│"
 
     def gutter(number: Optional[Int]): Teletype =
       if start.absent then blank
-      else faint(Teletype(number.lay(t" "*digits) { (number: Int) => number.show.pad(digits, Rtl) }+divider+t" "))
+      else
+        val label: Text = number.lay(t" "*digits): (number: Int) => number.show.pad(digits, Rtl)
+        faint(Teletype(label+divider+t" "))
 
     def marker(note: Block.Note, index: Int, length: Int): List[Teletype] =
       val range: (Int, Int) = note.range(index, length).or((0, 0))
@@ -471,13 +509,18 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       if note.caption.nil then List(gutter(Unset).append(head)) else
         val lead: Int = pad + marks.length + 1
         val room: Int = (inner - lead).max(8)
-        val caption: List[Teletype] = Flow.wrap(phrase(note.caption), room).to[List].map(toned(tone))
+
+        val caption: List[Teletype] =
+          Flow.wrap(phrase(note.caption), room).to[List].map(toned(tone))
 
         caption.indexed.map: (row: Teletype, index: Ordinal) =>
-          gutter(Unset).append(if index.n0 == 0 then e"$head $row" else Teletype(t" "*lead).append(row))
+          val text: Teletype =
+            if index.n0 == 0 then e"$head $row" else Teletype(t" "*lead).append(row)
+
+          gutter(Unset).append(text)
 
     lines.indexed.bind: (line: Block.Line, index: Ordinal) =>
-      val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
+      val length: Int = line.tokens.fold(0): (total: Int, token: Token) => total + token.text.length
       val rows: List[Teletype] = hardWrap(codeLine(line, notes, index.n0), inner)
 
       val numbered: List[Teletype] =
@@ -485,8 +528,10 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
           gutter(if position.n0 == 0 then start.let(_ + index.n0) else Unset).append(row)
 
       val markers: List[Teletype] =
-        notes.filter { (note: Block.Note) => note.lastLine == index.n0 && (note.caret || !note.caption.nil) }
-        . bind { (note: Block.Note) => marker(note, index.n0, length) }
+        notes.filter: (note: Block.Note) =>
+          note.lastLine == index.n0 && (note.caret || !note.caption.nil)
+
+        . bind: (note: Block.Note) => marker(note, index.n0, length)
 
       numbered + markers
 
@@ -494,11 +539,12 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
   // segments of the notes which touch the line laid over it. A caret marks no segment; it is
   // drawn beneath the line, by `code`.
   def codeLine(line: Block.Line, notes: List[Block.Note], index: Int = 0): Teletype =
-    val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
+    val length: Int = line.tokens.fold(0): (total: Int, token: Token) => total + token.text.length
 
     val ranges: List[(Int, Int, Block.Note.Style)] =
       notes.bind: (note: Block.Note) =>
-        note.range(index, length).lay(Nil) { (range: (Int, Int)) => List((range(0), range(1), note.style)) }
+        note.range(index, length).lay(Nil): (range: (Int, Int)) =>
+          List((range(0), range(1), note.style))
 
     // Each token, cut at the boundaries where the styling may change within it (the ends of
     // the segments that fall inside it), with a running offset into the line.
@@ -507,15 +553,22 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
     line.tokens.each: (token: Token) =>
       val end = offset + token.text.length
-      val ends: List[Int] = ranges.bind { (range: (Int, Int, Block.Note.Style)) => List(range(0), range(1)) }
-      val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
+
+      val ends: List[Int] =
+        ranges.bind: (range: (Int, Int, Block.Note.Style)) => List(range(0), range(1))
+
+      val cuts: List[Int] =
+        (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
 
       cuts.zip(cuts.tail.or(Nil)).each: (from: Int, to: Int) =>
         val text = token.text.s.substring(from - offset, to - offset).nn.tt
         val base = this.token(token.copy(text = text))
 
         val style: Optional[Block.Note.Style] =
-          ranges.seek { (range: (Int, Int, Block.Note.Style)) => range(0) <= from && range(1) >= to && range(0) < range(1) }.let(_(2))
+          ranges.seek: (range: (Int, Int, Block.Note.Style)) =>
+            range(0) <= from && range(1) >= to && range(0) < range(1)
+
+          . let(_(2))
 
         val styled = style match
           case Block.Note.Style.Erroneous => e"$Underline(${toned(Tone.Failure)(base)})"
@@ -553,22 +606,26 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
           ( bold(phrase(column.title)),
             alignment(column),
             sizing = sizing(column),
-            decorate = { (row: Block.Row) => row.tone.let { tone => (line: Teletype) => toned(tone)(line) } } ):
-          row => row.cells.at(index).lay(blank) { cell => phrase(cell.content) }
+            decorate = (row: Block.Row) =>
+              row.tone.let { tone => (line: Teletype) => toned(tone)(line) } ):
+          row => row.cells.at(index).lay(blank): cell => phrase(cell.content)
 
     Scaffold[Block.Row](definitions*)
 
   // A row's cell decorations, one per column: the selection's background when the row is the
   // selected one, else its tone.
-  def rowDecorations(row: Block.Row, columns: Int, selected: Boolean): List[Optional[Teletype -> Teletype]] =
+  def rowDecorations(row: Block.Row, columns: Int, selected: Boolean)
+  :   List[Optional[Teletype -> Teletype]] =
+
     val decoration: Optional[Teletype -> Teletype] =
-      if selected then ((line: Teletype) => e"${Bg(theme.selection)}($line)"): Optional[Teletype -> Teletype]
-      else row.tone.let { tone => (line: Teletype) => toned(tone)(line) }
+      if selected
+      then ((line: Teletype) => e"${Bg(theme.selection)}($line)"): Optional[Teletype -> Teletype]
+      else row.tone.let: tone => (line: Teletype) => toned(tone)(line)
 
     List.fill(columns)(decoration)
 
   def caption(caption: Optional[List[Inline]]): List[Teletype] =
-    caption.lay(Nil: List[Teletype]) { caption => List(faint(e"$Italic(${phrase(caption)})")) }
+    caption.lay(Nil: List[Teletype]): caption => List(faint(e"$Italic(${phrase(caption)})"))
 
   // The whole table: a layout admitting every row, then each row rendered against it — the
   // reference a `TableCache` window must match line for line.
@@ -578,16 +635,22 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
   :   List[Teletype] =
 
     val scaffold0 = scaffold(columns)
-    val phrased: List[(Block.Row, escritoire.Cells[Teletype])] = rows.map { row => (row, scaffold0.cells(row)) }
-    val layout = phrased.fold(scaffold0.layout(width.max(4))) { (layout, pair) => layout.extend(pair(1)) }
+
+    val phrased: List[(Block.Row, escritoire.Cells[Teletype])] =
+      rows.map: row => (row, scaffold0.cells(row))
+
+    val layout =
+      phrased.fold(scaffold0.layout(width.max(4))): (layout, pair) => layout.extend(pair(1))
+
     val count: Int = columns.size
 
     val body: List[Teletype] =
       phrased.bind: (row, cells) =>
-        layout.lines(cells, rowDecorations(row, count, row.action.present && row.action == selected))
+        val chosen: Boolean = row.action.present && row.action == selected
+        layout.lines(cells, rowDecorations(row, count, chosen))
 
-    layout.topRule.let(List(_)).or(Nil) + layout.titleLines + List(layout.titleRule) + body
-      + layout.bottomRule.let(List(_)).or(Nil) + this.caption(caption)
+    layout.topRule.let(List(_)).or(Nil) + layout.titleLines + List(layout.titleRule) + body +
+      layout.bottomRule.let(List(_)).or(Nil) + this.caption(caption)
 
   // A stack trace, laid out as digression's terminal rendering lays one out: a headline naming
   // the exception and its message, then a row per frame—`at`, the class with its last segment
@@ -600,11 +663,15 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
   private def trace(stacks: List[Block.Trace.Stack], width: Int): List[Teletype] =
     val separator = theme.muted
 
-    def accent(index: Int): Chroma = theme.traceAccents.at((index%theme.traceAccents.size.max(1)).z).or(theme.foreground)
+    def accent(index: Int): Chroma =
+      theme.traceAccents.at((index%theme.traceAccents.size.max(1)).z).or(theme.foreground)
 
     def stack(stack: Block.Trace.Stack): List[Teletype] =
       val accents: Map[Text, Int] = Block.Trace.accents(stack)
-      val headline = tint(theme.foreground)(e"$Italic(${stack.component}.$Bold(${stack.className}))")
+
+      val headline =
+        tint(theme.foreground)(e"$Italic(${stack.component}.$Bold(${stack.className}))")
+
       val init = e"$headline: ${phrase(stack.message)}"
 
       // A row is a frame, or one level of inlining beneath it.
@@ -618,7 +685,9 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
         stack.frames.fold((Nil: List[Row], t"", t"")):
           case ((acc, lastClass, lastFile), frame) =>
             val subRows = frame.inlined.map(Row(frame, true, false, _)).reverse
-            (subRows + (Row(frame, frame.owner == lastClass, frame.file == lastFile) :: acc), frame.owner, frame.file)
+            val row = Row(frame, frame.owner == lastClass, frame.file == lastFile)
+            (subRows + (row :: acc), frame.owner, frame.file)
+
         . _1.reverse
 
       val fileWidth: Int =
@@ -629,7 +698,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
       def owner(row: Row): Teletype = row.origin match
         case origin: Block.Trace.Origin =>
-          origin.owner.lay(blank) { owner => tint(theme.subdue(accent(0), 0.85))(Teletype(owner)) }
+          origin.owner.lay(blank): owner => tint(theme.subdue(accent(0), 0.85))(Teletype(owner))
 
         case _ =>
           val frame = row.frame
@@ -638,7 +707,9 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
           if row.sameClass || frame.plumbing
           then tint(theme.subdue(colour, 0.85))(Teletype(t"$prefix$segment"))
-          else e"${tint(theme.subdue(colour, 0.5))(Teletype(prefix))}${bold(tint(colour)(Teletype(segment)))}"
+          else
+            val faded = tint(theme.subdue(colour, 0.5))(Teletype(prefix))
+            e"$faded${bold(tint(colour)(Teletype(segment)))}"
 
       def dot(row: Row): Teletype = row.origin match
         case origin: Block.Trace.Origin =>
@@ -652,19 +723,27 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
           tint(theme.subdue(theme.traceMethod, 0.85))(Teletype(origin.name.or(t"inlined from")))
 
         case _ =>
-          val colour = if row.frame.plumbing then theme.subdue(theme.traceMethod, 0.85) else theme.traceMethod
+          val colour =
+            if row.frame.plumbing then theme.subdue(theme.traceMethod, 0.85) else theme.traceMethod
+
           tint(colour)(Teletype(row.frame.method))
 
       def location(row: Row): Teletype =
         val (file, line, fileColour, lineColour) = row.origin match
           case origin: Block.Trace.Origin =>
-            (origin.file, origin.line.show, theme.subdue(theme.traceFile, 0.5), theme.subdue(theme.traceLine, 0.5))
+            ( origin.file,
+              origin.line.show,
+              theme.subdue(theme.traceFile, 0.5),
+              theme.subdue(theme.traceLine, 0.5) )
 
           case _ =>
-            val fileColour = if row.sameFile then theme.subdue(theme.traceFile, 0.85) else theme.traceFile
+            val fileColour =
+              if row.sameFile then theme.subdue(theme.traceFile, 0.85) else theme.traceFile
+
             (row.frame.file, row.frame.line.let(_.show).or(t""), fileColour, theme.traceLine)
 
-        e"${tint(fileColour)(Teletype(file.pad(fileWidth, Rtl)))}${tint(separator)(Teletype(t":"))}${tint(lineColour)(Teletype(line))}"
+        val path = tint(fileColour)(Teletype(file.pad(fileWidth, Rtl)))
+        e"$path${tint(separator)(Teletype(t":"))}${tint(lineColour)(Teletype(line))}"
 
       def code(row: Row): Teletype =
         val code = row.origin.lay(row.frame.code)(_.code).or(t"")
@@ -695,13 +774,18 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       // A row is words the grid cannot break (a class name, a location), so one wider than the
       // width, once the source column has gone, is wrapped hard as a code line is, rather than
       // clipped.
-      Flow.wrap(init, width.max(1)).to[List] + dataOnly.render.to[List].bind { (row: Teletype) => hardWrap(row, width) }
+      Flow.wrap(init, width.max(1)).to[List] +
+        dataOnly.render.to[List].bind: (row: Teletype) => hardWrap(row, width)
 
     stacks.indexed.bind: (stack0: Block.Trace.Stack, index: Ordinal) =>
-      val prefix: List[Teletype] = if index.n0 == 0 then Nil else List(tint(theme.foreground)(Teletype(t"caused by:")))
+      val prefix: List[Teletype] =
+        if index.n0 == 0 then Nil else List(tint(theme.foreground)(Teletype(t"caused by:")))
+
       prefix + stack(stack0)
 
-  private def chart(kind: Block.Chart.Kind, series: List[Block.Series], width: Int): List[Teletype] =
+  private def chart(kind: Block.Chart.Kind, series: List[Block.Series], width: Int)
+  :   List[Teletype] =
+
     val labelWidth = series.map(_.label).map(phrase).map(_.length).maximum.or(0)
     val room = (width - labelWidth - 2).max(4)
     val most = series.bind(_.values).maximum.or(1.0).max(1e-9)
@@ -712,9 +796,8 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
     kind match
       case Block.Chart.Kind.Sparkline =>
-        series.map { (series0: Block.Series) =>
+        series.map: (series0: Block.Series) =>
           label(series0).append(gaugeLine(series0.values.to[Sequence], room))
-        }
 
       case Block.Chart.Kind.Bars | Block.Chart.Kind.Histogram =>
         val fill = if glyphs == Gaugeable.Glyphs.Ascii then t"#" else t"█"
@@ -722,7 +805,8 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
         series.bind: (series0: Block.Series) =>
           series0.values.indexed.map: (value: Double, index: Ordinal) =>
             val cells = ((value/most)*(room - 8)).toInt.max(if value > 0 then 1 else 0)
-            val bar = series0.tone.lay(toned(Tone.Accent)(Teletype(fill*cells)))(toned(_)(Teletype(fill*cells)))
+            val filled = Teletype(fill*cells)
+            val bar = series0.tone.lay(toned(Tone.Accent)(filled))(toned(_)(filled))
             val prefix = if index.n0 == 0 then label(series0) else Teletype(t" "*(labelWidth + 2))
             prefix.append(bar).append(faint(Teletype(t" ${figure(value)}")))
 
@@ -732,7 +816,8 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
     val text: Optional[Text] = caption.let(Inline.plain(_))
 
     inline def line[status: Gaugeable](value: status): List[Teletype] =
-      text.lay(List(gaugeLine(value, width, tick))) { caption => List(gaugeLine(Captioned(value, caption), width, tick)) }
+      text.lay(List(gaugeLine(value, width, tick))): caption =>
+        List(gaugeLine(Captioned(value, caption), width, tick))
 
     // A bar fills its row, caption and all. Ultimatum's `Captioned` holds the bar to its design's
     // preferred width, so the caption is laid out here instead, the bar taking what it leaves.
@@ -770,7 +855,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
 
       case Status.Steps(steps) =>
         val mapped: Sequence[ultimatum.Step] =
-          steps.map { (step: Step) =>
+          steps.map: (step: Step) =>
             val standing = step.standing match
               case Standing.Pending   => ultimatum.Standing.Pending
               case Standing.Running   => ultimatum.Standing.Running
@@ -780,10 +865,11 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
               case Standing.Skipped   => ultimatum.Standing.Skipped
 
             ultimatum.Step(Inline.plain(step.name), standing, step.detail.let(Inline.plain(_)))
-          } .to[Sequence]
+
+          . to[Sequence]
 
         val rows = gaugeRows(mapped, width, tick)
-        text.lay(rows) { caption => bold(Teletype(caption)) :: rows }
+        text.lay(rows): caption => bold(Teletype(caption)) :: rows
 
   // Plain text, for logs and machine-adjacent output.
   def plain(blocks0: List[Block], width: Int): Text =

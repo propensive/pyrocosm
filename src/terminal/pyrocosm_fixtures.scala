@@ -28,7 +28,6 @@ import scala.caps
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Token as _, *}
 
-
 import dysasymptotics.{linearAccess, linearSize}
 
 // What one running session shares with its fixtures: which fixture was last painted focused
@@ -97,7 +96,8 @@ trait Refreshable extends Fixture:
 // A panel's content, painted from its live cell. Focusable: when the content offers actions
 // (selectable rows, items, tree nodes, vertices), Up and Down move the selection and Enter
 // presses it; otherwise they scroll. Any other key is reported as `Event.Key`.
-class PanelFixture(panel: Panel, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
+class PanelFixture
+  ( panel: Panel, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session )
 extends Focus, Refreshable:
 
   @caps.unsafe.untrackedCaptures
@@ -145,13 +145,21 @@ extends Focus, Refreshable:
   // Segments persist between refreshes and are matched to the new content by position and
   // identity: a table whose rows changed keeps its cache and updates it.
   private enum Segment:
-    case Whole(block: Block, separator: Boolean, lines: List[Teletype], frame: Long, selected: Optional[Action], actionable: Boolean)
+    case Whole
+      ( block:      Block,
+        separator:  Boolean,
+        lines:      List[Teletype],
+        frame:      Long,
+        selected:   Optional[Action],
+        actionable: Boolean )
+
     case Tabular(block: Block.Table, separator: Boolean, cache: TableCache)
 
     def separator: Boolean
+
     def height: Int = this match
       case Whole(_, _, lines, _, _, _) => lines.size
-      case Tabular(_, _, cache)         => cache.height
+      case Tabular(_, _, cache)        => cache.height
 
   @caps.unsafe.untrackedCaptures
   private var segments: List[Segment] = Nil
@@ -173,9 +181,12 @@ extends Focus, Refreshable:
   private def flatten(content: List[Block]): List[(Block, Boolean)] =
     content.indexed.bind: (block, index) =>
       val separator = index.n0 > 0
+
       block match
-        case Block.Group(members) => members.indexed.map { (member, position) => (member, separator && position.n0 == 0) }
-        case other                => List((other, separator))
+        case Block.Group(members) =>
+          members.indexed.map: (member, position) => (member, separator && position.n0 == 0)
+
+        case other => List((other, separator))
 
   private def refresh(width0: Int, focused: Boolean): Unit =
     val content = panel.content()
@@ -183,7 +194,8 @@ extends Focus, Refreshable:
     examine(content)
     val frame: Long = if animated0 then (java.lang.System.nanoTime - started)/80000000L else 0L
     val selected0: Optional[Action] = if focused then selected else Unset
-    val fresh = !content.asInstanceOf[AnyRef].eq(segmented.asInstanceOf[AnyRef]) || width != segmentWidth
+    val unchanged: Boolean = content.asInstanceOf[AnyRef].eq(segmented.asInstanceOf[AnyRef])
+    val fresh = !unchanged || width != segmentWidth
     val moved = frame != segmentFrame || selected0 != segmentSelected
 
     if fresh || moved then
@@ -197,8 +209,12 @@ extends Focus, Refreshable:
           block match
             case table: Block.Table =>
               val cache: TableCache = old match
-                case Segment.Tabular(previousTable, _, cache) if previousTable.columns == table.columns && previousTable.caption == table.caption => cache
-                case _ => TableCache(renderer, table.columns, table.caption)
+                case Segment.Tabular(prior, _, cache)
+                  if prior.columns == table.columns && prior.caption == table.caption =>
+                  cache
+
+                case _ =>
+                  TableCache(renderer, table.columns, table.caption)
 
               cache.update(table.rows, width)
               Segment.Tabular(table, separator, cache)
@@ -206,14 +222,15 @@ extends Focus, Refreshable:
             case other =>
               old match
                 case Segment.Whole(previousBlock, _, lines, oldFrame, oldSelected, actionable)
-                    if previousBlock.eq(other) && width == segmentWidth
-                    && (oldFrame == frame || !Actions.animated(List(other)))
-                    && (oldSelected == selected0 || !actionable) =>
+                  if previousBlock.eq(other) && width == segmentWidth &&
+                    (oldFrame == frame || !Actions.animated(List(other))) &&
+                    (oldSelected == selected0 || !actionable) =>
                   Segment.Whole(other, separator, lines, frame, selected0, actionable)
 
                 case _ =>
                   val actionable = !Actions.of(List(other)).nil
-                  Segment.Whole(other, separator, renderer.block(other, width, tick, selected0), frame, selected0, actionable)
+                  val rendered = renderer.block(other, width, tick, selected0)
+                  Segment.Whole(other, separator, rendered, frame, selected0, actionable)
 
       segmented = content.asInstanceOf[AnyRef]
       segmentWidth = width
@@ -223,10 +240,11 @@ extends Focus, Refreshable:
   private def heading(focused: Boolean): List[Teletype] =
     panel.title.lay(Nil: List[Teletype]): title =>
       val text = renderer.phrase(title)
-      List(if focused then e"$Bold(${Fg(renderer.theme.tone(Tone.Accent))}($text))" else e"$Bold($text)")
+      val accent: Chroma = renderer.theme.tone(Tone.Accent)
+      List(if focused then e"$Bold(${Fg(accent)}($text))" else e"$Bold($text)")
 
   private def total: Int =
-    segments.fold(0) { (sum, segment) => sum + (if segment.separator then 1 else 0) + segment.height }
+    segments.fold(0): (sum, segment) => sum + (if segment.separator then 1 else 0) + segment.height
 
   // The minimum height: the content, for the panels which are short by nature; a few rows for
   // the rest, which scroll, so that a long primary panel does not starve the others.
@@ -235,7 +253,7 @@ extends Focus, Refreshable:
   private def measure0(width: Int): (Int, Int) =
     refresh(width, false)
     val rows = (panel.title.lay(0) { _ => 1 } + total).max(1)
-    val bounded = panel.hints[hints.terminal.MaxRows].lay(rows) { hint => rows.min(hint.rows) }
+    val bounded = panel.hints[hints.terminal.MaxRows].lay(rows): hint => rows.min(hint.rows)
 
     panel.role match
       case Panel.Role.Prompt | Panel.Role.Navigation => (0, bounded)
@@ -269,7 +287,9 @@ extends Focus, Refreshable:
     def slice(lines: List[Teletype], position: Int): Unit =
       val keepFrom = (start - position).max(0)
       val keepUntil = until - position
-      if keepUntil > 0 && keepFrom < lines.size then emit(lines.skip(keepFrom).keep(keepUntil - keepFrom))
+
+      if keepUntil > 0 && keepFrom < lines.size
+      then emit(lines.skip(keepFrom).keep(keepUntil - keepFrom))
 
     slice(head, 0)
     var position = head.size
@@ -283,7 +303,9 @@ extends Focus, Refreshable:
 
       if position < until && position + size > start then segment match
         case Segment.Whole(_, _, lines, _, _, _) => slice(lines, position)
-        case Segment.Tabular(_, _, cache)         => emit(cache.window((start - position).max(0), (until - position).min(size), selected0))
+
+        case Segment.Tabular(_, _, cache) =>
+          emit(cache.window((start - position).max(0), (until - position).min(size), selected0))
 
       position += size
 
@@ -303,7 +325,7 @@ extends Focus, Refreshable:
       else offset = offset.or(0) + 1
 
     case Keypress.Enter =>
-      selected.let { action => dispatch(Event.Pressed(action)) }
+      selected.let: action => dispatch(Event.Pressed(action))
 
     case keypress: Keypress =>
       dispatch(Event.Key(keypress))
@@ -315,13 +337,20 @@ extends Focus, Refreshable:
 // controls; the activities' band of gauges; and an inline transcript, which is `windowed`: it
 // shows the entries not yet committed to the scrollback (the session says how many are), or,
 // while a commit is being painted, exactly the entries being committed.
-class PassiveFixture(content: () => List[Block], renderer: TerminalRenderer, session: Session, windowed: Boolean)
+class PassiveFixture
+  ( content: () => List[Block], renderer: TerminalRenderer, session: Session, windowed: Boolean )
 extends Refreshable:
 
   @caps.unsafe.untrackedCaptures
   private val started: Long = java.lang.System.nanoTime
 
-  private class Rendering(val content: List[Block], val from: Int, val until: Int, val width: Int, val frame: Long, val lines: List[Teletype])
+  private class Rendering
+    ( val content: List[Block],
+      val from:    Int,
+      val until:   Int,
+      val width:   Int,
+      val frame:   Long,
+      val lines:   List[Teletype] )
 
   @caps.unsafe.untrackedCaptures
   private var rendering: Optional[Rendering] = Unset
@@ -332,12 +361,16 @@ extends Refreshable:
     val content = this.content()
     val from = if windowed then session.frozen else 0
     val until = if windowed && session.hiding then session.upto else content.size
-    val frame: Long = if Actions.animated(content) then (java.lang.System.nanoTime - started)/80000000L else 0L
 
-    rendering.let { current =>
-      if current.content == content && current.from == from && current.until == until
-          && current.width == width && current.frame == frame
-      then current.lines else Unset }
+    val frame: Long =
+      if Actions.animated(content) then (java.lang.System.nanoTime - started)/80000000L else 0L
+
+    rendering.let: current =>
+      if current.content == content && current.from == from && current.until == until &&
+        current.width == width && current.frame == frame
+      then current.lines
+      else Unset
+
     . or:
       val window: List[Block] = content.excerpt(from, until)
       val tick = Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
@@ -356,9 +389,11 @@ extends Refreshable:
 
   private def paint(canvas: Board^): Unit =
     canvas.clear()
+
     lines(canvas.width).indexed.each: (line, index) =>
       canvas.move(Prim, index.n0.z)
       canvas.put(line)
+
     canvas.cursor(false)
     canvas.flush()
     painted()
@@ -369,12 +404,15 @@ class TextFixture(lines: List[Teletype]) extends Fixture:
 
   def render(canvas: Board^, focused: Boolean): Unit =
     canvas.clear()
+
     lines.indexed.each: (line, index) =>
       canvas.move(Prim, index.n0.z)
       canvas.put(line)
+
     canvas.flush()
 
-class ButtonFocus(button: Control.Button, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
+class ButtonFocus
+  ( button: Control.Button, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session )
 extends Focus, Refreshable:
 
   private def label: Teletype = e"[ ${renderer.phrase(button.label)} ]"
@@ -388,21 +426,26 @@ extends Focus, Refreshable:
   private def paint(canvas: Board^, focused: Boolean): Unit =
     canvas.clear()
     canvas.move(Prim, Prim)
+
     val text =
       if !button.enabled() then e"${Fg(renderer.theme.muted)}($label)"
       else if focused then e"$Reverse($label)"
       else e"$Bold($label)"
+
     canvas.put(text)
     canvas.cursor(false)
     canvas.flush()
     painted()
 
   def handle(event: Terminal.Event): Unit = event match
-    case Keypress.Enter | Keypress.CharKey(' ') => if button.enabled() then dispatch(Event.Pressed(button.action))
-    case keypress: Keypress                     => dispatch(Event.Key(keypress))
-    case _                                      => ()
+    case Keypress.Enter | Keypress.CharKey(' ') =>
+      if button.enabled() then dispatch(Event.Pressed(button.action))
 
-class ToggleFocus(toggle: Control.Toggle, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
+    case keypress: Keypress => dispatch(Event.Key(keypress))
+    case _                  => ()
+
+class ToggleFocus
+  ( toggle: Control.Toggle, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session )
 extends Focus, Refreshable:
 
   private def line: Teletype =
@@ -431,7 +474,8 @@ extends Focus, Refreshable:
     case keypress: Keypress => dispatch(Event.Key(keypress))
     case _                  => ()
 
-class ChoiceFocus(choice: Control.Choice, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
+class ChoiceFocus
+  ( choice: Control.Choice, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session )
 extends Focus, Refreshable:
 
   private val count: Int = choice.options.size
@@ -444,18 +488,21 @@ extends Focus, Refreshable:
 
   private def paint(canvas: Board^, focused: Boolean): Unit =
     canvas.clear()
+
     choice.options.indexed.each: (option, index) =>
       canvas.move(Prim, index.n0.z)
       val current = index.n0 == choice.current()
       val marker = if !current then t"   " else if focused then t" > " else t" · "
       val line = e"$marker${renderer.phrase(option)}"
       canvas.put(if current && focused then e"$Reverse($line)" else line)
+
     canvas.cursor(false)
     canvas.flush()
     painted()
 
   private def move(delta: Int): Unit =
     val next = (choice.current() + delta).max(0).min(count - 1)
+
     if next != choice.current() then
       choice.current() = next
       dispatch(Event.Chosen(choice.choice, next))
@@ -478,7 +525,8 @@ object CodeField:
     while n < left.length && n < right.length && left.charAt(n) == right.charAt(n) do n += 1
     left.substring(0, n).nn
 
-class CodeField(field: Control.Field, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session)
+class CodeField
+  ( field: Control.Field, renderer: TerminalRenderer, dispatch: Event -> Unit, session: Session )
 extends Focus, Refreshable:
 
   @caps.unsafe.untrackedCaptures
@@ -524,7 +572,9 @@ extends Focus, Refreshable:
   private val maxCompletions: Int = 6
 
   private def decoration: Control.Field.Decoration = field.decoration()
-  private def completions: List[Control.Field.Completion] = if dismissed then Nil else decoration.completions
+
+  private def completions: List[Control.Field.Completion] =
+    if dismissed then Nil else decoration.completions
 
   // The application's prompt, drawn before the first row of the text. Every row of the text
   // starts past it, so a wrapped row or a later line hangs beneath the first, as a REPL's
@@ -567,8 +617,10 @@ extends Focus, Refreshable:
     field.value() = editor.value
 
     field.notification match
-      case Control.Field.Notify.Keystrokes => dispatch(Event.Edited(field.input, editor.value, editor.position, version))
-      case _                               => ()
+      case Control.Field.Notify.Keystrokes =>
+        dispatch(Event.Edited(field.input, editor.value, editor.position, version))
+
+      case _ => ()
 
   // Enter's verdict: the decoration's, when it describes the text as it stands (the
   // application decorates each `Edited` before the next key arrives, so it does); else the
@@ -587,11 +639,13 @@ extends Focus, Refreshable:
   private def atEnd: Boolean = editor.position == editor.value.length
 
   // What a candidate replaces: the whole text, or the identifier before the caret.
-  private def replaced(candidate: Control.Field.Completion): Text = if candidate.whole then editor.value else stem
+  private def replaced(candidate: Control.Field.Completion): Text =
+    if candidate.whole then editor.value else stem
 
   private def ghost: Optional[Text] =
     if !selected then Unset else completions.at(completion.z).let: candidate =>
       val current = replaced(candidate)
+
       if atEnd && candidate.name.starts(current) && candidate.name.length > current.length
       then candidate.name.s.substring(current.length).nn.tt
       else Unset
@@ -608,24 +662,32 @@ extends Focus, Refreshable:
     publish()
 
   private def accept(): Unit =
-    completions.at(completion.z).let { candidate => insert(candidate, candidate.name) }
+    completions.at(completion.z).let: candidate => insert(candidate, candidate.name)
 
   // Tab: a lone candidate is accepted; several first extend the text to their longest common
   // prefix, when that is longer than what they cover, then select the first, then cycle. So
   // `pri` becomes `print`, then Tab walks println, print, printf.
   private def complete(): Unit =
     completions match
-      // No candidates yet: the application hears the Tab and may supply some.
-      case Nil => dispatch(Event.Key(Keypress.Tab))
       case single :: Nil => insert(single, single.name)
+
       case first :: rest =>
-        val prefix: String = rest.fold(first.name.s) { (prefix: String, candidate: Control.Field.Completion) => CodeField.commonPrefix(prefix, candidate.name.s) }
+        val prefix: String =
+          rest.fold(first.name.s): (prefix: String, candidate: Control.Field.Completion) =>
+            CodeField.commonPrefix(prefix, candidate.name.s)
+
         val covered = replaced(first)
-        if prefix.length > covered.length && prefix.startsWith(covered.s) then insert(first, prefix.tt)
+        val extending: Boolean = prefix.length > covered.length && prefix.startsWith(covered.s)
+
+        if extending then insert(first, prefix.tt)
         else if !selected then
           selected = true
           completion = 0
-        else completion = (completion + 1)%completions.size
+        else
+          completion = (completion + 1)%completions.size
+
+      // No candidates yet: the application hears the Tab and may supply some.
+      case _ => dispatch(Event.Key(Keypress.Tab))
 
   override def claimsEscape: Boolean = !completions.nil
 
@@ -635,6 +697,7 @@ extends Focus, Refreshable:
   // while they spell out the text.
   private def tokens: List[Token] =
     val given0: List[Token] = decoration.tokens
+
     if decoration.version == 0 || decoration.version >= version then given0
     else
       log.filter(_(0) > decoration.version).reverse.fold(given0): (tokens, entry) =>
@@ -648,8 +711,8 @@ extends Focus, Refreshable:
     if !covered then value.cut(t"\n").map(Teletype(_)) else
       // The token run as lines, so each token is coloured on its own line, with the
       // decoration's marks (error and warning spans) laid over each as a code block's notes.
-      Block.Line.split(tokens).indexed.map { (line: Block.Line, index: Ordinal) =>
-        renderer.codeLine(line, decoration.marks, index.n0) }
+      Block.Line.split(tokens).indexed.map: (line: Block.Line, index: Ordinal) =>
+        renderer.codeLine(line, decoration.marks, index.n0)
 
   override def claimsTab: Boolean = true
 
@@ -669,9 +732,11 @@ extends Focus, Refreshable:
 
   private def completionLines(width: Int): List[Teletype] =
     completions.indexed.map: (candidate, index) =>
-      val line: Teletype = e"  ${candidate.name}  ${Fg(renderer.theme.muted)}(${candidate.signature})"
+      val muted = Fg(renderer.theme.muted)
+      val line: Teletype = e"  ${candidate.name}  $muted(${candidate.signature})"
       val cut: Teletype = if line.length > width.max(1) then line.takeChars(width.max(1)) else line
       if selected && index.n0 == completion then e"$Reverse($cut)" else cut
+
     . keep(maxCompletions)
 
   def measure(width: Int): (Int, Int) =
@@ -686,12 +751,20 @@ extends Focus, Refreshable:
   // wrapped line's next character would go. The rows carry no indent; `paint` positions them.
   private def visualLines(width: Int): List[Teletype] =
     val columns = inner(width)
-    valueLines.bind { (line: Teletype) => renderer.hardWrap(line, columns) }
+    valueLines.bind: (line: Teletype) => renderer.hardWrap(line, columns)
 
   private def visualCaret(width: Int): (Int, Int) =
     val columns = inner(width)
     val (row, column) = caret
-    val above: Int = valueLines.keep(row).map { (line: Teletype) => (line.length/columns).max(0) + (if line.length % columns == 0 && line.length > 0 then 0 else 1) }.total
+
+    val above: Int =
+      valueLines.keep(row)
+      . map: (line: Teletype) =>
+          val partial: Int = if line.length % columns == 0 && line.length > 0 then 0 else 1
+          (line.length/columns).max(0) + partial
+
+      . total
+
     (above + column/columns, indent(width) + column % columns)
 
   def render(canvas: Board^, focused: Boolean): Unit =
@@ -720,9 +793,10 @@ extends Focus, Refreshable:
     // The ghost after the caret, and the placeholder when there is nothing at all.
     if editor.value == t"" then
       canvas.move(offset.z, Prim)
-      placeholder.let { text => canvas.put(e"${Fg(renderer.theme.muted)}($text)") }
+      placeholder.let: text => canvas.put(e"${Fg(renderer.theme.muted)}($text)")
 
     val (row, column) = visualCaret(width)
+
     ghost.let: text =>
       canvas.move(column.z, row.z)
       canvas.put(e"${Fg(renderer.theme.muted)}($text)")
@@ -764,12 +838,15 @@ extends Focus, Refreshable:
     val value = editor.value.s
     val position = editor.position
     val rest = value.substring(position).nn
+
     val indent: String =
       if rest.isEmpty || rest.startsWith("\n") then
         val before = value.substring(0, position).nn
         val line = before.substring(before.lastIndexOf('\n') + 1).nn
         line.takeWhile(_ == ' ')
-      else ""
+      else
+        ""
+
     val text = t"${value.substring(0, position).nn}\n$indent$rest"
     editor = LineEditor(text, position + 1 + indent.length, LineEditor.Mode.Multiline(_ => false))
     completion = 0
@@ -780,9 +857,7 @@ extends Focus, Refreshable:
 
     event match
       case Keypress.Enter =>
-        if selected && ghost.present then accept()
-        else if incomplete then newline()
-        else submit()
+        if selected && ghost.present then accept() else if incomplete then newline() else submit()
 
       case Keypress.Shift(Keypress.Enter) =>
         newline()
@@ -802,7 +877,10 @@ extends Focus, Refreshable:
           if completion == 0 then selected = false else completion -= 1
         else if !multiline && recall > 0 then
           recall -= 1
-          editor = LineEditor(history.at(recall.z).or(t""), mode = LineEditor.Mode.Multiline(_ => false))
+
+          editor =
+            LineEditor(history.at(recall.z).or(t""), mode = LineEditor.Mode.Multiline(_ => false))
+
           publish()
         else
           editor = editor(event)
@@ -812,10 +890,14 @@ extends Focus, Refreshable:
           if !selected then
             selected = true
             completion = 0
-          else completion = (completion + 1).min(completions.size - 1)
+          else
+            completion = (completion + 1).min(completions.size - 1)
         else if !multiline && recall < history.size then
           recall += 1
-          editor = LineEditor(history.at(recall.z).or(t""), mode = LineEditor.Mode.Multiline(_ => false))
+
+          editor =
+            LineEditor(history.at(recall.z).or(t""), mode = LineEditor.Mode.Multiline(_ => false))
+
           publish()
         else
           editor = editor(event)

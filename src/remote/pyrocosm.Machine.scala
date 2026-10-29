@@ -33,42 +33,7 @@ import logging.silentLogging
 import systems.javaBaseSystem
 import textSanitizers.skipSanitizer
 
-// A machine another Pyrocosm tool can be reached on: how to connect to it, how to recognise
-// it, and what it offers. Declared in TEL, once for every tool, in the user's shared
-// `$XDG_CONFIG_HOME/pyrocosm/machines.tel`, or in a tool's own configuration (its repository's
-// `.pyrocosm/<tool>/config.tel` or the user's `<tool>/config.tel`), a tool's declaration
-// overriding the shared one of the same name:
-//
-//   machine linux-box
-//     host      192.168.1.20
-//     host      build.example.org
-//     port      8091
-//     identity  sha256:3f9a…          # the machine's certificate fingerprint (`<tool> identity`)
-//     token     ~/.config/pyrocosm/tokens/linux-box
-//     capability linux x86-64 quiet
-//
-// `host` may be given more than once, for a machine reachable at several addresses — on a local
-// network and beyond it, say. A connection tries them all, local addresses first (`ordered`).
-// `identity` is the SHA-256 fingerprint of the self-signed certificate the machine's listener
-// presents (see `Peer`): the SSH known-hosts model, with the fingerprint exchanged out of band.
-// `token` names a file whose trimmed content is the shared secret the machine's listener
-// expects; a value that names no existing file is taken as the secret itself. `port` defaults
-// per tool. `capability` words describe the machine for routing; they are not verified.
-case class Machine
-  ( name:         Text,
-    hosts:        List[Text],
-    port:         Optional[Int],
-    identity:     Optional[Data],
-    token:        Optional[Text],
-    capabilities: List[Text] ):
-
-  def portOr(default: Int): Int = port.or(default)
-
 object Machine:
-  // The machine this process runs on, as it describes itself to a peer: the hostname the
-  // kernel reports, the JVM's view of the operating system and architecture, and its cores.
-  case class Identity(hostname: Text, os: Text, arch: Text, cores: Int, jvm: Text)
-
   object Identity:
     def local: Identity =
       val hostname: Text =
@@ -85,6 +50,10 @@ object Machine:
           Runtime.getRuntime.nn.availableProcessors,
           property("java.version") )
 
+  // The machine this process runs on, as it describes itself to a peer: the hostname the
+  // kernel reports, the JVM's view of the operating system and architecture, and its cores.
+  case class Identity(hostname: Text, os: Text, arch: Text, cores: Int, jvm: Text)
+
   // The shared declarations file, whether or not it exists; `Unset` if the environment names
   // no configuration home.
   def sharedFile(using Environment): Optional[Path on Linux] =
@@ -95,7 +64,7 @@ object Machine:
   def shared(using Environment): Optional[Tel] =
     sharedFile.let: file =>
       if !file.existent() then Unset
-      else safely(file.read[Data]).let { data => safely(data.read[Tel]) }
+      else safely(file.read[Data]).let: data => safely(data.read[Tel])
 
   // How near an address is likely to be, for trying the nearest first: an address on a private
   // network (RFC 1918 IPv4, IPv6 unique-local) or a name resolved by multicast DNS (`.local`)
@@ -204,7 +173,7 @@ object Machine:
 
       if name == t"" || hosts.nil then Nil else
         val port: Optional[Int] =
-          block.field(t"port").let(_.primaryAtom).let { text => safely(text.as[Int]) }
+          block.field(t"port").let(_.primaryAtom).let: text => safely(text.as[Int])
 
         val identity: Optional[Data] =
           block.field(t"identity").let(_.primaryAtom).let(Peer.parseFingerprint(_))
@@ -237,9 +206,42 @@ object Machine:
   def secret(token: Text): Text =
     val expanded: Text =
       if token.starts(t"~/")
-      then Optional(java.lang.System.getProperty("user.home")).lay(token) { home => t"$home${token.s.substring(1).nn}" }
+      then Optional(java.lang.System.getProperty("user.home")).lay(token): home =>
+        t"$home${token.s.substring(1).nn}"
       else token
 
     safely(expanded.as[Path on Linux]).let: path =>
       if path.existent() then safely(path.read[Text]).let(_.s.trim.nn.tt) else Unset
-    . or(token)
+
+  . or(token)
+
+// A machine another Pyrocosm tool can be reached on: how to connect to it, how to recognise
+// it, and what it offers. Declared in TEL, once for every tool, in the user's shared
+// `$XDG_CONFIG_HOME/pyrocosm/machines.tel`, or in a tool's own configuration (its repository's
+// `.pyrocosm/<tool>/config.tel` or the user's `<tool>/config.tel`), a tool's declaration
+// overriding the shared one of the same name:
+//
+//   machine linux-box
+//     host      192.168.1.20
+//     host      build.example.org
+//     port      8091
+//     identity  sha256:3f9a…          # the machine's certificate fingerprint (`<tool> identity`)
+//     token     ~/.config/pyrocosm/tokens/linux-box
+//     capability linux x86-64 quiet
+//
+// `host` may be given more than once, for a machine reachable at several addresses — on a local
+// network and beyond it, say. A connection tries them all, local addresses first (`ordered`).
+// `identity` is the SHA-256 fingerprint of the self-signed certificate the machine's listener
+// presents (see `Peer`): the SSH known-hosts model, with the fingerprint exchanged out of band.
+// `token` names a file whose trimmed content is the shared secret the machine's listener
+// expects; a value that names no existing file is taken as the secret itself. `port` defaults
+// per tool. `capability` words describe the machine for routing; they are not verified.
+case class Machine
+  ( name:         Text,
+    hosts:        List[Text],
+    port:         Optional[Int],
+    identity:     Optional[Data],
+    token:        Optional[Text],
+    capabilities: List[Text] ):
+
+  def portOr(default: Int): Int = port.or(default)

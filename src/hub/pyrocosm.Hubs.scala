@@ -22,10 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-
-import soundness.{Service as _, *}
-
 import java.nio.file as jnf
+
+import soundness.*
 
 import environments.javaBaseEnvironment
 import probates.cancelProbate
@@ -54,13 +53,21 @@ object Hubs:
   // The variables the hub needs of the daemon's environment: where the registry, the identity
   // and the shared files are.
   private val inherited: List[Text] =
-    List(t"HOME", t"USER", t"PATH", t"XDG_RUNTIME_DIR", t"XDG_STATE_HOME", t"XDG_CONFIG_HOME", t"XDG_CACHE_HOME", t"TMPDIR")
+    List
+      ( t"HOME",
+        t"USER",
+        t"PATH",
+        t"XDG_RUNTIME_DIR",
+        t"XDG_STATE_HOME",
+        t"XDG_CONFIG_HOME",
+        t"XDG_CACHE_HOME",
+        t"TMPDIR" )
 
   private def registry(using Environment): Registry = Registry(Registry.directory)
 
   // The log the hub writes, beside its record.
   private def logFile(using Environment): Optional[jnf.Path] =
-    Registry.directory.let { directory => jnf.Path.of(directory.encode.s).nn.resolve("hub.log").nn }
+    Registry.directory.let: directory => jnf.Path.of(directory.encode.s).nn.resolve("hub.log").nn
 
   // Whether a live hub is registered.
   def running(using Environment): Boolean = registry.hub().present
@@ -68,7 +75,8 @@ object Hubs:
   // When this JVM last started a hub, in milliseconds; none is started again until `patience`
   // has passed, since one started will register itself within it, and one which could not start
   // would only fail again.
-  private val spawned: java.util.concurrent.atomic.AtomicLong = java.util.concurrent.atomic.AtomicLong(0L)
+  private val spawned: java.util.concurrent.atomic.AtomicLong =
+    java.util.concurrent.atomic.AtomicLong(0L)
 
   // Starts a hub for this machine, if none is registered and this JVM has not just started one,
   // and returns at once: a tool's node links to the hub whenever it has registered itself, so
@@ -92,16 +100,20 @@ object Hubs:
       if loader == null then scala.Nil else
         val own: scala.List[Text] = loader match
           case loader: java.net.URLClassLoader =>
-            scala.collection.immutable.ArraySeq.unsafeWrapArray(loader.getURLs.nn).toList.flatMap: url =>
-              safely(jnf.Path.of(url.nn.toURI).nn.toString.tt).let(scala.List(_)).or(scala.Nil)
+            scala.collection.immutable.ArraySeq.unsafeWrapArray(loader.getURLs.nn).toList
+            . flatMap: url =>
+                safely(jnf.Path.of(url.nn.toURI).nn.toString.tt).let(scala.List(_)).or(scala.Nil)
 
           case _ =>
             scala.Nil
 
         own ++ urls(loader.nn.getParent)
 
+    val entries: scala.Array[String | Null] =
+      java.lang.System.getProperty("java.class.path").nn.split(java.io.File.pathSeparator).nn
+
     val system: scala.List[Text] =
-      scala.collection.immutable.ArraySeq.unsafeWrapArray(java.lang.System.getProperty("java.class.path").nn.split(java.io.File.pathSeparator).nn)
+      scala.collection.immutable.ArraySeq.unsafeWrapArray(entries)
       . toList.map(_.nn.tt).filter(!_.blank)
 
     List((loader.lay(scala.Nil)(urls(_)) ++ system).distinct*)
@@ -112,6 +124,7 @@ object Hubs:
     try
       val executable: String = java.lang.System.getProperty("java.home").nn + "/bin/java"
       val classpath: String = Hubs.classpath().join(java.io.File.pathSeparator.nn.tt).s
+
       val command: java.util.List[String] =
         java.util.List.of(executable, "-cp", classpath, "pyrocosm.Hubs", tool.s, version.s).nn
 
@@ -130,14 +143,19 @@ object Hubs:
 
       val variables: java.util.Map[String, String] = builder.environment().nn
       variables.clear()
-      inherited.each { name => environment.variable(name).let { value => variables.put(name.s, value.s) } }
+
+      inherited.each: name =>
+        environment.variable(name).let: value => variables.put(name.s, value.s)
+
       builder.start()
       ()
     catch case _: Exception => ()
 
   // The hub process. Its arguments are the tool which started it and that tool's version.
   def main(arguments: scala.Array[String]): Unit =
-    val words: scala.collection.immutable.ArraySeq[String] = scala.collection.immutable.ArraySeq.unsafeWrapArray(arguments)
+    val words: scala.collection.immutable.ArraySeq[String] =
+      scala.collection.immutable.ArraySeq.unsafeWrapArray(arguments)
+
     def argument(index: Int): Text = words.lift(index).map(_.tt).getOrElse(t"unknown")
     val tool: Text = argument(0)
     val version: Text = argument(1)
@@ -146,7 +164,9 @@ object Hubs:
       Swarm.hub(version) match
         case hub: Hub =>
           async(transcribe())
-          java.lang.System.err.nn.println(s"pyrocosm: hub started by ${tool.s} ${version.s}, pid ${hub.node.pid}")
+
+          java.lang.System.err.nn.println
+            ( s"pyrocosm: hub started by ${tool.s} ${version.s}, pid ${hub.node.pid}" )
 
           // The web origin: on its port, or on one of its own while that is taken.
           val proxy: Portal = Portal(hub, port)
@@ -177,6 +197,7 @@ object Hubs:
     while lingering do
       snooze(1.0*Second)
       val moment: Long = java.lang.System.currentTimeMillis
+
       if !hub.leaves.nil then quiet = moment
       else if moment - quiet > (grace.value*1000.0).toLong then lingering = false
 

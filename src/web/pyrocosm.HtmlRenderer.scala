@@ -23,17 +23,18 @@
 package pyrocosm
 
 // Excluded from the umbrella: `Glyph` (phoenicia), which would outrank this package's own
-// definitions, since a wildcard import beats a package member declared in another file. Excluded
-// too: `Em` (cataclysm), `Span` (denominative), so the name is the HTML element `htmlDoms`
-// supplies.
-import soundness.{Em as _, Origin as _, Span as _, *}
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Origin as _, *}
 
-import sortingAlgorithms.timsort
-import dysasymptotics.{linearAccess, linearSize}
 import attributives.textAttributive
+import dysasymptotics.{linearAccess, linearSize}
 import htmlDoms.whatwg
 import htmlDoms.whatwg.*
+// `Em` and `Span` are imported by name, so they mean the HTML elements and not the names the
+// umbrella also offers: hiding them from the umbrella works too, but `-Wunused` thinks it unused.
+import htmlDoms.whatwg.{Em, Span}
 import nomenclature.CssClass.nominative
+import sortingAlgorithms.timsort
 import textMetrics.uniformMetric
 
 // The static half of the web frontend: phrasing to phrasing content, a block to flow content.
@@ -47,8 +48,12 @@ object HtmlRenderer:
   def share(percent: Int): Int = ((percent + 2)/5*5).max(5).min(100)
 
   // The class of a tone, `pyro-tone-success` and so on.
-  def toneClass(tone: Tone): Name[CssClass] = unsafely(Name[CssClass](t"pyro-tone-${tone.toString.tt.lower}"))
-  def accentClass(accent: Token.Accent): Name[CssClass] = unsafely(Name[CssClass](t"pyro-accent-${accent.toString.tt.lower}"))
+  def toneClass(tone: Tone): Name[CssClass] =
+    unsafely(Name[CssClass](t"pyro-tone-${tone.toString.tt.lower}"))
+
+  def accentClass(accent: Token.Accent): Name[CssClass] =
+    unsafely(Name[CssClass](t"pyro-accent-${accent.toString.tt.lower}"))
+
   def cls(name: Text): Name[CssClass] = unsafely(Name[CssClass](name))
 
   // The DOM id of a panel or a handle: what a patch replaces and what an event names.
@@ -64,7 +69,8 @@ object HtmlRenderer:
 
   // `data-action="…"` on an activity's card: the action its press sends. The card has an id of
   // its own, as the same action may belong to a navigation item already on the page.
-  given actionId: ("data-action" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+  given actionId: ("data-action" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
 
   // `data-atom="a12"` on a token of an animated code block: its identity across the frames,
   // by which the script moves it from where it was to where it is.
@@ -88,13 +94,13 @@ object HtmlRenderer:
       val char: Char = text.s.charAt(index)
 
       char match
-        case '"'  => builder.append("\\\"")
-        case '\\' => builder.append("\\\\")
-        case '\n' => builder.append("\\n")
-        case '\r' => builder.append("\\r")
-        case '\t' => builder.append("\\t")
+        case '"'                => builder.append("\\\"")
+        case '\\'               => builder.append("\\\\")
+        case '\n'               => builder.append("\\n")
+        case '\r'               => builder.append("\\r")
+        case '\t'               => builder.append("\\t")
         case char if char < ' ' => builder.append(f"\\u${char.toInt}%04x")
-        case char => builder.append(char)
+        case char               => builder.append(char)
 
       index += 1
 
@@ -103,7 +109,8 @@ object HtmlRenderer:
 
   // `data-local="true"` on a menu link to a tool of this machine, whose `localhost` the script
   // replaces with the page's own host when the page is viewed from another.
-  given localLink: ("data-local" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+  given localLink: ("data-local" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
 
 // The `purview` is the reader's: what it imports is elided from every qualified name, and an
 // import toggle or a bookmark button shows whether its page is in it. The `prefix` is the path
@@ -111,7 +118,9 @@ object HtmlRenderer:
 // every local destination's link; a page's path as the application knows it, which a purview
 // button carries for the frontend, has no prefix.
 class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
-  import HtmlRenderer.{toneClass, accentClass, cls, classes, nodePath, actionId, atomId, tabIndex, localLink, jsonText, dataPath}
+  // The attribute givens are imported wholesale: a macro summons them, which `-Wunused` does not
+  // see, so it would call any of them imported by name unused.
+  import HtmlRenderer.{toneClass, accentClass, cls, jsonText, given}
 
   def phrase(content: List[Inline]): Html of Phrasing = Html.Fragment(content.map(inline1)*)
 
@@ -130,34 +139,54 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   // and the stylesheet and the editor see it as any other token.
   def token(token: Token): Html of Phrasing =
     val classes: List[Name[CssClass]] =
-      val extra: List[Name[CssClass]] = if token.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
+      val extra: List[Name[CssClass]] =
+        if token.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
+
       accentClass(token.accent) :: extra
 
-    token.link.lay[Html of Phrasing](Span(`class` = classes)(token.text)): (link: Inline.Destination) =>
+    def plain: Html of Phrasing = Span(`class` = classes)(token.text)
+
+    token.link.lay[Html of Phrasing](plain): (link: Inline.Destination) =>
       link match
-        case Inline.Destination.External(url)    => A(href = url, `class` = classes)(token.text)
-        case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = classes :+ cls(t"pyro-action"))(token.text)
-        case local: Inline.Destination.Local     => A(href = href(local), `class` = classes :+ cls(t"pyro-locate"))(token.text)
+        case Inline.Destination.External(url) => A(href = url, `class` = classes)(token.text)
+
+        case Inline.Destination.Internal(action) =>
+          A(href = t"#", id = action.id, `class` = classes :+ cls(t"pyro-action"))(token.text)
+
+        case local: Inline.Destination.Local =>
+          A(href = href(local), `class` = classes :+ cls(t"pyro-locate"))(token.text)
 
   // The `href` of a local destination: its path under the prefix, and its fragment.
   private def href(local: Inline.Destination.Local): Text =
-    local.fragment.lay(t"$prefix${local.path}") { fragment => t"$prefix${local.path}#$fragment" }
+    local.fragment.lay(t"$prefix${local.path}"): fragment => t"$prefix${local.path}#$fragment"
 
   // A label which leads somewhere: an anchor around it for a local or external destination, an
   // action's anchor for an internal one.
-  private def lead(destination: Inline.Destination, label: Html of Phrasing): Html of Phrasing = destination match
-    case Inline.Destination.External(url)    => A(href = url, `class` = List(cls(t"pyro-link"), cls(t"pyro-external")))(label)
-    case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = List(cls(t"pyro-link"), cls(t"pyro-action")))(label)
-    case local: Inline.Destination.Local     => A(href = href(local), `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(label)
+  private def lead(destination: Inline.Destination, label: Html of Phrasing): Html of Phrasing =
+    destination match
+      case Inline.Destination.External(url) =>
+        A(href = url, `class` = List(cls(t"pyro-link"), cls(t"pyro-external")))(label)
+
+      case Inline.Destination.Internal(action) =>
+        val style: List[Name[CssClass]] = List(cls(t"pyro-link"), cls(t"pyro-action"))
+        A(href = t"#", id = action.id, `class` = style)(label)
+
+      case local: Inline.Destination.Local =>
+        A(href = href(local), `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(label)
 
   def tokens(tokens: List[Token]): Html of Phrasing =
-    Html.Fragment(qualified(purview.elide(tokens).map { (token: Token) => (token, this.token(token)) })*)
+    val pairs = purview.elide(tokens).map: (token: Token) => (token, this.token(token))
+    Html.Fragment(qualified(pairs)*)
 
   // An import toggle or a bookmark button: a button carrying its page's path, active when the
   // page is in the purview, so that the script sends the click and the frontend answers with
   // the panels re-rendered under the new purview.
-  private def purviewButton(kind: Text, path: Text, label: Text, active: Boolean, title: Text): Html of Phrasing =
-    val classes: List[Name[CssClass]] = List(cls(t"pyro-$kind")) + (if active then List(cls(t"pyro-active")) else Nil)
+  private def purviewButton(kind: Text, path: Text, label: Text, active: Boolean, title: Text)
+  :   Html of Phrasing =
+
+    val classes: List[Name[CssClass]] =
+      List(cls(t"pyro-$kind")) + (if active then List(cls(t"pyro-active")) else Nil)
+
     Button(`type` = t"button", `class` = classes, `data-path` = path, title = title)(label)
 
   private def importButton(path: Text, label: Text): Html of Phrasing =
@@ -175,10 +204,15 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   def purviewPanel: Html of Flow =
     def entries(kind: Text, entries: List[Purview.Entry], empty: Text): Html of Flow =
       if entries.nil then P(`class` = cls(t"pyro-empty"))(empty)
-      else Ul(`class` = cls(t"pyro-purview-list"))(entries.map { (entry: Purview.Entry) =>
-        val remove: Html of Phrasing =
-          purviewButton(kind, entry.path, t"", true, t"Remove ${entry.label}")
-        Li(A(href = entry.path, `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(entry.label), t" ", remove) }*)
+      else
+        val items = entries.map: (entry: Purview.Entry) =>
+          val remove: Html of Phrasing =
+            purviewButton(kind, entry.path, t"", true, t"Remove ${entry.label}")
+
+          val style: List[Name[CssClass]] = List(cls(t"pyro-link"), cls(t"pyro-locate"))
+          Li(A(href = entry.path, `class` = style)(entry.label), t" ", remove)
+
+        Ul(`class` = cls(t"pyro-purview-list"))(items*)
 
     Section(id = t"pyro-purview", `class` = List(cls(t"pyro-panel"), cls(t"pyro-purview")))
       ( H2(t"Imports"),
@@ -225,17 +259,23 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     done.reverse
 
   private def inline1(node: Inline): Html of Phrasing = node match
-    case Inline.Textual(text)         => text
-    case Inline.Phrase(content)       => phrase(content)
-    case Inline.Emphasis(content)     => Em(phrase(content))
-    case Inline.Strong(content)       => Strong(phrase(content))
-    case Inline.Toned(tone, content)  => Span(`class` = toneClass(tone))(phrase(content))
-    case Inline.Snippet(_, tokens0)      => Code(`class` = cls(t"pyro-code"))(tokens(tokens0))
-    case Inline.Keystroke(keypress)   => Kbd(`class` = cls(t"pyro-key"))(keyText(keypress))
-    case Inline.Reference(id)         => Code(`class` = cls(t"pyro-reference"))(id)
-    case Inline.Break()               => Br
-    case Inline.Symbol(glyph)         => Span(`class` = List(cls(t"pyro-glyph"), cls(t"pyro-glyph-${glyph.toString.tt.lower}")))(glyphText(glyph))
-    case Inline.Math(math)            => Span(`class` = cls(t"pyro-math"))(safely(Ergo.serialize(math)).or(t"…"))
+    case Inline.Textual(text)        => text
+    case Inline.Phrase(content)      => phrase(content)
+    case Inline.Emphasis(content)    => Em(phrase(content))
+    case Inline.Strong(content)      => Strong(phrase(content))
+    case Inline.Toned(tone, content) => Span(`class` = toneClass(tone))(phrase(content))
+    case Inline.Snippet(_, tokens0)  => Code(`class` = cls(t"pyro-code"))(tokens(tokens0))
+    case Inline.Keystroke(keypress)  => Kbd(`class` = cls(t"pyro-key"))(keyText(keypress))
+    case Inline.Reference(id)        => Code(`class` = cls(t"pyro-reference"))(id)
+    case Inline.Break()              => Br
+
+    case Inline.Symbol(glyph) =>
+      Span(`class` = List(cls(t"pyro-glyph"), cls(t"pyro-glyph-${glyph.toString.tt.lower}")))
+        ( glyphText(glyph) )
+
+    case Inline.Math(math) =>
+      Span(`class` = cls(t"pyro-math"))(safely(Ergo.serialize(math)).or(t"…"))
+
     case Inline.Icon(source, alt) =>
       Img(src = source, alt = alt, title = alt, `class` = cls(t"pyro-icon"))
 
@@ -252,15 +292,19 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
     case Inline.Amount(value, units) =>
       val (number, unit) = Amounts.scaled(value, units)
+
       Span(`class` = cls(t"pyro-amount"), title = t"${value.toString} $units")
-        ( Span(`class` = cls(t"pyro-figure"))(number), t" ", Span(`class` = cls(t"pyro-units"))(unit) )
+        ( Span(`class` = cls(t"pyro-figure"))(number),
+          t" ",
+          Span(`class` = cls(t"pyro-units"))(unit) )
 
     case Inline.Numeral(value, precision) =>
       Span(`class` = cls(t"pyro-figure"))(Amounts.figure(value, precision))
 
   // A keypress without the brackets clavichord's rendering puts around each key: a keycap is
   // already a box, so `[⌃]+[C]` reads as `⌃+C`.
-  private def keyText(keypress: Keypress): Text = keypress.show.s.replace("[", "").nn.replace("]", "").nn.tt
+  private def keyText(keypress: Keypress): Text =
+    keypress.show.s.replace("[", "").nn.replace("]", "").nn.tt
 
   private def glyphText(glyph: Glyph): Text = glyph match
     case Glyph.Check      => t"✓"
@@ -297,7 +341,9 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
     case Block.Listing(ordered, items) =>
       val entries = items.map(item)
-      if ordered then Ol(`class` = cls(t"pyro-listing"))(entries*) else Ul(`class` = cls(t"pyro-listing"))(entries*)
+
+      if ordered then Ol(`class` = cls(t"pyro-listing"))(entries*)
+      else Ul(`class` = cls(t"pyro-listing"))(entries*)
 
     case Block.Quotation(content) => Blockquote(`class` = cls(t"pyro-quotation"))(blocks(content))
     case Block.Rule(side)         => Hr(`class` = cls(t"pyro-rule-${side.toString.tt.lower}"))
@@ -309,12 +355,20 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     case Block.Table(columns, rows, caption) => table(columns, rows, caption)
 
     case Block.Record(entries, title) =>
-      val list = Dl(`class` = cls(t"pyro-record"))(entries.bind { (entry: Block.Entry) => List[Html of "dt" | "dd"](Dt(phrase(entry.key)), Dd(blocks(entry.value))) }*)
-      title.lay(list: Html of Flow) { title => Section(`class` = cls(t"pyro-record-section"))(H4(phrase(title)), list) }
+      val terms = entries.bind: (entry: Block.Entry) =>
+        List[Html of "dt" | "dd"](Dt(phrase(entry.key)), Dd(blocks(entry.value)))
+
+      val list = Dl(`class` = cls(t"pyro-record"))(terms*)
+
+      title.lay(list: Html of Flow): title =>
+        Section(`class` = cls(t"pyro-record-section"))(H4(phrase(title)), list)
 
     case Block.Notice(tone, title, content) =>
+      val heading: Html of Flow =
+        title.lay(Html.Fragment[Flow]()): title => Header(Strong(phrase(title)))
+
       Aside(`class` = List(cls(t"pyro-notice"), toneClass(tone)))
-        (Html.Fragment[Flow](title.lay(Html.Fragment[Flow]()) { title => Header(Strong(phrase(title))) }, blocks(content)))
+        ( Html.Fragment[Flow](heading, blocks(content)) )
 
     // A diagnostic is an article in its tone: a header naming the place and the severity, the
     // message, the excerpt and whatever follows.
@@ -333,22 +387,30 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         case _            => t"note"
 
       val where: Html of Phrasing =
-        location.lay(Html.Fragment[Phrasing]()) { (location: Block.Location) => Code(`class` = cls(t"pyro-location"))(location.text) }
+        location.lay(Html.Fragment[Phrasing]()): (location: Block.Location) =>
+          Code(`class` = cls(t"pyro-location"))(location.text)
 
       val rest: Html of Flow =
-        if detail.nil then Html.Fragment[Flow]() else Div(`class` = cls(t"pyro-detail"))(blocks(detail))
+        if detail.nil then Html.Fragment[Flow]()
+        else Div(`class` = cls(t"pyro-detail"))(blocks(detail))
 
       Article(`class` = List(cls(t"pyro-diagnostic"), toneClass(tone)))
-        ( Header(Span(`class` = cls(t"pyro-glyph"))(glyphText(glyph)), where, Span(`class` = cls(t"pyro-severity"))(severity)),
+        ( Header
+            ( Span(`class` = cls(t"pyro-glyph"))(glyphText(glyph)),
+              where,
+              Span(`class` = cls(t"pyro-severity"))(severity) ),
           Div(`class` = cls(t"pyro-message"))(blocks(message)),
           blocks(excerpt),
           rest )
 
     case Block.Disclosure(summary, content, open) =>
-      if open then Details(`class` = cls(t"pyro-disclosure"), open = true)(Summary(phrase(summary)), blocks(content))
-      else Details(`class` = cls(t"pyro-disclosure"))(Summary(phrase(summary)), blocks(content))
+      val style = cls(t"pyro-disclosure")
 
-    case Block.Image(source, alt) => Figure(`class` = cls(t"pyro-image"))(Img(src = source, alt = alt), Figcaption(alt))
+      if open then Details(`class` = style, open = true)(Summary(phrase(summary)), blocks(content))
+      else Details(`class` = style)(Summary(phrase(summary)), blocks(content))
+
+    case Block.Image(source, alt) =>
+      Figure(`class` = cls(t"pyro-image"))(Img(src = source, alt = alt), Figcaption(alt))
 
     // A figure's drawing, its ids qualified by the figure's so several drawings share a page,
     // is read as foreign (SVG) content into a holder, `<figure id>-svg`, which a redraw replaces
@@ -357,9 +419,14 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       val markup: Text = pyrocosm.Figure.namespace(figure.id, figure.svg)
       val drawing: Optional[Html of "svg"] = safely(markup.read[Html of "svg"])
 
+      val holderId: Text = t"${figure.id}-svg"
+      val holderClass = cls(t"pyro-drawing-holder")
+
       val holder: Html of Flow =
-        drawing.lay(Div(id = t"${figure.id}-svg", `class` = cls(t"pyro-drawing-holder"))(P(phrase(figure.alt)))):
-          svg => Div(id = t"${figure.id}-svg", `class` = cls(t"pyro-drawing-holder"))(svg)
+        def fallback: Html of Flow =
+          Div(id = holderId, `class` = holderClass)(P(phrase(figure.alt)))
+
+        drawing.lay(fallback): svg => Div(id = holderId, `class` = holderClass)(svg)
 
       Figure(id = figure.id, `class` = cls(t"pyro-drawing"))(holder, Figcaption(phrase(figure.alt)))
 
@@ -367,24 +434,37 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       deck(leaves)
 
     case Block.Tree(roots) =>
-      Ul(`class` = cls(t"pyro-tree"))(roots.indexed.map { (root: Block.TreeNode, index: Ordinal) => treeNode(root, t"${index.n0}") }*)
+      val nodes = roots.indexed.map: (root: Block.TreeNode, index: Ordinal) =>
+        treeNode(root, t"${index.n0}")
+
+      Ul(`class` = cls(t"pyro-tree"))(nodes*)
 
     // A graph as its vertices, each with what it depends on; a drawn layout is later work.
     case Block.Graph(vertices, edges) =>
-      val labels: Map[Text, List[Inline]] = vertices.map { (vertex: Block.Vertex) => vertex.id -> vertex.label }.to[Map]
+      val labels: Map[Text, List[Inline]] =
+        vertices.map { (vertex: Block.Vertex) => vertex.id -> vertex.label }.to[Map]
 
-      Ul(`class` = cls(t"pyro-graph"))(vertices.map { (vertex: Block.Vertex) =>
-          val dependencies = edges.filter(_.from == vertex.id).map { (edge: Block.Edge) => labels(edge.to).or(Inline.text(edge.to)) }
-          val label = vertexLabel(vertex)
-          if dependencies.nil then Li(label)
-          else Li(label, Span(`class` = cls(t"pyro-arrow"))(t" → "), Html.Fragment(dependencies.indexed.map { (target, index) =>
-            Html.Fragment[Phrasing](if index.n0 == 0 then Html.Fragment[Phrasing]() else t", ", phrase(target)) }*))
-        }*)
+      val items = vertices.map: (vertex: Block.Vertex) =>
+        val dependencies =
+          edges.filter(_.from == vertex.id).map: (edge: Block.Edge) =>
+            labels(edge.to).or(Inline.text(edge.to))
 
-    case Block.Chart(kind, series) => chart(kind, series)
+        val label = vertexLabel(vertex)
+
+        if dependencies.nil then Li(label)
+        else
+          val targets = dependencies.indexed.map: (target, index) =>
+            Html.Fragment[Phrasing]
+              ( if index.n0 == 0 then Html.Fragment[Phrasing]() else t", ", phrase(target) )
+
+          Li(label, Span(`class` = cls(t"pyro-arrow"))(t" → "), Html.Fragment(targets*))
+
+      Ul(`class` = cls(t"pyro-graph"))(items*)
+
+    case Block.Chart(kind, series)    => chart(kind, series)
     case Block.Gauge(status, caption) => gauge(status, caption)
-    case Block.Trace(stacks) => trace(stacks)
-    case Block.Group(content) => Div(`class` = cls(t"pyro-group"))(blocks(content))
+    case Block.Trace(stacks)          => trace(stacks)
+    case Block.Group(content)         => Div(`class` = cls(t"pyro-group"))(blocks(content))
 
     // Captured output, verbatim, each line behind a gutter naming its stream.
     case Block.Output(text, error) =>
@@ -392,67 +472,106 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       val lines: List[Text] = text.cut(t"\n")
       val trimmed: List[Text] = if lines.last == t"" then lines.keep(lines.size - 1) else lines
       val count = trimmed.size
+
       val rows: List[Html of Phrasing] = trimmed.indexed.map: (line: Text, index: Ordinal) =>
         val text: Text = if index.n0 == count - 1 then line else t"$line\n"
         Html.Fragment[Phrasing](Span(`class` = gutter)(t"░ "), text)
 
-      Pre(`class` = List(cls(t"pyro-output"), if error then cls(t"pyro-output-stderr") else cls(t"pyro-output-stdout")))(rows*)
+      val stream = if error then cls(t"pyro-output-stderr") else cls(t"pyro-output-stdout")
+      Pre(`class` = List(cls(t"pyro-output"), stream))(rows*)
 
   // An item with a destination and no action is a real link (which opens in a new tab as a
   // link does): the anchor wraps its one paragraph's phrasing, since an anchor cannot hold
   // blocks; an item of several blocks leads from its first paragraph.
   private def item(item: Block.Item): Html of "li" =
-    item.action.lay(item.destination.lay(Li(blocks(item.content))) { destination => Li(`class` = cls(t"pyro-lead"))(leading(destination, item.content)*) }):
-      action => Li(id = action.id, `class` = cls(t"pyro-action"))(blocks(item.content))
+    def linked: Html of "li" =
+      item.destination.lay(Li(blocks(item.content))): destination =>
+        Li(`class` = cls(t"pyro-lead"))(leading(destination, item.content)*)
 
-  private def leading(destination: Inline.Destination, content: List[Block]): List[Html of Flow] = content match
-    case Block.Paragraph(phrasing) :: rest => P(lead(destination, phrase(phrasing))) :: rest.map(block)
-    case other                             => other.map(block)
+    item.action.lay(linked): action =>
+      Li(id = action.id, `class` = cls(t"pyro-action"))(blocks(item.content))
+
+  private def leading(destination: Inline.Destination, content: List[Block]): List[Html of Flow] =
+    content match
+      case Block.Paragraph(phrasing) :: rest =>
+        P(lead(destination, phrase(phrasing))) :: rest.map(block)
+
+      case other =>
+        other.map(block)
 
   // A collapsible node (one with `open` and children) is a `<details>` whose summary is its
   // label, named by its path for the script; any other node is its label and its children.
   private def treeNode(node: Block.TreeNode, path: Text): Html of "li" =
-    val toned: Html of Phrasing = node.tone.lay(phrase(node.label)) { tone => Span(`class` = toneClass(tone))(phrase(node.label)) }
+    val toned: Html of Phrasing =
+      node.tone.lay(phrase(node.label)): tone => Span(`class` = toneClass(tone))(phrase(node.label))
+
     val label: Html of Phrasing =
-      if node.action.present then toned else node.destination.lay(toned) { destination => lead(destination, toned) }
+      if node.action.present then toned
+      else node.destination.lay(toned): destination => lead(destination, toned)
+
     val children: Html of Flow =
       if node.children.nil then Html.Fragment[Flow]()
-      else Ul(node.children.indexed.map { (child: Block.TreeNode, index: Ordinal) => treeNode(child, t"$path.${index.n0}") }*)
+      else
+        val nodes = node.children.indexed.map: (child: Block.TreeNode, index: Ordinal) =>
+          treeNode(child, t"$path.${index.n0}")
+
+        Ul(nodes*)
 
     val plain: List[Html of Flow] = List(label, children)
 
     val content: List[Html of Flow] =
       if node.children.nil then plain
       else node.open.lay(plain): (open: Boolean) =>
+        val style = cls(t"pyro-node")
+
         val details: Html of Flow =
-          if open then Details(`class` = cls(t"pyro-node"), open = true, `data-node` = path)(Summary(label), children)
-          else Details(`class` = cls(t"pyro-node"), `data-node` = path)(Summary(label), children)
+          if open
+          then Details(`class` = style, open = true, `data-node` = path)(Summary(label), children)
+          else Details(`class` = style, `data-node` = path)(Summary(label), children)
 
         List(details)
 
-    node.action.lay(Li(content*)) { action => Li(id = action.id, `class` = cls(t"pyro-action"))(content*) }
+    node.action.lay(Li(content*)): action =>
+      Li(id = action.id, `class` = cls(t"pyro-action"))(content*)
 
   private def vertexLabel(vertex: Block.Vertex): Html of Phrasing =
-    val label: Html of Phrasing = vertex.tone.lay(phrase(vertex.label)) { tone => Span(`class` = toneClass(tone))(phrase(vertex.label)) }
-    vertex.action.lay(label) { action => A(href = t"#", id = action.id, `class` = cls(t"pyro-action"))(label) }
+    val label: Html of Phrasing =
+      vertex.tone.lay(phrase(vertex.label)): tone =>
+        Span(`class` = toneClass(tone))(phrase(vertex.label))
+
+    vertex.action.lay(label): action =>
+      A(href = t"#", id = action.id, `class` = cls(t"pyro-action"))(label)
 
   // The rows of a code block, each ended by a newline but the last: every line, behind its
   // number when `start` says which line of its source the first is; and beneath a line, a row
   // for each caret or captioned note ending on it — the caret `╱╲` beneath its position, or `‾`
   // under each marked column, then the caption — spaced into place with the line's own
   // columns, as the terminal draws it, since a `pre` keeps them.
-  private def codeRows(lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int]): List[Html of Phrasing] =
-    val digits: Int = start.lay(0) { (first: Int) => (first + lines.size - 1).show.length }
+  private def codeRows(lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int])
+  :   List[Html of Phrasing] =
+
+    val digits: Int = start.lay(0): (first: Int) => (first + lines.size - 1).show.length
 
     def number(value: Optional[Int]): Html of Phrasing =
       if start.absent then Html.Fragment[Phrasing]()
-      else Span(`class` = cls(t"pyro-lineno"))(value.lay(t" "*digits) { (value: Int) => value.show.pad(digits, Rtl) })
+      else
+        val text: Text = value.lay(t" "*digits): (value: Int) => value.show.pad(digits, Rtl)
+        Span(`class` = cls(t"pyro-lineno"))(text)
 
     val rows: List[Html of Phrasing] =
       lines.indexed.bind: (line: Block.Line, index: Ordinal) =>
-        val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
-        Html.Fragment[Phrasing](number(start.let(_ + index.n0)), codeLine(line, notes, true, index.n0))
-          :: markers(notes, index.n0, length).map { (note: Block.Note) => marker(note, index.n0, length, number(Unset)) }
+        val length: Int = line.tokens.fold(0): (total: Int, token: Token) =>
+          total + token.text.length
+
+        val first: Html of Phrasing =
+          Html.Fragment[Phrasing]
+            ( number(start.let(_ + index.n0)), codeLine(line, notes, true, index.n0) )
+
+        val beneath: List[Html of Phrasing] =
+          markers(notes, index.n0, length).map: (note: Block.Note) =>
+            marker(note, index.n0, length, number(Unset))
+
+        first :: beneath
 
     val count: Int = rows.size
 
@@ -461,21 +580,28 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
   // The notes which end on line `index` and are drawn beneath it: a caret, or a captioned note.
   private def markers(notes: List[Block.Note], index: Int, length: Int): List[Block.Note] =
-    notes.filter { (note: Block.Note) => note.lastLine == index && (note.caret || !note.caption.nil) }
+    notes.filter: (note: Block.Note) => note.lastLine == index && (note.caret || !note.caption.nil)
 
   // The row beneath a line for one of its notes: the caret `╱╲` beneath its position, or `‾`
   // under each marked column, then the caption, spaced into place with the line's own columns;
   // `margin` is what stands where the line's number does, so the columns align.
-  private def marker(note: Block.Note, index: Int, length: Int, margin: Html of Phrasing = Html.Fragment[Phrasing]())
+  private def marker
+    ( note:   Block.Note,
+      index:  Int,
+      length: Int,
+      margin: Html of Phrasing = Html.Fragment[Phrasing]() )
   :   Html of Phrasing =
 
     val range: (Int, Int) = note.range(index, length).or((0, 0))
     val pad: Int = if note.caret then (range(0) - 1).max(0) else range(0)
     val marks: Text = if note.caret then t"╱╲" else t"‾"*(range(1) - range(0)).max(1)
-    val caption: Html of Phrasing = if note.caption.nil then Html.Fragment[Phrasing]() else Html.Fragment[Phrasing](t" ", phrase(note.caption))
+
+    val caption: Html of Phrasing =
+      if note.caption.nil then Html.Fragment[Phrasing]()
+      else Html.Fragment[Phrasing](t" ", phrase(note.caption))
 
     Span(`class` = List(cls(t"pyro-marker"), cls(t"pyro-marker-${note.style.toString.tt.lower}")))
-      (margin, t" "*pad, Span(`class` = cls(t"pyro-marks"))(marks), caption)
+      ( margin, t" "*pad, Span(`class` = cls(t"pyro-marks"))(marks), caption )
 
   def plainCode
     ( language: pyrocosm.Language,
@@ -486,10 +612,13 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   :   Html of Flow =
 
     val numbered: List[Name[CssClass]] = if start.present then List(cls(t"pyro-numbered")) else Nil
-    val classes: List[Name[CssClass]] = cls(t"pyro-codeblock") :: cls(t"pyro-language-${language.name}") :: numbered
+
+    val classes: List[Name[CssClass]] =
+      cls(t"pyro-codeblock") :: cls(t"pyro-language-${language.name}") :: numbered
+
     val code: Html of Phrasing = Code(codeRows(lines, notes, start)*)
 
-    id.lay(Pre(`class` = classes)(code)) { (id: Text) => Pre(id = id, `class` = classes)(code) }
+    id.lay(Pre(`class` = classes)(code)): (id: Text) => Pre(id = id, `class` = classes)(code)
 
   // An animated block: its first slide as lines of atoms, each carrying its id, with that
   // slide's annotations and label and in its language; its controls; and the animation as
@@ -513,10 +642,16 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
     Div(`class` = cls(t"pyro-deck"), tabindex = t"0")(Html.Fragment(slides*), controls)
 
-  def animatedCode(language: pyrocosm.Language, animation: Block.Animation, id: Optional[Text] = Unset): Html of Flow =
+  def animatedCode
+    ( language: pyrocosm.Language, animation: Block.Animation, id: Optional[Text] = Unset )
+  :   Html of Flow =
+
     val first: Optional[Block.Slide] = animation.slides.head
     val shown: pyrocosm.Language = first.let(_.language).or(language)
-    val classes: List[Name[CssClass]] = List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}"))
+
+    val classes: List[Name[CssClass]] =
+      List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}"))
+
     val rows: List[Html of Phrasing] = animatedRows(animation.lines(0), first.lay(Nil)(_.notes))
     val frames: Int = animation.slides.size
 
@@ -542,13 +677,16 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   // which a note covers is marked whole, since an atom is never split (its identity is what
   // the animation moves), and a caret or captioned note has its row beneath its line, as a
   // plain block draws it.
-  private def animatedRows(lines: List[List[Block.Atom]], notes: List[Block.Note]): List[Html of Phrasing] =
+  private def animatedRows(lines: List[List[Block.Atom]], notes: List[Block.Note])
+  :   List[Html of Phrasing] =
+
     lines.indexed.bind: (atoms: List[Block.Atom], index: Ordinal) =>
-      val length: Int = atoms.fold(0) { (total: Int, atom: Block.Atom) => total + atom.text.length }
+      val length: Int = atoms.fold(0): (total: Int, atom: Block.Atom) => total + atom.text.length
 
       val ranges: List[(Int, Int, Block.Note)] =
         notes.bind: (note: Block.Note) =>
-          note.range(index.n0, length).lay(Nil) { (range: (Int, Int)) => List((range(0), range(1), note)) }
+          note.range(index.n0, length).lay(Nil): (range: (Int, Int)) =>
+            List((range(0), range(1), note))
 
       var offset: Int = 0
 
@@ -557,21 +695,32 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
           val end: Int = offset + atom.text.length
 
           val covering: Optional[Block.Note] =
-            ranges.seek { (range: (Int, Int, Block.Note)) => range(0) < range(1) && range(0) < end && range(1) > offset }.let(_(2))
+            ranges
+            . seek: (range: (Int, Int, Block.Note)) =>
+                range(0) < range(1) && range(0) < end && range(1) > offset
+
+            . let(_(2))
 
           offset = end
           atomSpan(atom, covering)
 
       val row: Html of Phrasing = Span(`class` = cls(t"pyro-line"))(spans*)
-      row :: markers(notes, index.n0, length).map { (note: Block.Note) => marker(note, index.n0, length) }
+
+      val beneath: List[Html of Phrasing] =
+        markers(notes, index.n0, length).map: (note: Block.Note) => marker(note, index.n0, length)
+
+      row :: beneath
 
   def atomSpan(atom: Block.Atom, note: Optional[Block.Note] = Unset): Html of Phrasing =
-    val binding: List[Name[CssClass]] = if atom.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
+    val binding: List[Name[CssClass]] =
+      if atom.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
 
     val marked: List[Name[CssClass]] =
-      note.lay(Nil) { (note: Block.Note) => List(cls(t"pyro-marked"), cls(t"pyro-marked-${note.style.toString.tt.lower}")) }
+      note.lay(Nil): (note: Block.Note) =>
+        List(cls(t"pyro-marked"), cls(t"pyro-marked-${note.style.toString.tt.lower}"))
 
-    val classes: List[Name[CssClass]] = cls(t"pyro-atom") :: accentClass(atom.accent) :: (binding + marked)
+    val classes: List[Name[CssClass]] =
+      cls(t"pyro-atom") :: accentClass(atom.accent) :: (binding + marked)
 
     note.lay(Span(`class` = classes, `data-atom` = atom.id)(atom.text)): (note: Block.Note) =>
       Span(`class` = classes, `data-atom` = atom.id, title = Inline.plain(note.caption))(atom.text)
@@ -587,48 +736,94 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     val atoms: Text =
       animation.atoms.map: (atom: Block.Atom) =>
         val binding: Text = if atom.role == Token.Role.Binding then t"true" else t"false"
-        t"""{"id":${jsonText(atom.id)},"text":${jsonText(atom.text)},"accent":${jsonText(atom.accent.toString.tt.lower)},"binding":$binding}"""
+        val id: Text = jsonText(atom.id)
+        val text: Text = jsonText(atom.text)
+        val accent: Text = jsonText(atom.accent.toString.tt.lower)
+        t"""{"id":$id,"text":$text,"accent":$accent,"binding":$binding}"""
+
       . join(t",")
 
     def notes(frame: Block.Slide): Text =
       frame.notes.map: (note: Block.Note) =>
+        val line: Text = note.line.toString.tt
+        val start: Text = note.start.toString.tt
+        val end: Text = note.end.toString.tt
         val last: Text = note.last.lay(t"null")(_.toString.tt)
-        val caption: Text = if note.caption.nil then t"\"\"" else jsonText(phrase(note.caption).show)
-        t"""{"line":${note.line.toString.tt},"start":${note.start.toString.tt},"end":${note.end.toString.tt},"last":$last,"style":${jsonText(note.style.toString.tt.lower)},"caption":$caption}"""
+        val style: Text = jsonText(note.style.toString.tt.lower)
+
+        val caption: Text =
+          if note.caption.nil then t"\"\"" else jsonText(phrase(note.caption).show)
+
+        val head: Text = t"""{"line":$line,"start":$start,"end":$end"""
+        t"""$head,"last":$last,"style":$style,"caption":$caption}"""
+
       . join(t",")
 
     val slides: Text =
       animation.slides.map: (frame: Block.Slide) =>
         val lines: Text = ids(frame.lines)
         val label: Text = if frame.label.nil then t"\"\"" else jsonText(phrase(frame.label).show)
-        val frameLanguage: Text = frame.language.lay(t"null") { (language: pyrocosm.Language) => jsonText(language.name) }
-        t"""{"index":${frame.index.toString.tt},"label":$label,"hold":${optional(frame.hold)},"at":${optional(frame.at)},"language":$frameLanguage,"lines":[$lines],"notes":[${notes(frame)}]}"""
+
+        val frameLanguage: Text =
+          frame.language.lay(t"null"): (language: pyrocosm.Language) => jsonText(language.name)
+
+        val index: Text = frame.index.toString.tt
+        val hold: Text = optional(frame.hold)
+        val at: Text = optional(frame.at)
+        val head: Text = t"""{"index":$index,"label":$label,"hold":$hold,"at":$at"""
+        t"""$head,"language":$frameLanguage,"lines":[$lines],"notes":[${notes(frame)}]}"""
+
       . join(t",")
 
     val placements: Text =
       animation.placements.map: (placement: Block.Placement) =>
-        t"[${placement.slide.toString.tt},${placement.line.toString.tt},${jsonText(placement.atom)}]"
+        val slide: Text = placement.slide.toString.tt
+        t"[$slide,${placement.line.toString.tt},${jsonText(placement.atom)}]"
+
       . join(t",")
 
     val transitions: Text =
       animation.transitions.map: (transition: Block.Transition) =>
-        val moved: Text =
-          transition.moved.map { (move: Block.Transition.Move) => t"[${jsonText(move.atom)},${jsonText(move.from)},${jsonText(move.to)}]" }.join(t",")
+        val from: Text = transition.from.toString.tt
+        val to: Text = transition.to.toString.tt
+        val kind: Text = jsonText(transition.kind.toString.tt.lower)
+        val duration: Text = optional(transition.duration)
+        val departing: Text = ids(transition.departing)
+        val arriving: Text = ids(transition.arriving)
 
-        t"""{"from":${transition.from.toString.tt},"to":${transition.to.toString.tt},"kind":${jsonText(transition.kind.toString.tt.lower)},"duration":${optional(transition.duration)},"departing":[${ids(transition.departing)}],"arriving":[${ids(transition.arriving)}],"moved":[$moved],"removed":[${ids(transition.removed)}],"inserted":[${ids(transition.inserted)}]}"""
+        val moved: Text =
+          transition.moved
+          . map: (move: Block.Transition.Move) =>
+              t"[${jsonText(move.atom)},${jsonText(move.from)},${jsonText(move.to)}]"
+
+          . join(t",")
+
+        val removed: Text = ids(transition.removed)
+        val inserted: Text = ids(transition.inserted)
+        val head: Text = t"""{"from":$from,"to":$to,"kind":$kind,"duration":$duration,"""
+        val middle: Text = t"""$head"departing":[$departing],"arriving":[$arriving],"""
+        t"""$middle"moved":[$moved],"removed":[$removed],"inserted":[$inserted]}"""
+
       . join(t",")
 
-    t"""{"language":${jsonText(language.name)},"atoms":[$atoms],"slides":[$slides],"placements":[$placements],"transitions":[$transitions],"autoplay":${animation.autoplay.toString.tt},"loop":${animation.loop.toString.tt}}"""
+    val name: Text = jsonText(language.name)
+    val autoplay: Text = animation.autoplay.toString.tt
+    val loop: Text = animation.loop.toString.tt
+    val head: Text = t"""{"language":$name,"atoms":[$atoms],"slides":[$slides],"""
+    val body: Text = t"""$head"placements":[$placements],"transitions":[$transitions],"""
+    t"""$body"autoplay":$autoplay,"loop":$loop}"""
 
   // One line of code, the `index`th of its block, with the segments of the notes which touch
   // it laid over its tokens; a caret marks no segment. The line ends in a newline unless it is
   // the `last`.
-  def codeLine(line: Block.Line, notes: List[Block.Note], last: Boolean, index: Int = 0): Html of Phrasing =
-    val length: Int = line.tokens.fold(0) { (total: Int, token: Token) => total + token.text.length }
+  def codeLine(line: Block.Line, notes: List[Block.Note], last: Boolean, index: Int = 0)
+  :   Html of Phrasing =
+
+    val length: Int = line.tokens.fold(0): (total: Int, token: Token) => total + token.text.length
 
     val ranges: List[(Int, Int, Block.Note)] =
       notes.bind: (note: Block.Note) =>
-        note.range(index, length).lay(Nil) { (range: (Int, Int)) => List((range(0), range(1), note)) }
+        note.range(index, length).lay(Nil): (range: (Int, Int)) => List((range(0), range(1), note))
 
     // Each token, cut at the boundaries where a segment begins or ends inside it, with a
     // running offset into the line.
@@ -637,8 +832,11 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
     line.tokens.each: (token: Token) =>
       val end = offset + token.text.length
-      val ends: List[Int] = ranges.bind { (range: (Int, Int, Block.Note)) => List(range(0), range(1)) }
-      val cuts: List[Int] = (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
+      val ends: List[Int] = ranges.bind: (range: (Int, Int, Block.Note)) => List(range(0), range(1))
+
+      val cuts: List[Int] =
+        (offset :: end :: ends).filter { (cut: Int) => cut >= offset && cut <= end }.distinct.sort
+
       var pieces: List[Html of Phrasing] = Nil
 
       cuts.zip(cuts.tail.or(Nil)).each: (from: Int, to: Int) =>
@@ -646,11 +844,16 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         val base = this.token(token.copy(text = text))
 
         val covering: Optional[Block.Note] =
-          ranges.seek { (range: (Int, Int, Block.Note)) => range(0) <= from && range(1) >= to && range(0) < range(1) }.let(_(2))
+          ranges
+          . seek: (range: (Int, Int, Block.Note)) =>
+              range(0) <= from && range(1) >= to && range(0) < range(1)
+
+          . let(_(2))
 
         val styled: Html of Phrasing =
           covering.lay(base): (note: Block.Note) =>
-            Span(`class` = cls(t"pyro-note-${note.style.toString.tt.lower}"), title = Inline.plain(note.caption))(base)
+            val style = cls(t"pyro-note-${note.style.toString.tt.lower}")
+            Span(`class` = style, title = Inline.plain(note.caption))(base)
 
         pieces = styled :: pieces
 
@@ -660,11 +863,18 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
     val ordered: List[Html of Phrasing] = qualified(rendered.reverse)
 
-    Span(`class` = cls(t"pyro-line"))(Html.Fragment(ordered*), if last then Html.Fragment[Phrasing]() else t"\n")
+    Span(`class` = cls(t"pyro-line"))
+      ( Html.Fragment(ordered*), if last then Html.Fragment[Phrasing]() else t"\n" )
 
-  private def table(columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]]): Html of Flow =
+  private def table
+    ( columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] )
+  :   Html of Flow =
+
     def columnClasses(column: Block.Column): List[Name[CssClass]] =
-      val alignment: List[Name[CssClass]] = if column.alignment == Block.Alignment.Start then Nil else List(cls(t"pyro-align-${column.alignment.toString.tt.lower}"))
+      val alignment: List[Name[CssClass]] =
+        if column.alignment == Block.Alignment.Start then Nil
+        else List(cls(t"pyro-align-${column.alignment.toString.tt.lower}"))
+
       val numeric: List[Name[CssClass]] = if column.numeric then List(cls(t"pyro-numeric")) else Nil
 
       val sizing: List[Name[CssClass]] = column.sizing match
@@ -672,27 +882,48 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         case Block.Sizing.Rigid          => List(cls(t"pyro-rigid"))
         case Block.Sizing.Paragraph      => Nil
         case Block.Sizing.Collapsible(_) => List(cls(t"pyro-collapsible"))
-        case Block.Sizing.Fixed(percent) => List(cls(t"pyro-share-${HtmlRenderer.share(percent).toString.tt}"))
+
+        case Block.Sizing.Fixed(percent) =>
+          List(cls(t"pyro-share-${HtmlRenderer.share(percent).toString.tt}"))
 
       alignment + numeric + sizing
 
     // A table with a fixed column is laid out by its columns' shares rather than its content.
-    val fixed: Boolean = columns.exists { (column: Block.Column) => column.sizing match { case Block.Sizing.Fixed(_) => true; case _ => false } }
-    val tableClasses: List[Name[CssClass]] = List(cls(t"pyro-table")) + (if fixed then List(cls(t"pyro-fixed")) else Nil)
+    val fixed: Boolean =
+      columns.exists: (column: Block.Column) =>
+        column.sizing match
+          case Block.Sizing.Fixed(_) => true
+          case _                     => false
 
-    val head = Thead(Tr(columns.map { (column: Block.Column) => Th(`class` = columnClasses(column) + solitaryClass(column.title))(phrase(column.title)) }*))
+    val tableClasses: List[Name[CssClass]] =
+      List(cls(t"pyro-table")) + (if fixed then List(cls(t"pyro-fixed")) else Nil)
 
-    val body = Tbody(rows.map { (row: Block.Row) =>
-        val cells = columns.indexed.map { (column, index) =>
-          row.cells.at(index).lay(Td(`class` = columnClasses(column))(Html.Fragment[Phrasing]())):
-            cell => Td(`class` = columnClasses(column) + solitaryClass(cell.content))(phrase(cell.content))
-        }
-        val classes: List[Name[CssClass]] = row.tone.lay(Nil: List[Name[CssClass]]) { tone => List(toneClass(tone)) }
-        row.action.lay(row.id.lay(Tr(`class` = classes)(cells*)) { id => Tr(id = id, `class` = classes)(cells*) }):
-          action => Tr(id = action.id, `class` = cls(t"pyro-action") :: classes)(cells*)
-      }*)
+    val headings = columns.map: (column: Block.Column) =>
+      Th(`class` = columnClasses(column) + solitaryClass(column.title))(phrase(column.title))
 
-    val captioned: List[Html of "caption"] = caption.lay(Nil: List[Html of "caption"]) { caption => List(Caption(phrase(caption))) }
+    val head = Thead(Tr(headings*))
+
+    val bodyRows = rows.map: (row: Block.Row) =>
+      val cells = columns.indexed.map: (column, index) =>
+        val style: List[Name[CssClass]] = columnClasses(column)
+
+        row.cells.at(index).lay(Td(`class` = style)(Html.Fragment[Phrasing]())): cell =>
+          Td(`class` = style + solitaryClass(cell.content))(phrase(cell.content))
+
+      val classes: List[Name[CssClass]] =
+        row.tone.lay(Nil: List[Name[CssClass]]): tone => List(toneClass(tone))
+
+      def plain: Html of "tr" =
+        row.id.lay(Tr(`class` = classes)(cells*)): id => Tr(id = id, `class` = classes)(cells*)
+
+      row.action.lay(plain): action =>
+        Tr(id = action.id, `class` = cls(t"pyro-action") :: classes)(cells*)
+
+    val body = Tbody(bodyRows*)
+
+    val captioned: List[Html of "caption"] =
+      caption.lay(Nil: List[Html of "caption"]): caption => List(Caption(phrase(caption)))
+
     Table(`class` = tableClasses)(Html.Fragment(captioned*), head, body)
 
   // A stack trace: a section per exception in the chain, each a heading naming the exception
@@ -712,7 +943,8 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
       val heading =
         Header(`class` = cls(t"pyro-trace-heading"))
-          ( Code(`class` = cls(t"pyro-trace-class"))(Em(t"${stack.component}."), Strong(stack.className)),
+          ( Code(`class` = cls(t"pyro-trace-class"))
+              ( Em(t"${stack.component}."), Strong(stack.className) ),
             t": ",
             Span(`class` = cls(t"pyro-trace-message"))(phrase(stack.message)) )
 
@@ -720,19 +952,24 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         val (prefix, segment) = Block.Trace.split(frame.owner)
         val repeat: List[Name[CssClass]] = if sameClass then List(cls(t"pyro-repeat")) else Nil
         val fileRepeat: List[Name[CssClass]] = if sameFile then List(cls(t"pyro-repeat")) else Nil
-        val plumbing: List[Name[CssClass]] = if frame.plumbing then List(cls(t"pyro-plumbing")) else Nil
+
+        val plumbing: List[Name[CssClass]] =
+          if frame.plumbing then List(cls(t"pyro-plumbing")) else Nil
+
         val rowClasses: List[Name[CssClass]] = cls(t"pyro-frame") :: plumbing
         val joined = Block.Trace.joined(frame)
 
         Tr(`class` = rowClasses)
           ( Td(`class` = cls(t"pyro-at"))(t"at"),
             Td(`class` = cls(t"pyro-owner") :: accentClass(frame.namespace) :: repeat)
-              (Span(`class` = cls(t"pyro-prefix"))(prefix), Strong(segment)),
+              ( Span(`class` = cls(t"pyro-prefix"))(prefix), Strong(segment) ),
             Td(`class` = cls(t"pyro-dot"))(if joined then t"." else t"⌗"),
             Td(`class` = cls(t"pyro-method"))(frame.method),
             Td(`class` = cls(t"pyro-file") :: fileRepeat)(frame.file),
-            Td(`class` = cls(t"pyro-line"))(Span(`class` = cls(t"pyro-colon"))(t":"), frame.line.let(_.show).or(t"")),
-            Td(`class` = List(cls(t"pyro-source"), cls(t"pyro-collapsible")))(Code(frame.code.or(t""))) )
+            Td(`class` = cls(t"pyro-line"))
+              ( Span(`class` = cls(t"pyro-colon"))(t":"), frame.line.let(_.show).or(t"") ),
+            Td(`class` = List(cls(t"pyro-source"), cls(t"pyro-collapsible")))
+              ( Code(frame.code.or(t"")) ) )
 
       def origin(origin: Block.Trace.Origin): Html of "tr" =
         Tr(`class` = List(cls(t"pyro-frame"), cls(t"pyro-inlined")))
@@ -741,8 +978,10 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
             Td(`class` = cls(t"pyro-dot"))(origin.owner.lay(t"")(_ => t".")),
             Td(`class` = cls(t"pyro-method"))(origin.name.or(t"inlined from")),
             Td(`class` = cls(t"pyro-file"))(origin.file),
-            Td(`class` = cls(t"pyro-line"))(Span(`class` = cls(t"pyro-colon"))(t":"), origin.line.show),
-            Td(`class` = List(cls(t"pyro-source"), cls(t"pyro-collapsible")))(Code(origin.code.or(t""))) )
+            Td(`class` = cls(t"pyro-line"))
+              ( Span(`class` = cls(t"pyro-colon"))(t":"), origin.line.show ),
+            Td(`class` = List(cls(t"pyro-source"), cls(t"pyro-collapsible")))
+              ( Code(origin.code.or(t"")) ) )
 
       val rows: List[Html of "tr"] =
         stack.frames.fold((Nil: List[Html of "tr"], t"", t"")):
@@ -750,14 +989,17 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
             val row = frame(frame0, frame0.owner == lastClass, frame0.file == lastFile)
             val subRows = frame0.inlined.map(origin).reverse
             (subRows + (row :: acc), frame0.owner, frame0.file)
+
         . _1.reverse
 
-      Section(`class` = cls(t"pyro-trace"))(heading, Table(`class` = cls(t"pyro-frames"))(Tbody(rows*)))
+      val table = Table(`class` = cls(t"pyro-frames"))(Tbody(rows*))
+      Section(`class` = cls(t"pyro-trace"))(heading, table)
 
-    Html.Fragment[Flow](stacks.indexed.map { (stack0: Block.Trace.Stack, index: Ordinal) =>
+    val sections = stacks.indexed.map: (stack0: Block.Trace.Stack, index: Ordinal) =>
       if index.n0 == 0 then stack(stack0)
       else Html.Fragment[Flow](P(`class` = cls(t"pyro-caused-by"))(t"caused by:"), stack(stack0))
-    }*)
+
+    Html.Fragment[Flow](sections*)
 
   // A chart is a figure holding a description list: each series is a term, and each of its
   // values a description. A bar or a histogram column is a `meter` of the value against the
@@ -771,22 +1013,32 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     def values(series0: Block.Series): List[Entry] = kind match
       case Block.Chart.Kind.Sparkline =>
         val glyphs = t"▁▂▃▄▅▆▇█"
-        val cells = series0.values.map { (value: Double) => glyphs.s.charAt(((value/most)*7).toInt.max(0).min(7)).toString.tt }.join
-        List[Entry](Dd(`class` = cls(t"pyro-series-value"))(Span(`class` = cls(t"pyro-sparkline"))(cells)))
+
+        val cells =
+          series0.values
+          . map: (value: Double) =>
+              glyphs.s.charAt(((value/most)*7).toInt.max(0).min(7)).toString.tt
+
+          . join
+
+        val sparkline = Span(`class` = cls(t"pyro-sparkline"))(cells)
+        List[Entry](Dd(`class` = cls(t"pyro-series-value"))(sparkline))
 
       case Block.Chart.Kind.Bars | Block.Chart.Kind.Histogram =>
-        series0.values.map { (value: Double) =>
+        series0.values.map: (value: Double) =>
           val figure = Amounts.figure(value)
+
           val entry: Entry =
             Dd(`class` = cls(t"pyro-series-value"))
-              ( Meter(`class` = cls(t"pyro-meter"), value = value, max = most)(figure), t" ",
+              ( Meter(`class` = cls(t"pyro-meter"), value = value, max = most)(figure),
+                t" ",
                 Span(`class` = cls(t"pyro-figure"))(figure) )
-          entry
-        }
 
-    val entries: List[Entry] = series.bind { (series0: Block.Series) =>
+          entry
+
+    val entries: List[Entry] = series.bind: (series0: Block.Series) =>
       val label: Entry = Dt(`class` = cls(t"pyro-series-label"))(phrase(series0.label))
-      label :: values(series0) }
+      label :: values(series0)
 
     Figure(`class` = classes)(Dl(`class` = cls(t"pyro-series"))(entries*))
 
@@ -805,18 +1057,40 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       case _                           => List(cls(t"pyro-gauge"))
 
     val body: Html of Flow = status match
-      case Status.Fraction(value)        => Progress(`class` = cls(t"pyro-progress"), value = t"${(value*1000).toInt}", max = t"1000")(t"")
-      case Status.Indeterminate()        => Progress(`class` = cls(t"pyro-progress"))(t"")
+      case Status.Fraction(value) =>
+        val permille: Text = t"${(value*1000).toInt}"
+        Progress(`class` = cls(t"pyro-progress"), value = permille, max = t"1000")(t"")
+
+      case Status.Indeterminate() => Progress(`class` = cls(t"pyro-progress"))(t"")
+
       case Status.Reckoning(done, total) =>
-        total.lay[Html of Flow](whatwg.Data(`class` = cls(t"pyro-reckoning"), value = done.toString.tt)(done.toString.tt)): total =>
-          Div(`class` = cls(t"pyro-reckoning"))(Progress(value = t"${done.toString}", max = t"${total.toString}")(t""), Span(t" ${done.toString}/${total.toString}"))
-      case Status.Standing(standing)     => Span(`class` = List(cls(t"pyro-standing"), cls(t"pyro-standing-${standing.toString.tt.lower}")))(standingGlyph(standing))
-      case Status.Elapsed(seconds)       => Time(`class` = cls(t"pyro-elapsed"), datetime = duration(seconds))(Amounts.scaled(seconds, t"s") match { case (n, u) => t"$n $u" })
-      case Status.Remaining(seconds)     => Time(`class` = cls(t"pyro-remaining"), datetime = duration(seconds))(Amounts.scaled(seconds, t"s") match { case (n, u) => t"$n $u left" })
+        def bare: Html of Flow =
+          whatwg.Data(`class` = cls(t"pyro-reckoning"), value = done.toString.tt)(done.toString.tt)
+
+        total.lay[Html of Flow](bare): total =>
+          val progress = Progress(value = t"${done.toString}", max = t"${total.toString}")(t"")
+          val count = Span(t" ${done.toString}/${total.toString}")
+          Div(`class` = cls(t"pyro-reckoning"))(progress, count)
+
+      case Status.Standing(standing) =>
+        val style: Name[CssClass] = cls(t"pyro-standing-${standing.toString.tt.lower}")
+        Span(`class` = List(cls(t"pyro-standing"), style))(standingGlyph(standing))
+
+      case Status.Elapsed(seconds) =>
+        val (n, u) = Amounts.scaled(seconds, t"s")
+        Time(`class` = cls(t"pyro-elapsed"), datetime = duration(seconds))(t"$n $u")
+
+      case Status.Remaining(seconds) =>
+        val (n, u) = Amounts.scaled(seconds, t"s")
+        Time(`class` = cls(t"pyro-remaining"), datetime = duration(seconds))(t"$n $u left")
+
       case Status.Steps(steps) =>
-        Ol(`class` = cls(t"pyro-steps"))(steps.map { (step: Step) =>
-          Li(`class` = cls(t"pyro-standing-${step.standing.toString.tt.lower}"))(Span(`class` = cls(t"pyro-standing"))(standingGlyph(step.standing)), t" ", phrase(step.name))
-        }*)
+        val items = steps.map: (step: Step) =>
+          val glyph = Span(`class` = cls(t"pyro-standing"))(standingGlyph(step.standing))
+          val style = cls(t"pyro-standing-${step.standing.toString.tt.lower}")
+          Li(`class` = style)(glyph, t" ", phrase(step.name))
+
+        Ol(`class` = cls(t"pyro-steps"))(items*)
 
     caption.lay(Figure(`class` = classes)(body)): caption =>
       Figure(`class` = classes)(Figcaption(phrase(caption)), body)
@@ -828,7 +1102,10 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   // same id, and is never an action of this page: an internal destination from elsewhere is
   // no link at all.
   def activity(activity: Activity, origin: Optional[Origin] = Unset): Html of Flow =
-    val id: Text = origin.lay(t"pyro-activity-${activity.id}") { origin => t"pyro-activity-${origin.key}-${activity.id}" }
+    val id: Text =
+      origin.lay(t"pyro-activity-${activity.id}"): origin =>
+        t"pyro-activity-${origin.key}-${activity.id}"
+
     val title: Html of Flow = Div(`class` = cls(t"pyro-activity-title"))(phrase(activity.title))
     val state: Html of Flow = Div(`class` = cls(t"pyro-activity-state"))(phrase(activity.state))
 
@@ -836,7 +1113,10 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       Div(`class` = cls(t"pyro-activity-origin"))(originLabel(origin))
 
     val body: Html of Flow = Html.Fragment(label, title, gauge(activity.status, Unset), state)
-    val remote: List[Name[CssClass]] = if origin.present then List(cls(t"pyro-activity-remote")) else Nil
+
+    val remote: List[Name[CssClass]] =
+      if origin.present then List(cls(t"pyro-activity-remote")) else Nil
+
     val classes: List[Name[CssClass]] = cls(t"pyro-activity") :: remote
 
     activity.destination match
@@ -844,7 +1124,8 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         A(href = url, id = id, `class` = classes)(body)
 
       case Inline.Destination.Internal(action) if origin.absent =>
-        A(href = t"#", id = id, `class` = classes :+ cls(t"pyro-action"), `data-action` = action.id)(body)
+        val style = classes :+ cls(t"pyro-action")
+        A(href = t"#", id = id, `class` = style, `data-action` = action.id)(body)
 
       case local: Inline.Destination.Local if origin.absent =>
         A(href = href(local), id = id, `class` = classes :+ cls(t"pyro-locate"))(body)
@@ -855,7 +1136,8 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   private def originLabel(origin: Origin): Text =
     if origin.local then origin.tool else t"${origin.tool} · ${origin.machine}"
 
-  def activities(activities: List[Activity]): Html of Flow = Html.Fragment(activities.map(activity(_))*)
+  def activities(activities: List[Activity]): Html of Flow =
+    Html.Fragment(activities.map(activity(_))*)
 
   def remoteActivities(activities: List[(Origin, Activity)]): Html of Flow =
     Html.Fragment(activities.map { (origin, activity) => this.activity(activity, origin) }*)
@@ -868,14 +1150,18 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     Html.Fragment[Flow](items*)
 
   private def toolLink(origin: Origin): Html of Flow =
-    val current: List[Name[CssClass]] = if origin.self then List(cls(t"pyro-menubar-current")) else Nil
+    val current: List[Name[CssClass]] =
+      if origin.self then List(cls(t"pyro-menubar-current")) else Nil
 
     origin.url match
       case url: Text =>
-        A(href = url, `class` = cls(t"pyro-menubar-tool") :: current, `data-local` = if origin.local then t"true" else t"false")(originLabel(origin))
+        val style = cls(t"pyro-menubar-tool") :: current
+        val local: Text = if origin.local then t"true" else t"false"
+        A(href = url, `class` = style, `data-local` = local)(originLabel(origin))
 
       case _ =>
-        Span(`class` = cls(t"pyro-menubar-tool") :: cls(t"pyro-menubar-unlinked") :: current)(originLabel(origin))
+        val style = cls(t"pyro-menubar-tool") :: cls(t"pyro-menubar-unlinked") :: current
+        Span(`class` = style)(originLabel(origin))
 
   private def standingGlyph(standing: Standing): Text = standing match
     case Standing.Pending   => t"·"

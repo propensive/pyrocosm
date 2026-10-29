@@ -28,12 +28,18 @@ import soundness.*
 // function and mutates `Live` cells in response; it never sees a key code, a click or a DOM
 // node.
 enum Event:
-  case Pressed(action: Action)                          // a button, a selectable row or item, an internal link
-  case Edited(input: Input, text: Text, caret: Int, version: Int = 0) // per keystroke, for fields that ask for it; `version` numbers the text
+  case Pressed(action: Action)   // a button, a selectable row or item, an internal link
+
+  // per keystroke, for fields that ask for it; `version` numbers the text
+  case Edited(input: Input, text: Text, caret: Int, version: Int = 0)
+
   case Submitted(input: Input, text: Text)
   case Chosen(choice: Choice, index: Int)
   case Toggled(toggle: Toggle, state: Boolean)
-  case Key(keypress: Keypress)                          // a declared shortcut, or an unclaimed key in the terminal
+  case Key(keypress: Keypress)   // a declared shortcut, or an unclaimed key in the terminal
   case Resized(columns: Int, rows: Int)
-  case Located(path: Text)                              // the page the browser opened or navigated to, by its path; the web only
+
+  // the page the browser opened or navigated to, by its path; the web only
+  case Located(path: Text)
+
   case Closed

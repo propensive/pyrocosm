@@ -51,18 +51,27 @@ object Blobs:
   private def relative(root: Path on Linux, path: Path on Linux): Text =
     val prefix: Text = root.encode
     val whole: Text = path.encode
-    if whole.starts(prefix) then whole.s.substring((prefix.s.length + 1).min(whole.s.length)).nn.tt else whole
+
+    if whole.starts(prefix)
+    then whole.s.substring((prefix.s.length + 1).min(whole.s.length)).nn.tt
+    else whole
 
   // A directory's regular files as one jar, in a canonical order with no timestamps.
   def bundle(directory: Path on Linux): Data raises Io.Error =
     val files: List[Path on Linux] =
-      directory.descendants.to[List].filter(_.entry() != Directory).stdlib.sortBy(relative(directory, _).s).to(List)
+      directory.descendants.to[List].filter(_.entry() != Directory).stdlib
+      . sortBy(relative(directory, _).s)
+      . to(List)
 
     val entries: List[Zip.Entry] =
       files.map: file =>
         val name: Text = relative(directory, file)
+
         val ref: Path on Zip =
-          unsafely(name.cut(t"/").stdlib.foldLeft(% : Path on Zip) { (path, segment) => path / Name[Zip](segment) })
+          unsafely:
+            name.cut(t"/").stdlib.foldLeft(% : Path on Zip): (path, segment) =>
+              path / Name[Zip](segment)
+
         Zip.Entry(ref, file.read[Data])
 
     unsafely(Zipfile(entries).serialize).memoize
@@ -103,8 +112,7 @@ object Blobs:
 
     // Stores `data` under `digest` if the bytes really have it; `false` otherwise.
     def put(digest: Text, data: Data): Boolean =
-      if Blobs.digest(data) != digest then false
-      else safely(path(digest).write(data)).present
+      if Blobs.digest(data) != digest then false else safely(path(digest).write(data)).present
 
   // Reassembles blobs from chunks as they arrive, in any interleaving, and stores each when
   // its last chunk has come. `receive` answers whether a completed blob was good.

@@ -25,13 +25,13 @@ package pyrocosm
 import java.io as ji
 import java.util.concurrent.atomic as juca
 import java.util.concurrent.locks as jucl
+
 import scala.caps
 
 import soundness.*
 
-
-import gigantism.Every
 import dysasymptotics.linearSize
+import gigantism.Every
 
 // An input stream over the console's own, which profanity's `interactive` closes when a session
 // ends. Under an Ethereal daemon the console's stdin is the client's socket, so closing it would
@@ -51,12 +51,15 @@ private class Detachable(underlying: ji.InputStream) extends ji.InputStream:
   override def read(array: scala.Array[Byte] | Null, offset: Int, length: Int): Int =
     if length == 0 then 0 else
       val first = read()
+
       if first < 0 then -1 else
         array.nn(offset) = first.toByte
         var count = 1
+
         while count < length && !detached && underlying.available() > 0 do
           array.nn(offset + count) = underlying.read().toByte
           count += 1
+
         count
 
   override def available(): Int = if detached then 0 else underlying.available()
@@ -71,7 +74,8 @@ private class Detachable(underlying: ji.InputStream) extends ji.InputStream:
 // pending one on any application redraw, which would leak a timer per `Live` assignment); and
 // an inline session runs in cycles, each ending by committing a transcript's settled entries
 // to the scrollback and starting a fresh block with the rest.
-class TerminalFrontend(occupancy: Optional[Occupancy] = Unset, theme: TerminalTheme = TerminalTheme.default)
+class TerminalFrontend
+  ( occupancy: Optional[Occupancy] = Unset, theme: TerminalTheme = TerminalTheme.default )
   ( using console:     Console,
           monitor:     Monitor,
           probate:     Probate,
@@ -106,12 +110,16 @@ extends Frontend:
     Presence.shared.attach(interface)
 
     val shortcuts: Map[Keypress, Action] =
-      interface.shortcuts.map { (shortcut: Shortcut) => shortcut.keypress -> shortcut.action }.to[Map]
+      interface.shortcuts.map: (shortcut: Shortcut) => shortcut.keypress -> shortcut.action
+      . to[Map]
 
     // Declared shortcuts fire their action; everything else reaches the application as it is.
     def dispatch0(event: Event): Unit = event match
-      case Event.Key(keypress) => shortcuts(keypress).lay(handle(event)) { action => handle(Event.Pressed(action)) }
-      case other               => handle(other)
+      case Event.Key(keypress) =>
+        shortcuts(keypress).lay(handle(event)): action => handle(Event.Pressed(action))
+
+      case other =>
+        handle(other)
 
     // The fixtures live in a pane tree, which must stay pure; the handler they call is vouched
     // pure once here, as ultimatum does for the wakes its `Reading` cells hold.
@@ -122,31 +130,55 @@ extends Frontend:
     var fixtures: List[Refreshable] = Nil
     var bindings: List[(Live[?], Refreshable, Optional[Panel])] = Nil
 
-    def register[fixture <: Refreshable](fixture: fixture, panel: Optional[Panel], cells: Live[?]*): fixture =
+    def register[fixture <: Refreshable](fixture: fixture, panel: Optional[Panel], cells: Live[?]*)
+    :   fixture =
+
       fixtures = fixtures :+ fixture
-      List.from(cells).each { (cell: Live[?]) => bindings = bindings :+ (cell, fixture, panel) }
+      List.from(cells).each: (cell: Live[?]) => bindings = bindings :+ (cell, fixture, panel)
       fixture
 
     def control(control: Control): Pane = control match
       case button: Control.Button =>
-        val fixture = register(ButtonFocus(button, renderer, dispatch, session), Unset, button.enabled)
-        Pane.Widget(Sizing(0.0, minWidth = fixture.measure(0)(0), maxWidth = fixture.measure(0)(0), minHeight = 1, maxHeight = 1), fixture)
+        val focus = ButtonFocus(button, renderer, dispatch, session)
+        val fixture = register(focus, Unset, button.enabled)
+        val width: Int = fixture.measure(0)(0)
+        val sizing = Sizing(0.0, minWidth = width, maxWidth = width, minHeight = 1, maxHeight = 1)
+        Pane.Widget(sizing, fixture)
 
       case toggle: Control.Toggle =>
-        val fixture = register(ToggleFocus(toggle, renderer, dispatch, session), Unset, toggle.state)
-        Pane.Widget(Sizing(0.0, minWidth = fixture.measure(0)(0), maxWidth = fixture.measure(0)(0), minHeight = 1, maxHeight = 1), fixture)
+        val focus = ToggleFocus(toggle, renderer, dispatch, session)
+        val fixture = register(focus, Unset, toggle.state)
+        val width: Int = fixture.measure(0)(0)
+        val sizing = Sizing(0.0, minWidth = width, maxWidth = width, minHeight = 1, maxHeight = 1)
+        Pane.Widget(sizing, fixture)
 
       case choice: Control.Choice =>
-        Pane.Widget(Sizing(), register(ChoiceFocus(choice, renderer, dispatch, session), Unset, choice.current))
+        val focus = ChoiceFocus(choice, renderer, dispatch, session)
+        val fixture = register(focus, Unset, choice.current)
+        Pane.Widget(Sizing(), fixture)
 
       case field: Control.Field =>
-        Pane.Widget(Sizing(), register(CodeField(field, renderer, dispatch, session), Unset, field.value, field.decoration, field.revision))
+        val fixture =
+          register
+            ( CodeField(field, renderer, dispatch, session),
+              Unset,
+              field.value,
+              field.decoration,
+              field.revision )
+
+        Pane.Widget(Sizing(), fixture)
 
     // The session reads the console through a detachable stdin (see `Detachable`).
-    val stdio0: Stdio = Stdio(console.stdio.out, console.stdio.err, Detachable(console.stdio.in), console.stdio.termcap)
+    val stdio0: Stdio =
+      Stdio
+        ( console.stdio.out,
+          console.stdio.err,
+          Detachable(console.stdio.in),
+          console.stdio.termcap )
 
     given consoleSession: Console = new Console:
       val stdio: Stdio = stdio0
+
       override def trap(handler: PartialFunction[profanity.Signal, SignalResponse]): Unit =
         console.trap(handler)
 
@@ -162,7 +194,12 @@ extends Frontend:
       val mode: Occupancy = interface.hints[hints.terminal.Occupancy] match
         case hints.terminal.Occupancy.Inline     => Occupancy.Inline
         case hints.terminal.Occupancy.Fullscreen => Occupancy.Fullscreen
-        case _ => occupancy.or(if interface.panels.size > 1 && interface.panels.all(_.role != Panel.Role.Transcript) then Occupancy.Fullscreen else Occupancy.Inline)
+
+        case _ =>
+          occupancy.or:
+            if interface.panels.size > 1 && interface.panels.all(_.role != Panel.Role.Transcript)
+            then Occupancy.Fullscreen
+            else Occupancy.Inline
 
       val inlined: Boolean = mode == Occupancy.Inline
 
@@ -179,10 +216,15 @@ extends Frontend:
           case _                     => false
 
         val fixture: Refreshable =
-          if passive then register(PassiveFixture(() => panel.content(), renderer, session, inlined && panel.role == Panel.Role.Transcript), panel, panel.content)
-          else register(PanelFixture(panel, renderer, dispatch, session), panel, panel.content)
+          if passive then
+            val windowed: Boolean = inlined && panel.role == Panel.Role.Transcript
+            val fixture0 = PassiveFixture(() => panel.content(), renderer, session, windowed)
+            register(fixture0, panel, panel.content)
+          else
+            register(PanelFixture(panel, renderer, dispatch, session), panel, panel.content)
 
         val content = Pane.Widget(Sizing(maxHeight = maxRows), fixture)
+
         if panel.controls.nil then content
         else ultimatum.stack((content :: panel.controls.map(control).map(_.weight(0.0)))*)
 
@@ -198,17 +240,36 @@ extends Frontend:
         if interface.controls.nil then Unset
         else
           val spacer = ultimatum.panel(0.0, minWidth = 1, maxWidth = 1) { () }
-          strip(interface.controls.bind { (control0: Control) => List(control(control0), spacer) }*).weight(0.0)
+
+          val items = interface.controls.bind: (control0: Control) =>
+            List(control(control0), spacer)
+
+          strip(items*).weight(0.0)
 
       // The activities as a band of gauges beneath the matter, in a fullscreen session only:
       // zero rows while there are none. An inline block has no band, as a title has no row.
       val activities: Optional[Pane] =
         if inlined then Unset
         else
-          val fixture = register(PassiveFixture(() => interface.activities().map(Activity.block), renderer, session, false), Unset, interface.activities)
+          val fixture =
+            register
+              ( PassiveFixture
+                  ( () => interface.activities().map(Activity.block), renderer, session, false ),
+                Unset,
+                interface.activities )
+
           Pane.Widget(Sizing(0.0), fixture).weight(0.0)
 
-      val pane = TerminalArrangement.build(interface, plan, title, toolbar, activities, widget, () => session.hiding, spaced = inlined)
+      val pane =
+        TerminalArrangement.build
+          ( interface,
+            plan,
+            title,
+            toolbar,
+            activities,
+            widget,
+            () => session.hiding,
+            spaced = inlined )
 
       // Whether the current inline cycle is ending to commit transcript entries. The cycle is
       // ended by this sentinel on the spool, which the frontend's iterator stops at: stopping
@@ -227,7 +288,8 @@ extends Frontend:
       // the next.
       val pending: juca.AtomicBoolean = juca.AtomicBoolean(false)
 
-      def redraw(): Unit = if pending.compareAndSet(false, true) then terminal.events.put(Terminal.Info.Redraw)
+      def redraw(): Unit =
+        if pending.compareAndSet(false, true) then terminal.events.put(Terminal.Info.Redraw)
 
       val scheduleWake: Long => Unit = (delay: Long) =>
         if armed.compareAndSet(false, true) then
@@ -248,30 +310,39 @@ extends Frontend:
         fixture.mark()
 
         val settled: Int = panel.lay(0): panel =>
-          if inlined && panel.role == Panel.Role.Transcript then Actions.settled(panel.content()) else 0
+          if inlined && panel.role == Panel.Role.Transcript
+          then Actions.settled(panel.content())
+          else 0
 
         val entries: Int = panel.lay(0): panel =>
           if inlined && panel.role == Panel.Role.Transcript then panel.content().size else 0
 
-        val transcript: Boolean = panel.lay(false) { panel => inlined && panel.role == Panel.Role.Transcript }
+        val transcript: Boolean = panel.lay(false): panel =>
+          inlined && panel.role == Panel.Role.Transcript
+
+        val cycling: Boolean = settled > session.frozen && !session.hiding
 
         // A transcript with fewer entries than are committed has been cleared: the cycle ends,
         // and the next starts on a cleared screen and scrollback.
         if transcript && entries < session.frozen && committing.compareAndSet(false, true) then
           session.resetting = true
           terminal.events.put(sentinel)
-        else if settled > session.frozen && !session.hiding && committing.compareAndSet(false, true) then
+        else if cycling && committing.compareAndSet(false, true) then
           session.upto = settled
           session.hiding = true
           terminal.events.put(Terminal.Info.Redraw)
           terminal.events.put(sentinel)
-        else redraw()
+        else
+          redraw()
 
-      bindings.each { (binding: (Live[?], Refreshable, Optional[Panel])) => binding(0).bindWake(wake(binding(1), binding(2))) }
+      bindings.each: (binding: (Live[?], Refreshable, Optional[Panel])) =>
+        binding(0).bindWake(wake(binding(1), binding(2)))
 
       // The settled entries of an inline transcript, for a replay after a resize.
       def settledEntries: Int =
-        interface.panels.seek(_.role == Panel.Role.Transcript).let { (panel: Panel) => Actions.settled(panel.content()) }.or(0)
+        interface.panels.seek(_.role == Panel.Role.Transcript)
+        . let: (panel: Panel) => Actions.settled(panel.content())
+        . or(0)
 
       // A resize reflows the committed scrollback unpredictably, so an inline session replays:
       // once the size has settled (a drag fires many events), the cycle ends, the screen and
@@ -298,6 +369,7 @@ extends Frontend:
 
         async:
           snooze(150.0*Milli(Second))
+
           if resizes.get == current && !halted.get && committing.compareAndSet(false, true) then
             session.replaying = true
             terminal.events.put(sentinel)
@@ -321,7 +393,7 @@ extends Frontend:
               if peeked.absent then
                 if underlying.hasNext then peeked = underlying.next() else ended = true
                 // The redraw is being taken: the next assignment may queue another.
-                peeked.let { event => if event == Terminal.Info.Redraw then pending.set(false) }
+                peeked.let: event => if event == Terminal.Info.Redraw then pending.set(false)
 
               // An inline session's resize is handled here, not by the form.
               peeked match
@@ -335,7 +407,8 @@ extends Frontend:
                   else if peeked == sentinel then
                     ended = true
                     false
-                  else true
+                  else
+                    true
 
           def next(): Terminal.Event =
             val event = peeked.or(underlying.next())
@@ -344,13 +417,17 @@ extends Frontend:
             event match
               case Keypress.Tab =>
                 val focused = session.focused
-                if focused != null && focused.claimsTab then Keypress.Ctrl(Keypress.Tab) else Keypress.Tab
+
+                if focused != null && focused.claimsTab then Keypress.Ctrl(Keypress.Tab)
+                else Keypress.Tab
 
               case Keypress.Shift(Keypress.Tab) => Keypress.Tab
 
               case Keypress.Escape =>
                 val focused = session.focused
-                if focused != null && focused.claimsEscape then Keypress.Ctrl(Keypress.Escape) else Keypress.Escape
+
+                if focused != null && focused.claimsEscape then Keypress.Ctrl(Keypress.Escape)
+                else Keypress.Escape
 
               case other                        => other)
 
@@ -397,7 +474,8 @@ extends Frontend:
                     session.hiding = true
                     terminal.events.put(Terminal.Info.Redraw)
                     terminal.events.put(sentinel)
-                  else committing.set(false)
+                  else
+                    committing.set(false)
                 else if session.resetting then
                   terminal.stdio.print(t"\u001b[2J\u001b[3J\u001b[H")
                   session.frozen = 0
