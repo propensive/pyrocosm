@@ -267,6 +267,12 @@ object Journal:
     case Wire.Beat(_, _) =>
       t"beat"
 
+    case Wire.Request(id, command, _) =>
+      t"request ${brief(id)} $command"
+
+    case Wire.Reply(id, ok, _) =>
+      t"reply ${brief(id)} ${if ok then t"done" else t"refused"}"
+
     case Wire.Snapshot(self, known) => snapshot(self, known)
     case other                      => Wire.envelope(other).lay(t"unknown")(carry(_))
 

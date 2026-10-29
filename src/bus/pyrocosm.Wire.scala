@@ -234,8 +234,9 @@ object Wire:
   lazy val codec: Channel.Codec[Data] =
     Channel.Codec(t"pyrocosm", Tels.Axiom.acceptance, data => data, data => data)
 
-  // The tool every node presents itself as, whatever tool it is; and the port a machine's
-  // gateway accepts other machines on by default. 8090 to 8092 are fume's.
+  // The tool every node presents itself as, whatever tool it is, and which the machine's hub
+  // is; and the port a machine's gateway accepts other machines on by default. 8090 to 8092
+  // are fume's.
   val tool: Text = t"pyrocosm"
   val port: Int = 8093
 
@@ -244,11 +245,16 @@ object Wire:
 // for `<tool> swarm ping`; a `snapshot` is what each end sends first, once the acceptances are
 // exchanged: what it is, and what it knows of every other node; and the rest each bear one
 // event of the bus, with its envelope's fields, which a gateway passes on to the links the
-// event has not yet travelled.
+// event has not yet travelled. A `request` is what a tool's node asks of its machine's hub —
+// to listen for other machines, to advertise an invitation, to keep or drop a link, or to say
+// how its links stand — named by a command word and an argument the command defines, and
+// answered by a `reply` bearing the request's id: whether it was done, and what there is to say.
 enum Wire:
   case Beat(sent: Instant over Unix, load: Optional[Double])
   case Ping(id: Uuid, sent: Instant over Unix, note: Text)
   case Pong(id: Uuid, received: Instant over Unix, from: Text)
+  case Request(id: Uuid, command: Text, argument: Text)
+  case Reply(id: Uuid, ok: Boolean, text: Text)
   case Snapshot(self: Advert, known: List[Advert])
   case Advertised(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, advert: Advert)
   case Left(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, node: Node)

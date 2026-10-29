@@ -75,9 +75,11 @@ object Presences:
         node.shares(swarm.node) )
 
   // Every node, this one included, in menu order: by tool, then machine, then address. Two
-  // nodes of one tool on one machine are told apart by their ports.
+  // nodes of one tool on one machine are told apart by their ports. A machine's hub is not a
+  // tool, and is not listed.
   private def origins(swarm: Swarm, adverts: List[Advert]): List[Origin] =
-    val all: scala.List[(Origin, Advert)] = adverts.map { advert => (origin(swarm, advert), advert) }.stdlib
+    val tools: List[Advert] = adverts.filter(_.node.tool != Wire.tool)
+    val all: scala.List[(Origin, Advert)] = tools.map { advert => (origin(swarm, advert), advert) }.stdlib
 
     def named(origin: Origin, advert: Advert): Origin =
       val twins: Int = all.count { (other, _) => other.tool == origin.tool && other.machine == origin.machine }

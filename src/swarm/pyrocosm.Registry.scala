@@ -103,18 +103,38 @@ identity ${record.identity}$gateway
               ( tool, field(lines, t"version").or(t"unknown"), pid, started, port.toInt,
                 field(lines, t"identity").or(t""), number(t"gateway").let(_.toInt) )
 
+  // The machine's hub has one well-known record, and holds a lock beside it for as long as it
+  // runs, so that two hubs started at once leave one.
+  private val hubName: String = "hub.tel"
+  private val lockName: String = "hub.lock"
+
   private def path(directory: Path on Linux): jnf.Path = jnf.Path.of(directory.encode.s).nn
-  private def temporaryName(record: Record): String = s".${record.name.s}.tmp"
+  private def temporaryName(name: String): String = s".$name.tmp"
   private def fileName(pid: Long, tool: Text): String = s"${pid}-${tool.s}.tel"
 
-  private def write(root: jnf.Path, record: Record): Boolean =
+  private def write(root: jnf.Path, record: Record, name: String): Boolean =
     try
       jnf.Files.createDirectories(root)
-      val temporary: jnf.Path = root.resolve(temporaryName(record)).nn
+      val temporary: jnf.Path = root.resolve(temporaryName(name)).nn
       jnf.Files.writeString(temporary, line(record).s)
-      jnf.Files.move(temporary, root.resolve(record.name.s).nn, jnf.StandardCopyOption.ATOMIC_MOVE, jnf.StandardCopyOption.REPLACE_EXISTING)
+      jnf.Files.move(temporary, root.resolve(name).nn, jnf.StandardCopyOption.ATOMIC_MOVE, jnf.StandardCopyOption.REPLACE_EXISTING)
       true
     catch case _: Exception => false
+
+  // Takes the hub's lock, if no process holds it: the lock, which lasts until it is released or
+  // the process ends. Absent if another process holds it, or it could not be made.
+  private def lock(root: jnf.Path): Optional[java.nio.channels.FileLock] =
+    try
+      jnf.Files.createDirectories(root)
+      val channel: java.nio.channels.FileChannel =
+        java.nio.channels.FileChannel.open(root.resolve(lockName).nn, jnf.StandardOpenOption.CREATE, jnf.StandardOpenOption.WRITE).nn
+
+      val held: java.nio.channels.FileLock | Null = channel.tryLock()
+      if held == null then
+        channel.close()
+        Unset
+      else held
+    catch case _: Exception => Unset
 
   private def delete(root: jnf.Path, name: String): Unit =
     try jnf.Files.deleteIfExists(root.resolve(name).nn) catch case _: Exception => ()
@@ -162,10 +182,22 @@ class Registry(directory: Optional[Path on Linux]):
 
   // Writes `record` whole, then moves it into place.
   def register(record: Record): Boolean =
-    root.lay(false)(Registry.write(_, record))
+    root.lay(false)(Registry.write(_, record, record.name.s))
 
   def unregister(pid: Long, tool: Text): Unit =
     root.let(Registry.delete(_, Registry.fileName(pid, tool)))
+
+  // The machine's hub, if a live one is registered; the record of a dead one is deleted.
+  def hub(): Optional[Record] =
+    root.let { root => Registry.read(root.resolve(Registry.hubName).nn) }.or(Unset)
+
+  def registerHub(record: Record): Boolean =
+    root.lay(false)(Registry.write(_, record, Registry.hubName))
+
+  def unregisterHub(): Unit = root.let(Registry.delete(_, Registry.hubName))
+
+  // The hub's lock, if this process can take it.
+  def lockHub(): Optional[java.nio.channels.FileLock] = root.let(Registry.lock(_)).or(Unset)
 
   // Every record whose process is still running; the rest are deleted as they are found.
   def scan(): List[Record] = root.lay(Nil: List[Record])(Registry.scan(_))

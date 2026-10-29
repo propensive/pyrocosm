@@ -44,6 +44,8 @@ object Later:
     case Beat(sent: Instant over Unix, load: Optional[Double])
     case Ping(id: Uuid, sent: Instant over Unix, note: Text)
     case Pong(id: Uuid, received: Instant over Unix, from: Text)
+    case Request(id: Uuid, command: Text, argument: Text)
+    case Reply(id: Uuid, ok: Boolean, text: Text)
     case Snapshot(self: pyrocosm.Advert, known: List[pyrocosm.Advert])
     case Advertised(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, advert: pyrocosm.Advert)
     case Left(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, node: Node)
@@ -142,19 +144,20 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       else t"other"
 
   // What the two nodes of one machine showed.
-  private case class Meshed
-    ( seen:        (Int, Int),
-      neighbours:  (Int, Int),
-      arrived:     Optional[Activity],
-      coalesced:   Int,
-      ended:       Boolean,
-      greeted:     Optional[Greeting],
-      oversized:   Boolean,
-      gateway:     (Boolean, Boolean),
-      handedOver:  Boolean,
-      vanished:    Boolean )
+  private case class Hubbed
+    ( seen:      (Int, Int, Int),
+      leaves:    Int,
+      linked:    (Boolean, Boolean),
+      arrived:   Optional[Activity],
+      coalesced: Int,
+      ended:     Boolean,
+      greeted:   Optional[Greeting],
+      oversized: Boolean,
+      gateway:   (Boolean, Boolean, Boolean),
+      survived:  Boolean,
+      orphaned:  Int,
+      relinked:  Boolean )
 
-  // What three machines showed.
   private case class Relayed
     ( seen:      (Int, Int, Int, Int),
       distinct:  Boolean,
@@ -333,13 +336,24 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
         registry.scan().size
       . assert(_ == 9)
 
-    suite(m"Two nodes of one machine"):
-      // Two nodes in this JVM, as two tools' daemons would be on one machine, with a registry of
-      // the test's own, so that the machine's is untouched; the identity is the machine's real
-      // one, as it must be for the two to admit each other.
-      val meshed: Meshed =
+      test(m"the hub's record is kept apart, and its lock is held by one process at a time"):
+        registry.registerHub(Registry.Record(t"pyrocosm", t"0.1.0", own, begun, 40010, t"ab"*32, 8093))
+        val first: Optional[java.nio.channels.FileLock] = registry.lockHub()
+        val second: Optional[java.nio.channels.FileLock] = registry.lockHub()
+        val found: Optional[(Int, Optional[Int])] = registry.hub().let { record => (record.port, record.gateway) }
+        first.let(_.release())
+        registry.unregisterHub()
+        (found, first.present, second.present, registry.hub().present)
+      . assert(_ == ((40010, 8093), true, false, false))
+
+    suite(m"A hub and two leaves"):
+      // A hub and two leaves in this JVM, as the `pyrocosm` process and two tools' daemons
+      // would be on one machine, with a registry of the test's own, so that the machine's is
+      // untouched; the identity is the machine's real one, as it must be for them to admit
+      // each other. Each leaf links to the hub alone, and knows the other through it.
+      val hubbed: Hubbed =
         supervise:
-          val runtime: Text = java.nio.file.Files.createTempDirectory("pyrocosm-mesh").nn.toString.tt
+          val runtime: Text = java.nio.file.Files.createTempDirectory("pyrocosm-hub").nn.toString.tt
 
           given Environment = name =>
             if name == t"XDG_RUNTIME_DIR" then runtime
@@ -349,15 +363,18 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           val start: Long = Journal.daemon.latest
           def logged: scala.List[Text] = kinds(Journal.daemon.since(start))
 
+          val hub: Hub = Swarm.hub(t"0.1.0", Nil, port).or(panic(m"another process is the hub"))
           val alpha: Swarm = Swarm.start(t"alpha", t"0.1.0", () => List(Service(t"serve", 8081)), Nil, port)
           val beta: Swarm = Swarm.start(t"beta", t"0.1.0", () => Nil, Nil, port)
 
-          await(50)(alpha.nodes().size == 2 && beta.nodes().size == 2)
-          val seen: (Int, Int) = (alpha.nodes().size, beta.nodes().size)
-          await(25)(alpha.neighbours.size == 1 && beta.neighbours.size == 1)
-          val neighbours: (Int, Int) = (alpha.neighbours.size, beta.neighbours.size)
+          await(50)(alpha.nodes().size == 3 && beta.nodes().size == 3 && hub.nodes().size == 3)
+          val seen: (Int, Int, Int) = (alpha.nodes().size, beta.nodes().size, hub.nodes().size)
+          await(25)(hub.leaves.size == 2)
+          val leaves: Int = hub.leaves.size
+          val linked: (Boolean, Boolean) = (alpha.hub.present, beta.hub.present)
 
-          // A hundred updates in a hundred milliseconds reach beta as the last of them.
+          // A hundred updates in a hundred milliseconds reach beta, through the hub, as the
+          // last of them.
           val live: Live[List[Activity]] = Live(Nil)
           alpha.expose(live)
 
@@ -373,7 +390,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           await(25)(beta.activities().nil)
           val ended: Boolean = beta.activities().nil
 
-          // A tool's own event reaches a subscriber on the other node, and an oversized one
+          // A tool's own event reaches a subscriber on the other leaf, and an oversized one
           // is refused.
           val promise: Promise[Greeting] = Promise()
 
@@ -387,48 +404,60 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           subscription.cancel()
           val oversized: Boolean = !alpha.publish(t"big", Data.fill(20000) { i => (i%7).toByte })
 
-          // One of the two takes the gateway port; when it goes, the other does.
+          // A leaf asking for the gateway makes the hub the gateway, which every node of the
+          // machine then reports; the leaf which asked going does not give it up.
           alpha.wantGateway(port, Unset)
           await(25)(alpha.listening.present)
-          beta.wantGateway(port, Unset)
-          snooze(2.5*Second)
-          val gateway: (Boolean, Boolean) = (alpha.listening.present, beta.listening.present)
+          val gateway: (Boolean, Boolean, Boolean) = (alpha.listening.present, beta.listening.present, hub.listening.present)
 
           Swarm.stop(t"alpha")
-          await(50)(beta.listening.present)
-          val handedOver: Boolean = beta.listening.present
+          await(25)(beta.nodes().size == 2)
+          val survived: Boolean = hub.listening.present && beta.nodes().size == 2
+
+          // The hub going takes every other node with it, and a hub started again is found.
+          hub.stop()
           await(25)(beta.nodes().size == 1)
-          val vanished: Boolean = beta.nodes().size == 1
+          val orphaned: Int = beta.nodes().size
+
+          val again: Hub = Swarm.hub(t"0.1.0", Nil, port).or(panic(m"another process is the hub"))
+          await(50)(beta.hub.present && beta.nodes().size == 2)
+          val relinked: Boolean = beta.hub.present && beta.nodes().size == 2
+
+          again.stop()
           Swarm.stop(t"beta")
 
-          Meshed(seen, neighbours, arrived, coalesced, ended, greeted, oversized, gateway, handedOver, vanished)
+          Hubbed(seen, leaves, linked, arrived, coalesced, ended, greeted, oversized, gateway, survived, orphaned, relinked)
 
-      test(m"each node sees the other, and links to it"):
-        (meshed.seen, meshed.neighbours)
-      . assert(_ == ((2, 2), (1, 1)))
+      test(m"each leaf sees the hub and the other leaf, linked to the hub alone"):
+        (hubbed.seen, hubbed.leaves, hubbed.linked)
+      . assert(_ == ((3, 3, 3), 2, (true, true)))
 
       test(m"an activity's updates arrive, coalesced to a few"):
-        (meshed.arrived.let(_.status), meshed.coalesced <= 5)
+        (hubbed.arrived.let(_.status), hubbed.coalesced <= 5)
       . assert(_ == (Status.Fraction(1.0), true))
 
-      test(m"an activity removed is ended on the other node"):
-        meshed.ended
+      test(m"an activity removed is ended on the other leaf"):
+        hubbed.ended
       . assert(_ == true)
 
       test(m"a tool's own event reaches a subscriber, and an oversized one is refused"):
-        (meshed.greeted, meshed.oversized)
+        (hubbed.greeted, hubbed.oversized)
       . assert(_ == (Greeting(t"alpha", 1), true))
 
-      test(m"one node is the gateway, and the other takes over when it goes"):
-        (meshed.gateway, meshed.handedOver, meshed.vanished)
-      . assert(_ == ((true, false), true, true))
+      test(m"the hub is the gateway a leaf asks for, and keeps it when that leaf goes"):
+        (hubbed.gateway, hubbed.survived)
+      . assert(_ == ((true, true, true), true))
+
+      test(m"a leaf forgets every node with its hub, and finds a hub started again"):
+        (hubbed.orphaned, hubbed.relinked)
+      . assert(_ == (1, true))
 
     suite(m"Three machines"):
       // Three machines in this JVM, each with an identity of its own — `Peer.identity` makes a
-      // certificate under whichever state home a node's environment names — and a registry of
-      // its own, so that none finds the others as a neighbour. Machine A has two nodes, one its
-      // gateway; machines B and C each keep a link to that gateway, which relays between its
-      // own machine and each of them, and between the two of them, as the hub of its spokes.
+      // certificate under whichever state home a node's environment names — and a registry and
+      // a hub of its own. Machine A has two leaves, and its hub is its gateway; machines B and
+      // C each have one leaf, and their hubs keep a link to A's, which relays between its own
+      // machine and each of them, and between the two of them, as the hub of its spokes.
       val relayed: Relayed =
         supervise:
           def temporary(name: String): Text = java.nio.file.Files.createTempDirectory(name).nn.toString.tt
@@ -445,19 +474,27 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           val envC: Environment = environment(temporary("pyrocosm-c-state"), temporary("pyrocosm-c-runtime"))
 
           val port: Int = Port[Tcp]().number
+
+          def hub(environment: Environment): Hub =
+            Swarm.hub(t"0.1.0", Nil, port)(using Swarm.discovery)(using summon[Monitor], summon[Probate], environment)
+            . or(panic(m"another process is the hub"))
+
+          val hubA: Hub = hub(envA)
+          val hubB: Hub = hub(envB)
+          val hubC: Hub = hub(envC)
           val alpha: Swarm = Swarm.start(t"alpha3", t"0.1.0", () => Nil, Nil, port)(using summon[Monitor], summon[Probate], envA)
           val beta: Swarm = Swarm.start(t"beta3", t"0.1.0", () => Nil, Nil, port)(using summon[Monitor], summon[Probate], envA)
           val gamma: Swarm = Swarm.start(t"gamma3", t"0.1.0", () => Nil, Nil, port)(using summon[Monitor], summon[Probate], envB)
           val delta: Swarm = Swarm.start(t"delta3", t"0.1.0", () => Nil, Nil, port)(using summon[Monitor], summon[Probate], envC)
 
-          await(50)(alpha.nodes().size == 2 && beta.nodes().size == 2)
+          await(50)(alpha.nodes().size == 3 && beta.nodes().size == 3 && gamma.nodes().size == 2 && delta.nodes().size == 2)
           alpha.wantGateway(port, Unset)
-          await(25)(alpha.listening.present)
+          await(25)(hubA.listening.present)
 
           // The token every machine shares here, and A's fingerprint, make the declaration B
-          // and C link by.
+          // and C link by; each leaf asks its hub for the link.
           val token: Text = Peer.token(using envA).or(t"")
-          val fingerprint: Optional[Data] = Peer.parseFingerprint(alpha.node.identity)
+          val fingerprint: Optional[Data] = Peer.parseFingerprint(hubA.node.identity)
           val a: Machine = Machine(t"a", List(t"127.0.0.1"), port, fingerprint, token, Nil)
 
           gamma.connect(a)
@@ -465,12 +502,12 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           delta.connect(a)
           await(50)(delta.connected(t"a"))
 
-          await(50)(gamma.nodes().size == 4 && delta.nodes().size == 4 && beta.nodes().size == 4)
+          await(50)(alpha.nodes().size == 7 && beta.nodes().size == 7 && gamma.nodes().size == 7 && delta.nodes().size == 7)
           val seen: (Int, Int, Int, Int) = (alpha.nodes().size, beta.nodes().size, gamma.nodes().size, delta.nodes().size)
           val distinct: Boolean = Set(alpha.node.identity, gamma.node.identity, delta.node.identity).size == 3
 
-          // An event of A's gateway reaches B over their link, relayed by nobody; one of B's
-          // reaches A's other node and C relayed once, by the gateway — each once.
+          // An event of A's leaf reaches B's leaf relayed by two hubs; one of B's leaf reaches
+          // A's other leaf by two, and C's leaf by three — each once.
           val atGamma = java.util.concurrent.ConcurrentLinkedQueue[Int]()
           val atBeta = java.util.concurrent.ConcurrentLinkedQueue[Int]()
           val atDelta = java.util.concurrent.ConcurrentLinkedQueue[Int]()
@@ -492,36 +529,40 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           val hops: (List[Int], List[Int], List[Int]) = (hopsOf(atGamma), hopsOf(atBeta), hopsOf(atDelta))
           subscriptions.each(_.cancel())
 
-          // B hangs up: A's nodes, and C, forget it.
+          // B hangs up: A's nodes, and C's, forget it.
           gamma.disconnect(t"a")
-          await(50)(beta.nodes().size == 3 && delta.nodes().size == 3)
+          await(50)(beta.nodes().size == 5 && delta.nodes().size == 5)
           val forgotten: (Int, Int) = (beta.nodes().size, delta.nodes().size)
 
           Swarm.stop(t"delta3")
           Swarm.stop(t"gamma3")
           Swarm.stop(t"beta3")
           Swarm.stop(t"alpha3")
+          hubC.stop()
+          hubB.stop()
+          hubA.stop()
 
           Relayed(seen, distinct, hops, forgotten)
 
-      test(m"every node of three machines sees every other, through one gateway"):
+      test(m"every node of three machines sees every other, through the hubs"):
         (relayed.seen, relayed.distinct)
-      . assert(_ == ((4, 4, 4, 4), true))
+      . assert(_ == ((7, 7, 7, 7), true))
 
-      test(m"an event crosses to a linked machine unrelayed, and on to the next relayed once, once each"):
+      test(m"an event crosses to a linked machine's leaf by two hubs, and to the next by three, once each"):
         relayed.hops
-      . assert(_ == (List(0), List(1), List(1)))
+      . assert(_ == (List(2), List(2), List(3)))
 
       test(m"a machine which hangs up is forgotten on every other"):
         relayed.forgotten
-      . assert(_ == (3, 3))
+      . assert(_ == (5, 5))
 
     suite(m"Invitations"):
-      // A gateway in this JVM invites, and this JVM joins: the invitation is accepted once, the
-      // machine is declared, and once revoked it is refused. The declaration and the granted
-      // token are written to a configuration directory of the test's own, so that the user's
-      // `machines.tel` is untouched; the inviter advertises itself, and the joiner looks for
-      // it, over an in-memory mDNS bus, so that nothing is multicast on the network.
+      // A hub in this JVM is the gateway, its leaf invites, and this JVM joins: the invitation
+      // is accepted once, the machine is declared, and once revoked it is refused. The
+      // declaration and the granted token are written to a configuration directory of the
+      // test's own, so that the user's `machines.tel` is untouched; the hub advertises the
+      // machine, as the leaf asks, and the joiner looks for it, over an in-memory mDNS bus, so
+      // that nothing is multicast on the network.
       val invited: Invited =
         supervise:
           val start: Long = Journal.daemon.latest
@@ -544,7 +585,9 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
             else Optional(java.lang.System.getenv(name.s)).let(_.tt)
 
           val port: Int = Port[Tcp]().number
+          val hub: Hub = Swarm.hub(t"0.1.0", Nil, port)(using inviter).or(panic(m"another process is the hub"))
           val gamma: Swarm = Swarm.start(t"gamma", t"0.1.0", () => Nil, Nil, port)
+          await(50)(gamma.hub.present)
           gamma.wantGateway(port, Unset)
           await(25)(gamma.listening.present)
 
@@ -591,6 +634,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
           val revoked: Int = gamma.revoke(Machine.Identity.local.hostname)
           Swarm.stop(t"gamma")
+          hub.stop()
 
           Invited
             ( word.cut(t" ").stdlib.length, read.present, advertised, nearby, stranger,

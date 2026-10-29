@@ -184,6 +184,9 @@ object settings:
     "syndesis-core", "revolution-semver", "parasite-jvm")
   . map(component(soundness))
 
+  // The hub process: nothing beyond the swarm's, for now.
+  def hubDeps(soundness: String) = swarmDeps(soundness)
+
   def demoDeps(soundness: String) = Seq("exoskeleton-completions", "ethereal-core").map(component(soundness))
   def testDeps(soundness: String) = Seq("probably-cli", "probably-events", "yossarian-core").map(component(soundness))
 
@@ -309,9 +312,10 @@ object pyrocosm extends Project:
 
   // The standard command line of a Pyrocosm tool — `about`, `install`, `quit`, `swarm`,
   // `--version`, the configuration files and the daemon-side web front-end — for every tool's
-  // client. Depends on the swarm, which every tool's daemon joins, and on no renderer, so that
-  // a tool without a web front-end depends on no web server. `dev.propensive:pyrocosm-cli`.
-  object cli extends Component(swarm), Publishing:
+  // client. Depends on the hub, which every tool's daemon starts when its machine has none and
+  // joins as a leaf, and on no renderer, so that a tool without a web front-end depends on no
+  // web server. `dev.propensive:pyrocosm-cli`.
+  object cli extends Component(hub), Publishing:
     def mvnDeps = Task(settings.cliDeps(deps.soundness()))
 
   // The contract a single-file script is compiled against: the `Runtime` a tool constructs for
@@ -353,6 +357,12 @@ object pyrocosm extends Project:
   object swarm extends Component(bus), Publishing:
     def mvnDeps = Task(settings.swarmDeps(deps.soundness()))
 
+  // The `pyrocosm` process: one per machine, the hub every tool's node is a leaf of, started by
+  // the first tool's daemon from its own classpath. `dev.propensive:pyrocosm-hub`.
+  object hub extends Component(swarm), Publishing:
+    def mvnDeps = Task(settings.hubDeps(deps.soundness()))
+    def finalMainClass = "pyrocosm.Hubs"
+
   // The gallery: every node in both frontends, the fixture for judging appearance.
   object demo extends Component(terminal, web, cli):
     def mvnDeps = Task(settings.demoDeps(deps.soundness()))
@@ -368,7 +378,7 @@ object pyrocosm extends Project:
       os.write.over(directory / "date", buildDate() + "\n", createFolders = true)
       super.resources() ++ Seq(PathRef(Task.dest))
 
-  object test extends Component(model, compiler, media, terminal, web, notes, cli, remote, bus, swarm):
+  object test extends Component(model, compiler, media, terminal, web, notes, cli, remote, bus, swarm, hub):
     def mvnDeps = Task(settings.testDeps(deps.soundness()))
     def finalMainClass = "pyrocosm.Tests"
 
@@ -387,7 +397,8 @@ object pyrocosm extends Project:
 object release extends Module:
   def modules: Seq[PublishModule] =
     Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.media, pyrocosm.terminal, pyrocosm.web,
-        pyrocosm.notes, pyrocosm.cli, pyrocosm.remote, pyrocosm.script, pyrocosm.bus, pyrocosm.swarm)
+        pyrocosm.notes, pyrocosm.cli, pyrocosm.remote, pyrocosm.script, pyrocosm.bus, pyrocosm.swarm,
+        pyrocosm.hub)
 
   private def withDescriptors(source: os.Path, target: os.Path, entries: Seq[(String, os.Path)])
   :   Unit =
