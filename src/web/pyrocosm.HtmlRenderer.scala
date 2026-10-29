@@ -111,6 +111,17 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
   def phrase(content: List[Inline]): Html of Phrasing = Html.Fragment(content.map(inline1)*)
 
+  // Content that is one snippet alone, blank text aside: a paragraph or a cell that is wholly
+  // code is marked `pyro-solitary`, and its code shown bare, since a box around all of it says
+  // nothing.
+  private def solitary(content: List[Inline]): Boolean =
+    content.filter { case Inline.Textual(text) => !text.blank; case _ => true } match
+      case List(Inline.Snippet(_, _)) => true
+      case _                          => false
+
+  private def solitaryClass(content: List[Inline]): List[Name[CssClass]] =
+    if solitary(content) then List(cls(t"pyro-solitary")) else Nil
+
   // A linked token is an anchor carrying the token's own classes, so that it stays one element
   // and the stylesheet and the editor see it as any other token.
   def token(token: Token): Html of Phrasing =
@@ -131,7 +142,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   // A label which leads somewhere: an anchor around it for a local or external destination, an
   // action's anchor for an internal one.
   private def lead(destination: Inline.Destination, label: Html of Phrasing): Html of Phrasing = destination match
-    case Inline.Destination.External(url)    => A(href = url, `class` = cls(t"pyro-link"))(label)
+    case Inline.Destination.External(url)    => A(href = url, `class` = List(cls(t"pyro-link"), cls(t"pyro-external")))(label)
     case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = List(cls(t"pyro-link"), cls(t"pyro-action")))(label)
     case local: Inline.Destination.Local     => A(href = href(local), `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(label)
 
@@ -267,7 +278,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   def blocks(blocks: List[Block]): Html of Flow = Html.Fragment(blocks.map(block)*)
 
   def block(block: Block): Html of Flow = block match
-    case Block.Paragraph(content) => P(phrase(content))
+    case Block.Paragraph(content) => P(`class` = solitaryClass(content))(phrase(content))
 
     case Block.Heading(level, content, id) => id.lay[Html of Flow](level match
       case 1 => H1(phrase(content))
@@ -660,11 +671,12 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
       alignment + numeric + sizing
 
-    val head = Thead(Tr(columns.map { (column: Block.Column) => Th(`class` = columnClasses(column))(phrase(column.title)) }*))
+    val head = Thead(Tr(columns.map { (column: Block.Column) => Th(`class` = columnClasses(column) + solitaryClass(column.title))(phrase(column.title)) }*))
 
     val body = Tbody(rows.map { (row: Block.Row) =>
         val cells = columns.indexed.map { (column, index) =>
-          Td(`class` = columnClasses(column))(row.cells.at(index).lay(Html.Fragment[Phrasing]()) { cell => phrase(cell.content) })
+          row.cells.at(index).lay(Td(`class` = columnClasses(column))(Html.Fragment[Phrasing]())):
+            cell => Td(`class` = columnClasses(column) + solitaryClass(cell.content))(phrase(cell.content))
         }
         val classes: List[Name[CssClass]] = row.tone.lay(Nil: List[Name[CssClass]]) { tone => List(toneClass(tone)) }
         row.action.lay(row.id.lay(Tr(`class` = classes)(cells*)) { id => Tr(id = id, `class` = classes)(cells*) }):
