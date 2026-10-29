@@ -379,6 +379,36 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
         (first.present, second.present, third.present)
       . assert(_ == (true, false, true))
 
+    suite(m"Starting the hub"):
+      // A launcher such as Burdock's loads a tool's libraries through a URL class loader of its
+      // own, from a cache, and leaves only itself on `java.class.path`; the hub must be started
+      // from the libraries, which only that loader knows.
+      val directory: java.nio.file.Path = java.nio.file.Files.createTempDirectory("pyrocosm-classpath").nn
+      val jar: java.nio.file.Path = directory.resolve("library.jar").nn
+      java.nio.file.Files.write(jar, scala.Array[Byte]())
+
+      val loader: java.net.URLClassLoader =
+        java.net.URLClassLoader(scala.Array(jar.toUri.nn.toURL.nn, directory.toUri.nn.toURL.nn), ClassLoader.getPlatformClassLoader)
+
+      test(m"the hub's classpath leads with the jars a URL class loader loads, each once"):
+        val entries: List[Text] = Hubs.classpath(loader)
+        (entries.keep(2), entries.count(_ == jar.toString.tt))
+      . assert(_ == (List(jar.toString.tt, directory.toString.tt), 1))
+
+      test(m"the hub's classpath ends with the JVM's own"):
+        val system: List[Text] =
+          List(scala.collection.immutable.ArraySeq.unsafeWrapArray(java.lang.System.getProperty("java.class.path").nn.split(java.io.File.pathSeparator).nn).toList.map(_.nn.tt)*)
+
+        system.all(Hubs.classpath(loader).has(_))
+      . assert(_ == true)
+
+      test(m"the hub's classpath holds the jar the hub's own class came from"):
+        val location: Text =
+          java.nio.file.Path.of(classOf[Hub].getProtectionDomain.nn.getCodeSource.nn.getLocation.nn.toURI).nn.toString.tt
+
+        Hubs.classpath().has(location)
+      . assert(_ == true)
+
     suite(m"A hub and two leaves"):
       // A hub and two leaves in this JVM, as the `pyrocosm` process and two tools' daemons
       // would be on one machine, with a registry of the test's own, so that the machine's is

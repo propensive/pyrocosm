@@ -48,7 +48,7 @@ object Hubs:
   // The port of the machine's web origin.
   val port: Int = 8090
 
-  // How long a daemon waits for a hub it started to register itself.
+  // How long a hub started by a daemon is given to register itself before another is started.
   val patience: Duration = 10.0*Second
 
   // The variables the hub needs of the daemon's environment: where the registry, the identity
@@ -65,25 +65,53 @@ object Hubs:
   // Whether a live hub is registered.
   def running(using Environment): Boolean = registry.hub().present
 
-  // Starts a hub for this machine, if none is registered, and waits for it to register itself:
-  // whether a hub is registered by the end. `tool` and `version` are the daemon's, which the
-  // hub records as its own version, having no release of its own.
+  // When this JVM last started a hub, in milliseconds; none is started again until `patience`
+  // has passed, since one started will register itself within it, and one which could not start
+  // would only fail again.
+  private val spawned: java.util.concurrent.atomic.AtomicLong = java.util.concurrent.atomic.AtomicLong(0L)
+
+  // Starts a hub for this machine, if none is registered and this JVM has not just started one,
+  // and returns at once: a tool's node links to the hub whenever it has registered itself, so
+  // nothing need wait for it. Whether a hub is registered now. `tool` and `version` are the
+  // daemon's, which the hub records as its own version, having no release of its own.
   def ensure(tool: Text, version: Text)(using environment: Environment): Boolean =
     if running then true else
-      spawn(tool, version)
-      val deadline: Long = java.lang.System.currentTimeMillis + (patience.value*1000.0).toLong
+      val moment: Long = java.lang.System.currentTimeMillis
+      val last: Long = spawned.get
+      val due: Boolean = moment - last > (patience.value*1000.0).toLong
+      if due && spawned.compareAndSet(last, moment) then spawn(tool, version)
+      false
 
-      while !running && java.lang.System.currentTimeMillis < deadline do
-        Thread.sleep(100)
+  // The classpath this JVM loaded Pyrocosm from, for the hub to be loaded from too: every jar
+  // and directory of the loader of this class and its parents, where they are URL class loaders
+  // — a launcher such as Burdock's loads a tool's libraries through one, from a cache, and
+  // leaves only itself on `java.class.path` — then `java.class.path`, which is everything for a
+  // JVM started on an assembly. A location is listed once.
+  def classpath(loader: Optional[ClassLoader] = Optional(classOf[Hub].getClassLoader)): List[Text] =
+    def urls(loader: ClassLoader | Null): scala.List[Text] =
+      if loader == null then scala.Nil else
+        val own: scala.List[Text] = loader match
+          case loader: java.net.URLClassLoader =>
+            scala.collection.immutable.ArraySeq.unsafeWrapArray(loader.getURLs.nn).toList.flatMap: url =>
+              safely(jnf.Path.of(url.nn.toURI).nn.toString.tt).let(scala.List(_)).or(scala.Nil)
 
-      running
+          case _ =>
+            scala.Nil
 
-  // A JVM of its own, from this JVM's classpath, with the daemon's environment, its output to
-  // the log file; nothing is read from it, and it is not waited for.
+        own ++ urls(loader.nn.getParent)
+
+    val system: scala.List[Text] =
+      scala.collection.immutable.ArraySeq.unsafeWrapArray(java.lang.System.getProperty("java.class.path").nn.split(java.io.File.pathSeparator).nn)
+      . toList.map(_.nn.tt).filter(!_.blank)
+
+    List((loader.lay(scala.Nil)(urls(_)) ++ system).distinct*)
+
+  // A JVM of its own, from the classpath this JVM loaded Pyrocosm from, with the daemon's
+  // environment, its output to the log file; nothing is read from it, and it is not waited for.
   private def spawn(tool: Text, version: Text)(using environment: Environment): Unit =
     try
       val executable: String = java.lang.System.getProperty("java.home").nn + "/bin/java"
-      val classpath: String = java.lang.System.getProperty("java.class.path").nn
+      val classpath: String = Hubs.classpath().join(java.io.File.pathSeparator.nn.tt).s
       val command: java.util.List[String] =
         java.util.List.of(executable, "-cp", classpath, "pyrocosm.Hubs", tool.s, version.s).nn
 
