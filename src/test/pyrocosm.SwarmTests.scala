@@ -25,7 +25,7 @@ package pyrocosm
 import soundness.{Service as _, Standing as _, Status as _, Step as _, *}
 
 import Journal.{Event, Party}
-import perihelion.{Message, wsClient}
+import perihelion.{Message, wsClient, wsSessional}
 
 import alphabets.hexLowerCase
 import codepages.utf8Codepage
@@ -175,7 +175,8 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       session:  Boolean,
       tools:    Optional[Text],
       called:   Optional[Text],
-      deleted:  Int )
+      deleted:  Int,
+      patched:  Optional[Int] )
 
   // A tool's own MCP server, as its front-end's fallback answers `/mcp`: one tool, `hello`,
   // which says who called it; a session named by the header the protocol uses.
@@ -750,12 +751,12 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           val origin: Int = portal.serve().or(panic(m"the origin could not be bound"))
           hub.web = origin
 
-          val content: List[Block] = List(Block.paragraph(t"Alpha's page"))
+          val content: Live[List[Block]] = Live(List(Block.paragraph(t"Alpha's page")))
 
           val interface: Interface =
             Interface
               ( Inline.text(t"Alpha"),
-                List(Panel(Panel.Id(t"main"), Panel.Role.Primary, Unset, Live(content), Panel.Priority.Essential)) )
+                List(Panel(Panel.Id(t"main"), Panel.Role.Primary, Unset, content, Panel.Priority.Essential)) )
 
           val presence: Presence = Presence()
           val frontend: WebFrontend = WebFrontend(0, fallback = mcpFake(_), presence = presence, prefix = t"/alpha")
@@ -791,6 +792,33 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
           val pong: Optional[Text] = safely(reply.await(5.0*Second))
 
+          // A patch longer than one buffer window — a page of substance — comes through the
+          // tunnel whole: the browser's end reads one message, not a window of it at a time.
+          val whole: Promise[Int] = Promise()
+
+          async:
+            safely:
+              url.session: connection ?=>
+                val input = connection.messages
+                val demand = Credit(Websocket.Frame.maxPayload)
+                var reading: Boolean = true
+
+                while reading do input.refill(demand) match
+                  case count: Int =>
+                    if count > 0 then
+                      val data: Data = input.lend { region => range => region.materialize(range.capped(count)) }
+                      input.skip(count)
+                      val text: Text = data.utf8
+                      if text.contains(t"replace") then
+                        whole.offer(text.length)
+                        reading = false
+
+                  case _ => reading = false
+
+          snooze(1.0*Second)
+          content() = List(Block.paragraph(Text("x".repeat(9000).nn)))
+          val patched: Optional[Int] = safely(whole.await(5.0*Second))
+
           // Over MCP at the origin: a session, the tool listed under alpha's name, called by it,
           // and the session ended.
           def mcp(method: Http.Method, session: Optional[Text], body: Text): Http.Response =
@@ -819,7 +847,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           Served
             ( page.contains(t"""<meta name="pyro-prefix" content="/alpha">"""), page.contains(t"Alpha's page"),
               landing.contains(t"""href="/alpha/""""), direct.contains(t"""<meta name="pyro-prefix" content="/alpha">"""),
-              missing, pong, session.present, tools, called, deleted )
+              missing, pong, session.present, tools, called, deleted, patched )
 
       test(m"a tool's page is served under its path on the origin, and is the same page directly"):
         (served.prefixed, served.content, served.direct)
@@ -831,6 +859,10 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
       test(m"a socket through the origin reaches the tool, and its answer comes back"):
         served.pong.let(_.contains(t"pong"))
+      . assert(_ == true)
+
+      test(m"a patch longer than a buffer window comes through the origin as one message"):
+        served.patched.let(_ > 8192)
       . assert(_ == true)
 
       test(m"an MCP session at the origin lists the tool's tools under its name, calls one, and ends"):
