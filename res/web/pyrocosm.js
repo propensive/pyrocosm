@@ -27,6 +27,23 @@
     return meta ? "?session=" + encodeURIComponent(meta.getAttribute("content")) : "";
   }
 
+  // The path this application is served under ("/fume", say), empty at the origin's root. The
+  // socket is opened under it, and a path is this application's own only if it is under it:
+  // another path of the origin is another application's, and the browser goes there.
+  function prefix() {
+    var meta = document.querySelector('meta[name="pyro-prefix"]');
+    return meta ? meta.getAttribute("content") : "";
+  }
+
+  // A path of this origin, as this application knows it: without the prefix, or null when it
+  // is not under the prefix.
+  function own(pathname) {
+    var base = prefix();
+    if (base === "") return pathname;
+    if (pathname === base) return "/";
+    return pathname.indexOf(base + "/") === 0 ? pathname.substring(base.length) : null;
+  }
+
   // A local destination: a page of this application. Going to one tells the session where the
   // tab now is and lets it change the panels, so the page is not reloaded; the address bar
   // follows (keeping the query, which names the session), and the fragment is scrolled to once
@@ -37,11 +54,13 @@
     var url;
     try { url = new URL(href, location.href); } catch (error) { return false; }
     if (url.origin !== location.origin) return false;
+    var path = own(url.pathname);
+    if (path === null) return false;
     var moved = url.pathname !== location.pathname;
     if (push) history.pushState({}, "", url.pathname + location.search + url.hash);
     if (moved) {
       pendingFragment = url.hash ? url.hash.substring(1) : "";
-      send({ kind: "locate", id: "", text: url.pathname, caret: 0, index: 0 });
+      send({ kind: "locate", id: "", text: path, caret: 0, index: 0 });
     } else if (url.hash) {
       var target = document.getElementById(url.hash.substring(1));
       if (target) target.scrollIntoView();
@@ -194,8 +213,9 @@
 
   function apply(patch) {
     if (patch.kind === "pong") return;
-    // The reader's purview, kept for a year, so the next page asked for is rendered under it.
-    if (patch.kind === "cookie") { document.cookie = "pyro-purview=" + patch.html + "; path=/; max-age=31536000; SameSite=Lax"; return; }
+    // The reader's purview, kept for a year, so the next page asked for is rendered under it;
+    // it is this application's, so it is kept for its paths alone.
+    if (patch.kind === "cookie") { document.cookie = "pyro-purview=" + patch.html + "; path=" + prefix() + "/; max-age=31536000; SameSite=Lax"; return; }
     var element = document.getElementById(patch.id);
     if (!element) return;
     switch (patch.kind) {
@@ -264,7 +284,7 @@
   function connect() {
     var protocol = location.protocol === "https:" ? "wss://" : "ws://";
     var opened = false;
-    socket = new WebSocket(protocol + location.host + "/socket" + sessionQuery());
+    socket = new WebSocket(protocol + location.host + prefix() + "/socket" + sessionQuery());
     socket.onopen = function () { opened = true; refusals = 0; status(true); };
     socket.onclose = function () {
       status(false);

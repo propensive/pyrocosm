@@ -68,6 +68,10 @@ object PyrocosmPage:
   // `<meta name="pyro-session" content="…">`, naming the page's session for the script.
   val SessionMeta = Tag.void["meta", Whatwg](presets = proscenium.Map(t"name" -> t"pyro-session"))
 
+  // `<meta name="pyro-prefix">`: the path this application is served under, when it is not the
+  // origin's root, for the script to open its socket and tell its own pages from another's.
+  val PrefixMeta = Tag.void["meta", Whatwg](presets = proscenium.Map(t"name" -> t"pyro-prefix"))
+
   // `data-history="…"` on a field: the application's history, seeded for the script.
   given history: ("data-history" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
@@ -99,7 +103,12 @@ object PyrocosmPage:
 
   val modeIcons: List[Html of "svg"] = List(icon(t"dark", moon), icon(t"light", sun), icon(t"mixed", sunAndMoon))
 
-class PyrocosmPage(interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset, presence: Presence = Presence.shared)
+// `prefix` is the path the application is served under (`/fume`, say), empty at the root: it goes
+// before every root-absolute path the page names, so one application can be served beside
+// others on one origin.
+class PyrocosmPage
+  ( interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset,
+    presence: Presence = Presence.shared, prefix: Text = t"" )
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
   import HtmlRenderer.{cls, panelId, classes}
   import PyrocosmPage.{history, crossorigin, dataVersion, dataIncomplete}
@@ -241,9 +250,9 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   protected override def menu: Html of "nav" =
     Nav(`class` = List(TopMenu.menuClass, cls(t"pyro-menubar")))
       ( Div(`class` = cls(t"pyro-menubar-inner"))
-          ( A(href = t"/", `class` = cls(t"pyro-wordmark"))(t"Pyrocosm"),
+          ( A(href = t"$prefix/", `class` = cls(t"pyro-wordmark"))(t"Pyrocosm"),
             Div(id = t"pyro-menubar-tools", `class` = cls(t"pyro-menubar-tools"))(renderer.toolLinks(presence.peers())),
-            A(href = t"/config", `class` = cls(t"pyro-menubar-link"))(t"Configuration"),
+            A(href = t"$prefix/config", `class` = cls(t"pyro-menubar-link"))(t"Configuration"),
             Button(id = t"pyro-mode", `type` = t"button", `class` = cls(t"pyro-mode"), title = t"Light, dark or mixed")(PyrocosmPage.modeIcons*) ) )
 
   // The global controls other than a field, each an item of the masthead's toolbar.
@@ -273,11 +282,14 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   def content: Html of Flow = Html.Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
 
   // The session this page belongs to, if it has one of its own, for the script to name when it
-  // opens its socket.
+  // opens its socket; and the prefix it is served under, when there is one.
   protected override def head: Html of Metadata =
     val named: Html of Metadata = session match
       case id: Text => PyrocosmPage.SessionMeta(content = id)
       case _        => Html.Fragment[Metadata]()
+
+    val prefixed: Html of Metadata =
+      if prefix.blank then Html.Fragment[Metadata]() else PyrocosmPage.PrefixMeta(content = prefix)
 
     // The fonts' origins, so the browser opens their connections while it reads the sheet.
     val fonts: Html of Metadata =
@@ -290,7 +302,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     val mode: Html of Metadata =
       Script(t"document.documentElement.dataset.mode = localStorage.getItem('pyro-mode') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'mixed');")
 
-    Html.Fragment[Metadata](fonts, mode, Script(src = t"/pyrocosm.js", defer = true), named, super.head)
+    Html.Fragment[Metadata](fonts, mode, Script(src = t"$prefix/pyrocosm.js", defer = true), named, prefixed, super.head)
 
   // The fonts' import first, as CSS requires; then graffiti's rules; then this page's own.
   protected override def styles: Css = WebStyles.fonts + super.styles + WebStyles.rules(theme)
@@ -306,7 +318,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   private def staged: Html of "html" =
     val shown: List[Html of Flow] = plan.primary.map(panelContent)
     val stage: Html of Flow = Div(`class` = cls(t"pyro-stage-content"))(shown*)
-    val sheet: Html of Metadata = Link.Stylesheet(href = t"/pyrocosm.css")
+    val sheet: Html of Metadata = Link.Stylesheet(href = t"$prefix/pyrocosm.css")
     val head0: Html of "head" = Head(Title(pageTitle), sheet, head)
     Html(head0, Body(dir = direction.show, `class` = cls(t"pyro-stage"))(stage))
 
@@ -315,4 +327,4 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     val recto: List[Name[CssClass]] = if hasRecto then List(cls(t"pyro-has-recto")) else Nil
     val sides: List[Name[CssClass]] = verso + recto
 
-    Html(Head(Title(pageTitle), Link.Stylesheet(href = t"/pyrocosm.css"), head), Body(dir = direction.show, `class` = sides)(frame))
+    Html(Head(Title(pageTitle), Link.Stylesheet(href = t"$prefix/pyrocosm.css"), head), Body(dir = direction.show, `class` = sides)(frame))

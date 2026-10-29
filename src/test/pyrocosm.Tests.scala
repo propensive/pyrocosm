@@ -1366,6 +1366,24 @@ tags:
       PyrocosmPage(repl, html, WebTheme.default, t"s1").markup.show.contains(t"""<meta name="pyro-session" content="s1">""")
     . assert(_ == true)
 
+    test(m"a page at the root names no prefix"):
+      PyrocosmPage(repl, html, WebTheme.default).markup.show.contains(t"pyro-prefix")
+    . assert(_ == false)
+
+    test(m"a page served under a prefix names it, and puts it before every path it names"):
+      val page = PyrocosmPage(repl, HtmlRenderer(prefix = t"/fume"), WebTheme.default, prefix = t"/fume").markup.show
+      ( page.contains(t"""<meta name="pyro-prefix" content="/fume">"""),
+        page.contains(t"""<script src="/fume/pyrocosm.js" defer"""),
+        page.contains(t"""href="/fume/pyrocosm.css""""),
+        page.contains(t"""<a href="/fume/" class="pyro-wordmark">Pyrocosm</a>"""),
+        page.contains(t"""<a href="/fume/config" class="pyro-menubar-link">Configuration</a>""") )
+    . assert(_ == (true, true, true, true, true))
+
+    test(m"a local destination's link is under the prefix, its fragment kept"):
+      val link = Inline.Link(Inline.Destination.Local(t"/doc/intro", t"usage"), Inline.text(t"intro"))
+      HtmlRenderer(prefix = t"/fume").phrase(List(link)).show
+    . assert(_.contains(t"""href="/fume/doc/intro#usage""""))
+
     test(m"a decoration carries its tokens, note, marker, marks and completions"):
       prompt.decoration() = Control.Field.Decoration
         ( List(Token(t"pri", Token.Accent.Term)),

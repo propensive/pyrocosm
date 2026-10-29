@@ -118,12 +118,16 @@ object WebFrontend:
 // session's tabs, and every incoming message is checked against the handles its interface
 // actually offers before it becomes an `Event`. Both serve until `stop()`.
 // `fallback` answers any request the frontend does not (an application's own API, say); a
-// request it declines is a 404.
+// request it declines is a 404. `prefix` is the path the application is seen under by a browser
+// (`/fume`, say, behind a proxy which strips it), empty when it is the origin's root: the pages
+// name their paths under it, while every path the application sees — a `Located` event, the
+// fallback's request, a purview's entries — is its own, without it.
 class WebFrontend
   ( port:     Int,
     theme:    WebTheme = WebTheme.default,
     fallback: Http.Request => Optional[Http.Response] = _ => Unset,
-    presence: Presence = Presence.shared )
+    presence: Presence = Presence.shared,
+    prefix:   Text = t"" )
   ( using monitor: Monitor, probate: Probate, errorPage: WebserverErrorPage )
 extends pyrocosm.Frontend:
 
@@ -164,7 +168,7 @@ extends pyrocosm.Frontend:
         ( Inline.text(t"Configuration"),
           List(Panel(Panel.Id(t"configuration"), Panel.Role.Primary, Unset, Live(content), Panel.Priority.Essential)) )
 
-    t"<!DOCTYPE html>${PyrocosmPage(interface, HtmlRenderer(), theme).markup.show}"
+    t"<!DOCTYPE html>${PyrocosmPage(interface, HtmlRenderer(prefix = prefix), theme, prefix = prefix).markup.show}"
 
   // One interface and the tabs showing it. The handler is vouched pure, as the terminal
   // frontend's is: it lives exactly as long as the session.
@@ -176,8 +180,8 @@ extends pyrocosm.Frontend:
     @volatile
     var purview: Purview = interface.purview.or(Purview())
 
-    def renderer: HtmlRenderer = HtmlRenderer(purview)
-    def page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id, presence)
+    def renderer: HtmlRenderer = HtmlRenderer(purview, prefix)
+    def page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id, presence, prefix)
 
     // The reader's purview, as a page request's cookie says it is; nothing, without one.
     def adopt(cookies: Optional[Text]): Unit =
@@ -515,7 +519,7 @@ extends pyrocosm.Frontend:
 
           id.let(locate(_)).lay(Http.Response(Http.NotFound)(t"No such activity")): (session, action) =>
             session.press(action)
-            val target: Text = if shared.present then t"/" else t"/?session=${session.id}"
+            val target: Text = if shared.present then t"$prefix/" else t"$prefix/?session=${session.id}"
             Http.Response(Http.SeeOther, location = target)()
 
         case t"/" | t"/index.html" => page(t"/")
