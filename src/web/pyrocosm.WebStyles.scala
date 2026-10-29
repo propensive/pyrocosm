@@ -90,7 +90,7 @@ object WebStyles:
           t"--pyro-space-1: 0.25rem; --pyro-space-2: 0.5rem; --pyro-space-3: 0.75rem; --pyro-space-4: 1rem;",
           t"--pyro-space-5: 1.5rem; --pyro-space-6: 2rem; --pyro-space-7: 3rem;",
           t"--pyro-radius: 3px; --pyro-radius-card: 3px;",
-          t"--pyro-text-body: 0.88rem; --pyro-text-small: 0.715rem; --pyro-text-mono: 0.75rem; --pyro-text-inline: 0.66rem; --pyro-text-units: 0.79rem; --pyro-text-math: 1.05rem; --pyro-text-button: 0.6875rem;",
+          t"--pyro-text-body: 0.88rem; --pyro-text-small: 0.715rem; --pyro-text-mono: 0.75rem; --pyro-text-inline: 0.72rem; --pyro-text-units: 0.79rem; --pyro-text-math: 1.05rem; --pyro-text-button: 0.6875rem;",
           t"--pyro-measure: 68rem; --pyro-measure-wide: 88rem; --pyro-gutter: clamp(1rem, 4vw, 2.5rem);",
           t"--pyro-shadow-card: 0 1px 2px color-mix(in srgb, var(--pyro-fg) 6%, transparent), 0 1px 6px color-mix(in srgb, var(--pyro-fg) 4%, transparent);",
           t"--pyro-shadow-button: 0 1px 2px color-mix(in srgb, var(--pyro-fg) 18%, transparent);",
@@ -110,7 +110,7 @@ object WebStyles:
       List
         ( t"body.pyro-stage { margin: 0; height: 100vh; overflow: hidden; background-image: none; display: flex; align-items: center; justify-content: center }",
           t".pyro-stage-content { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center }",
-          t".pyro-stage .pyro-deck { --pyro-canvas: min(100vw, calc(100vh * 16 / 9)); position: relative; width: var(--pyro-canvas); height: calc(var(--pyro-canvas) * 9 / 16); font-size: calc(var(--pyro-canvas) / 48); --pyro-text-body: 1em; --pyro-text-inline: 0.72em; --pyro-text-mono: 0.85em; --pyro-text-small: 0.6em }",
+          t".pyro-stage .pyro-deck { --pyro-canvas: min(100vw, calc(100vh * 16 / 9)); position: relative; width: var(--pyro-canvas); height: calc(var(--pyro-canvas) * 9 / 16); font-size: calc(var(--pyro-canvas) / 48); --pyro-text-body: 1em; --pyro-text-inline: 0.8em; --pyro-text-mono: 0.85em; --pyro-text-small: 0.6em }",
           t".pyro-stage .pyro-leaf { min-height: 0; height: 100%; box-sizing: border-box; padding: 3em 4em; font-size: 1em; overflow: hidden }",
           t".pyro-stage .pyro-leaf.pyro-current { display: flex; flex-direction: column; justify-content: center }",
           t".pyro-stage .pyro-leaf h1 { font-size: 3em; margin: 0 0 0.4em 0 } .pyro-stage .pyro-leaf h2 { font-size: 2.2em; margin: 0 0 0.4em 0 } .pyro-stage .pyro-leaf h3 { font-size: 1.6em }",
@@ -132,13 +132,16 @@ object WebStyles:
         + css"code.pyro-code, code.pyro-reference, .pyro-figure { font-size: var(--pyro-text-inline) }"
         + css"a { color: var(--pyro-link); text-decoration-thickness: 1px; text-underline-offset: 0.15em }"
         + css"a:hover { color: var(--pyro-tone-accent) }"
+        // A link away from the site is followed by an arrow, so that it is known for one.
+        + css"a.pyro-external::after { content: '↗'; margin-left: 0.2em; font-size: 0.75em; vertical-align: 0.15em }"
         // A linked token keeps its token's colour, and shows that it leads somewhere only when
         // pointed at; an anchor target clears the masthead when scrolled to.
         + css"code a.pyro-locate, .pyro-codeblock a.pyro-locate { color: inherit; text-decoration: none }"
         + css"code a.pyro-locate:hover, .pyro-codeblock a.pyro-locate:hover { text-decoration: underline }"
-        // A qualified name: pointing at a segment underlines the name up to it, which is the
-        // span the segment's link is a direct child of (as Amok's API pages did).
-        + css".pyro-qualified:has(> a.pyro-locate:hover) { text-decoration: underline }"
+        // A qualified name: pointing at a segment underlines it plainly, and the path before it
+        // — the other children of the span the segment's link is a direct child of (as Amok's
+        // API pages did) — with dots, so the two read apart.
+        + css".pyro-qualified:has(> a.pyro-locate:hover) > :not(a.pyro-locate) { text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 0.15em }"
         + css"[id] { scroll-margin-top: var(--pyro-space-6) }"
         + css"h1, h2, h3, h4 { font-family: var(--pyro-font-title); font-weight: 400; line-height: 1.25; letter-spacing: 0.01em; margin: 0 0 var(--pyro-space-3) 0; color: var(--pyro-title) }"
         + css"h1 { font-size: 2.45rem } h2 { font-size: 1.75rem } h3 { font-size: 1.575rem } h4 { font-size: 1.4rem }"

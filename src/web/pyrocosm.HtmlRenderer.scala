@@ -140,7 +140,7 @@ class HtmlRenderer(purview: Purview = Purview()):
   // A label which leads somewhere: an anchor around it for a local or external destination, an
   // action's anchor for an internal one.
   private def lead(destination: Inline.Destination, label: Html of Phrasing): Html of Phrasing = destination match
-    case Inline.Destination.External(url)    => A(href = url, `class` = cls(t"pyro-link"))(label)
+    case Inline.Destination.External(url)    => A(href = url, `class` = List(cls(t"pyro-link"), cls(t"pyro-external")))(label)
     case Inline.Destination.Internal(action) => A(href = t"#", id = action.id, `class` = List(cls(t"pyro-link"), cls(t"pyro-action")))(label)
     case local: Inline.Destination.Local     => A(href = href(local), `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(label)
 
