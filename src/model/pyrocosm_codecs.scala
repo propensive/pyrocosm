@@ -250,9 +250,11 @@ given chartKindTelEncodable: Block.Chart.Kind is Tel.Encodable = scalar(kebab)
 given chartKindTelDecodable: Block.Chart.Kind is Tel.Decodable =
   parsed("chart kind")(byName(Block.Chart.Kind.values))
 
-// A column sizing is a scalar too: its name, or `collapsible` with its priority after a colon.
+// A column sizing is a scalar too: its name, or `collapsible` with its priority, or `fixed`
+// with its percentage, after a colon.
 given sizingTelEncodable: Block.Sizing is Tel.Encodable = scalar:
   case Block.Sizing.Collapsible(priority) => t"collapsible:${priority.toString}"
+  case Block.Sizing.Fixed(percent)        => t"fixed:${percent.toString}"
   case other                              => kebab(other)
 
 given sizingTelDecodable: Block.Sizing is Tel.Decodable = parsed("sizing"): text =>
@@ -264,4 +266,6 @@ given sizingTelDecodable: Block.Sizing is Tel.Decodable = parsed("sizing"): text
     case other =>
       if other.starts(t"collapsible:")
       then safely(other.s.substring(12).nn.tt.as[Double]).let(Block.Sizing.Collapsible(_))
+      else if other.starts(t"fixed:")
+      then safely(other.s.substring(6).nn.tt.as[Int]).let(Block.Sizing.Fixed(_))
       else Unset
