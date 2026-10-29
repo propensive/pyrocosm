@@ -411,6 +411,12 @@ object WebStyles:
         + css".pyro-role-log .pyro-panel-content { max-height: 20rem; overflow-y: auto }"
         + css".pyro-role-transcript.pyro-panel { background-color: transparent; border: 0; box-shadow: none; padding: 0 }"
         + css".pyro-role-prompt.pyro-panel { padding: var(--pyro-space-4) }"
+        // A session's panels share one card: each is a bare wrapper within it, the field parted
+        // from the transcript above it by a rule, and a transcript's code blocks keep to the
+        // card's column rather than reaching into its gutters as a prose block's would.
+        + css".pyro-session > .pyro-panel { background-color: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 0; margin: 0; overflow: visible }"
+        + css".pyro-session .pyro-role-prompt .pyro-panel-content:empty + .pyro-controls { margin-top: var(--pyro-space-4); padding-top: var(--pyro-space-4); border-top: 1px solid var(--pyro-border) }"
+        + css".pyro-role-transcript .pyro-codeblock { margin-left: 0; margin-right: 0 }"
         + css".pyro-action { cursor: pointer } .pyro-action:hover { background-color: color-mix(in srgb, var(--pyro-tone-accent) 8%, transparent) }"
         + css"tr.pyro-action:hover > td { background-color: color-mix(in srgb, var(--pyro-tone-accent) 8%, transparent) }"
         + css"li.pyro-action { border-radius: var(--pyro-radius); padding: var(--pyro-space-1) var(--pyro-space-2); margin-left: calc(-1 * var(--pyro-space-2)) }"
