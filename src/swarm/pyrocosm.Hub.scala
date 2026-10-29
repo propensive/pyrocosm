@@ -259,7 +259,7 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
 
   private def elect()(using Monitor, Probate): Unit =
     gatewayWanted.let: (port, secret) =>
-      if listening.absent && registry.gateway().absent then async(serveGateway(port, secret))
+      if listening.absent then async(serveGateway(port, secret))
 
   // Accepts other machines on `port`, until `stopGateway` or until the port cannot be held.
   private def serveGateway(port: Int, secret: Text)(using Monitor, Probate): Unit =

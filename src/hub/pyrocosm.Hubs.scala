@@ -58,9 +58,9 @@ object Hubs:
 
   private def registry(using Environment): Registry = Registry(Registry.directory)
 
-  // The log the hub writes, beside the registry.
+  // The log the hub writes, beside its record.
   private def logFile(using Environment): Optional[jnf.Path] =
-    Registry.directory.let { directory => jnf.Path.of(directory.encode.s).nn.getParent.nn.resolve("hub.log").nn }
+    Registry.directory.let { directory => jnf.Path.of(directory.encode.s).nn.resolve("hub.log").nn }
 
   // Whether a live hub is registered.
   def running(using Environment): Boolean = registry.hub().present

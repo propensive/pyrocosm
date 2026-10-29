@@ -313,6 +313,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       . assert(_ == (true, false, true))
 
     suite(m"The registry"):
+      // The hub's record, in a registry of the test's own, so that the machine's is untouched.
       val runtime: Text = java.nio.file.Files.createTempDirectory("pyrocosm-registry").nn.toString.tt
 
       given Environment = name =>
@@ -323,43 +324,33 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       val own: Long = java.lang.ProcessHandle.current.nn.pid
       val begun: Long = java.lang.System.currentTimeMillis - 1000L
 
-      test(m"a live record is found again, and a dead one is dropped and deleted"):
-        registry.register(Registry.Record(t"alpha", t"0.1.0", own, begun, 40001, t"ab"*32, Unset))
-        registry.register(Registry.Record(t"beta", t"0.1.0", 2147483646L, begun, 40002, t"ab"*32, 8093))
-        val found: List[Text] = registry.scan().map(_.tool)
-        val remaining: Int =
-          java.nio.file.Files.list(java.nio.file.Path.of(runtime.s, "pyrocosm", "swarm", "nodes")).nn.count.toInt
+      test(m"a live hub's record is read back whole, gateway port included"):
+        registry.registerHub(Registry.Record(t"pyrocosm", t"0.2.0", own, begun, 40003, t"cd"*32, 8093))
+        registry.hub().let { record => (record.tool, record.version, record.port, record.gateway, record.identity) }
+      . assert(_ == (t"pyrocosm", t"0.2.0", 40003, 8093, t"cd"*32))
+
+      test(m"a record is replaced by the next, and removed"):
+        registry.registerHub(Registry.Record(t"pyrocosm", t"0.2.0", own, begun, 40004, t"cd"*32, Unset))
+        val replaced: Optional[(Int, Optional[Int])] = registry.hub().let { record => (record.port, record.gateway) }
+        registry.unregisterHub()
+        (replaced, registry.hub().present)
+      . assert(_ == ((40004, Unset), false))
+
+      test(m"a dead hub's record is dropped, and deleted"):
+        registry.registerHub(Registry.Record(t"pyrocosm", t"0.1.0", 2147483646L, begun, 40002, t"ab"*32, 8093))
+        val found: Boolean = registry.hub().present
+        val remaining: Boolean = java.nio.file.Files.exists(java.nio.file.Path.of(runtime.s, "pyrocosm", "swarm", "hub.tel"))
         (found, remaining)
-      . assert(_ == (List(t"alpha"), 1))
+      . assert(_ == (false, false))
 
-      test(m"a record is parsed whole, gateway port included"):
-        registry.register(Registry.Record(t"gamma", t"0.2.0", own, begun, 40003, t"cd"*32, 8093))
-        registry.gateway().let { record => (record.tool, record.port, record.gateway, record.identity) }
-      . assert(_ == (t"gamma", 40003, 8093, t"cd"*32))
-
-      test(m"a record is removed by its process and tool"):
-        registry.unregister(own, t"gamma")
-        registry.scan().map(_.tool)
-      . assert(_ == List(t"alpha"))
-
-      test(m"registrations from many tasks all land"):
-        supervise:
-          val tasks = (1 to 8).map: index =>
-            async(registry.register(Registry.Record(t"tool$index", t"0.1.0", own, begun, 40100 + index, t"ab"*32, Unset)))
-          tasks.foreach(_.await())
-
-        registry.scan().size
-      . assert(_ == 9)
-
-      test(m"the hub's record is kept apart, and its lock is held by one process at a time"):
-        registry.registerHub(Registry.Record(t"pyrocosm", t"0.1.0", own, begun, 40010, t"ab"*32, 8093))
+      test(m"the hub's lock is held by one process at a time"):
         val first: Optional[java.nio.channels.FileLock] = registry.lockHub()
         val second: Optional[java.nio.channels.FileLock] = registry.lockHub()
-        val found: Optional[(Int, Optional[Int])] = registry.hub().let { record => (record.port, record.gateway) }
         first.let(_.release())
-        registry.unregisterHub()
-        (found, first.present, second.present, registry.hub().present)
-      . assert(_ == ((40010, 8093), true, false, false))
+        val third: Optional[java.nio.channels.FileLock] = registry.lockHub()
+        third.let(_.release())
+        (first.present, second.present, third.present)
+      . assert(_ == (true, false, true))
 
     suite(m"A hub and two leaves"):
       // A hub and two leaves in this JVM, as the `pyrocosm` process and two tools' daemons
