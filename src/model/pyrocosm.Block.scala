@@ -43,6 +43,7 @@ object Block:
     case Rigid                                          // never narrower than its content: figures
     case Paragraph                                      // wraps
     case Collapsible(priority: Double)                  // vanishes below a threshold; higher goes first
+    case Fixed(percent: Int)                            // a share of the table's width, whatever its content; the table's columns then line up with another's
 
   enum Alignment:
     case Start, End, Center, Justify

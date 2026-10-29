@@ -42,6 +42,10 @@ import textMetrics.uniformMetric
 // stylesheet's, so a theme is a `:root` block and a restyling is another sheet. Elements a
 // user can act upon carry the handle's id, which is what the browser sends back.
 object HtmlRenderer:
+  // A fixed column's share of the width, as the stylesheet knows it: a multiple of five percent.
+  val shares: List[Int] = List.range(1, 21).map(_*5)
+  def share(percent: Int): Int = ((percent + 2)/5*5).max(5).min(100)
+
   // The class of a tone, `pyro-tone-success` and so on.
   def toneClass(tone: Tone): Name[CssClass] = unsafely(Name[CssClass](t"pyro-tone-${tone.toString.tt.lower}"))
   def accentClass(accent: Token.Accent): Name[CssClass] = unsafely(Name[CssClass](t"pyro-accent-${accent.toString.tt.lower}"))
@@ -173,7 +177,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       if entries.nil then P(`class` = cls(t"pyro-empty"))(empty)
       else Ul(`class` = cls(t"pyro-purview-list"))(entries.map { (entry: Purview.Entry) =>
         val remove: Html of Phrasing =
-          purviewButton(kind, entry.path, t"remove", true, t"Remove ${entry.label}")
+          purviewButton(kind, entry.path, t"", true, t"Remove ${entry.label}")
         Li(A(href = entry.path, `class` = List(cls(t"pyro-link"), cls(t"pyro-locate")))(entry.label), t" ", remove) }*)
 
     Section(id = t"pyro-purview", `class` = List(cls(t"pyro-panel"), cls(t"pyro-purview")))
@@ -668,8 +672,13 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         case Block.Sizing.Rigid          => List(cls(t"pyro-rigid"))
         case Block.Sizing.Paragraph      => Nil
         case Block.Sizing.Collapsible(_) => List(cls(t"pyro-collapsible"))
+        case Block.Sizing.Fixed(percent) => List(cls(t"pyro-share-${HtmlRenderer.share(percent).toString.tt}"))
 
       alignment + numeric + sizing
+
+    // A table with a fixed column is laid out by its columns' shares rather than its content.
+    val fixed: Boolean = columns.exists { (column: Block.Column) => column.sizing match { case Block.Sizing.Fixed(_) => true; case _ => false } }
+    val tableClasses: List[Name[CssClass]] = List(cls(t"pyro-table")) + (if fixed then List(cls(t"pyro-fixed")) else Nil)
 
     val head = Thead(Tr(columns.map { (column: Block.Column) => Th(`class` = columnClasses(column) + solitaryClass(column.title))(phrase(column.title)) }*))
 
@@ -684,7 +693,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       }*)
 
     val captioned: List[Html of "caption"] = caption.lay(Nil: List[Html of "caption"]) { caption => List(Caption(phrase(caption))) }
-    Table(`class` = cls(t"pyro-table"))(Html.Fragment(captioned*), head, body)
+    Table(`class` = tableClasses)(Html.Fragment(captioned*), head, body)
 
   // A stack trace: a section per exception in the chain, each a heading naming the exception
   // and its message, and a table of its frames laid out as the terminal lays them out—`at`, the

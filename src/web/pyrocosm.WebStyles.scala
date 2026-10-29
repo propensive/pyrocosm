@@ -495,8 +495,20 @@ object WebStyles:
         + css".pyro-purview-list .pyro-import::before, .pyro-purview-list .pyro-bookmark::before { content: '×' }"
 
     val tones: Css = Tone.values.foldLeft(Css(Nil)) { (acc, tone0) => acc + tone(tone0) }
+
+    // A table with fixed columns keeps each column at its share of the width, whatever the
+    // content, which wraps within it — code at its own line breaks, anything at a word, and a
+    // long name anywhere — so that every such table's columns line up with the next's.
+    val shares: Css =
+      ( List
+          ( t".pyro-table.pyro-fixed { table-layout: fixed }",
+            t".pyro-fixed th, .pyro-fixed td { overflow-wrap: anywhere }",
+            t".pyro-fixed code.pyro-code { white-space: pre-wrap }" )
+        + HtmlRenderer.shares.map { (share: Int) => t".pyro-share-${share.toString.tt} { width: ${share.toString.tt}% }" } )
+      . join(t" ")
+      . read[Css]
     val accents: Css = Token.Accent.values.foldLeft(Css(Nil)) { (acc, accent0) => acc + accent(accent0) }
     val traceAccents: Css = (1 to 5).foldLeft(Css(Nil)) { (acc, index) => acc + traceAccent(index) }
 
     theme.variables + scale + stage + base + layout + menubar + masthead + phrasing + label + flow + trace
-    + charts + panels + controls + purview + responsive + tones + accents + traceAccents
+    + charts + panels + controls + purview + responsive + tones + shares + accents + traceAccents
