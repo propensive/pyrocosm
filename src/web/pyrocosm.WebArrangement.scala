@@ -279,7 +279,14 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   override def verso: Html of Flow = cards(plan.navigation)
   override def recto: Html of Flow =
     if interface.purview.present then Html.Fragment(cards(plan.detail), renderer.purviewPanel) else cards(plan.detail)
-  def content: Html of Flow = Html.Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
+
+  // A transcript and the prompt beneath it are one session, shown on one card: the panels
+  // within it keep their ids (the frontend patches them by id) but lose their own chrome (the
+  // `.pyro-session` rules).
+  def content: Html of Flow =
+    val matter: Html of Flow = Html.Fragment(cards(plan.primary), cards(plan.log), cards(plan.prompt))
+    val session: Boolean = !interface.panels.all(_.role != Panel.Role.Transcript)
+    if session then Section(`class` = List(cls(t"pyro-panel"), cls(t"pyro-session")))(matter) else matter
 
   // The session this page belongs to, if it has one of its own, for the script to name when it
   // opens its socket; and the prefix it is served under, when there is one.
