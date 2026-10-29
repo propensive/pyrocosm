@@ -150,8 +150,10 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
       try
         url.session: connection ?=>
           upstream.offer(connection)
+          // A refill exposes at most the demand of one message's chunk, so the demand is the
+          // most a frame may carry: anything less would forward a long message in pieces.
           val input = connection.messages
-          val demand = Credit(summon[Buffering].capacity(Substrate.Bytes))
+          val demand = Credit(Websocket.Frame.maxPayload)
           var reading: Boolean = true
 
           while reading do input.refill(demand) match

@@ -49,6 +49,7 @@
   // follows (keeping the query, which names the session), and the fragment is scrolled to once
   // the patch which contains it has landed. Back and forward replay the same.
   var pendingFragment = "";
+  var pendingTop = false;
 
   function navigate(href, push) {
     var url;
@@ -60,6 +61,7 @@
     if (push) history.pushState({}, "", url.pathname + location.search + url.hash);
     if (moved) {
       pendingFragment = url.hash ? url.hash.substring(1) : "";
+      pendingTop = push && !url.hash;
       send({ kind: "locate", id: "", text: path, caret: 0, index: 0 });
     } else if (url.hash) {
       var target = document.getElementById(url.hash.substring(1));
@@ -68,7 +70,10 @@
     return true;
   }
 
+  // Once a patch has landed after a navigation: a page gone to anew is read from its top, and a
+  // fragment is scrolled to when the patch which contains it arrives.
   function settle() {
+    if (pendingTop) { window.scrollTo(0, 0); pendingTop = false; }
     if (!pendingFragment) return;
     var target = document.getElementById(pendingFragment);
     if (target) { target.scrollIntoView(); pendingFragment = ""; }
@@ -685,11 +690,11 @@
     return last >= 0 && text.slice(last + 1).trim() !== "";
   }
 
-  function settle(editor, incomplete) { if (incomplete) newline(editor); else submit(editor); }
+  function conclude(editor, incomplete) { if (incomplete) newline(editor); else submit(editor); }
 
   function enter(editor) {
     var current = versionOf(editor), verdict = verdicts[editor.id];
-    if (verdict && verdict.version === current) { settle(editor, verdict.incomplete); return; }
+    if (verdict && verdict.version === current) { conclude(editor, verdict.incomplete); return; }
     queued[editor.id] = [];
     pendingEnter[editor.id] = setTimeout(function () { resolveEnter(editor, looksIncomplete(editorText(editor))); }, 500);
     send({ kind: "enter", id: editor.id, text: editorText(editor), caret: caretOf(editor), index: 0, version: current });
@@ -699,7 +704,7 @@
     if (!pendingEnter[editor.id]) return;
     clearTimeout(pendingEnter[editor.id]);
     delete pendingEnter[editor.id];
-    settle(editor, incomplete);
+    conclude(editor, incomplete);
     var replay = queued[editor.id] || [];
     queued[editor.id] = [];
     replay.forEach(function (key) {
