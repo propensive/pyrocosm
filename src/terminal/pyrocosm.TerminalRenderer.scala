@@ -539,6 +539,7 @@ class TerminalRenderer(val theme: TerminalTheme = TerminalTheme.default, val jus
       case Block.Sizing.Rigid                 => Rigid
       case Block.Sizing.Paragraph             => columnar.Paragraph
       case Block.Sizing.Collapsible(priority) => columnar.Collapsible(priority)
+      case Block.Sizing.Fixed(_)              => columnar.Paragraph
 
     def alignment(column: Block.Column): TextAlignment = column.alignment match
       case Block.Alignment.Start   => TextAlignment.Left
