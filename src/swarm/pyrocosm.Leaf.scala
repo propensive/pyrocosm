@@ -53,6 +53,25 @@ extends Swarm(tool, version, services, capabilities, swarmPort):
 
   protected def gateway: Boolean = false
 
+  // Behind the hub, this tool's front-end is a path of the hub's origin, which is where a
+  // browser anywhere should go; so that is the URL the leaf advertises for it, once the hub
+  // says where its origin is, and the front-end's own port otherwise.
+  override def self: Advert =
+    val advert: Advert = super.self
+
+    val origin: Optional[Service] =
+      hub.let { hub => nodes().seek(_.node.key == hub.key) }.or(Unset)
+      . let(_.services.seek(_.name == t"serve")).or(Unset)
+
+    origin.lay(advert): origin =>
+      val host: Text = node.hosts.head.or(node.machine)
+
+      def routed(service: Service): Service =
+        if service.name == t"serve" then service.copy(url = t"http://$host:${origin.port.show}/$tool/")
+        else service
+
+      advert.copy(services = advert.services.map(routed(_)))
+
   // The link to the hub, while there is one, and the hub at its other end.
   private def tether: Optional[Tether] = link(Swarm.hubName)
   def hub: Optional[Node] = tether.let(_.node).or(Unset)

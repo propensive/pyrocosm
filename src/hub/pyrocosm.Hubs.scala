@@ -31,16 +31,22 @@ import environments.javaBaseEnvironment
 import probates.cancelProbate
 import strategies.throwUnsafely
 import threads.platformThreads
+import webserverErrorPages.minimalErrorPage
 
 // The `pyrocosm` process: one per machine, the hub of every Pyrocosm tool's node on it. A tool's
 // daemon starts it (`ensure`) when the registry names no live hub, from the daemon's own
 // classpath, as a JVM of its own; it runs `main`, which starts the `Hub` if it can take the
 // hub's lock — two daemons which start one at once leave one — and ends once no leaf has been
-// linked to it for a while, or when the JVM is told to stop. What it does is logged to a file
-// beside the registry, since no invocation reaches its journal.
+// linked to it for a while, or when the JVM is told to stop. It serves the machine's one web
+// origin, every tool's front-end under it (`Portal`), on `port` — 8090, which fume's dashboard
+// had — or, while that is taken, on a port of its own, which it advertises either way. What it
+// does is logged to a file beside the registry, since no invocation reaches its journal.
 object Hubs:
   // How long the hub outlives its last leaf, which also covers its start, before any has linked.
   val grace: Duration = 30.0*Second
+
+  // The port of the machine's web origin.
+  val port: Int = 8090
 
   // How long a daemon waits for a hub it started to register itself.
   val patience: Duration = 10.0*Second
@@ -113,7 +119,20 @@ object Hubs:
         case hub: Hub =>
           async(transcribe())
           java.lang.System.err.nn.println(s"pyrocosm: hub started by ${tool.s} ${version.s}, pid ${hub.node.pid}")
+
+          // The web origin: on its port, or on one of its own while that is taken.
+          val proxy: Portal = Portal(hub, port)
+
+          val origin: Optional[Int] = proxy.serve().or:
+            java.lang.System.err.nn.println(s"pyrocosm: port $port is taken")
+            Portal(hub, Port[Tcp]().number).serve()
+
+          origin.let: port =>
+            hub.web = port
+            java.lang.System.err.nn.println(s"pyrocosm: serving http://localhost:$port/")
+
           linger(hub)
+          proxy.stop()
           hub.stop()
           java.lang.System.err.nn.println("pyrocosm: hub stopped")
 

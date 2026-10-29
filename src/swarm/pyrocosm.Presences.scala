@@ -54,14 +54,20 @@ object Presences:
   private def opener(id: Text): Text = t"/open?activity=$id"
 
   // Where a node's web front-end is, as seen from here: `localhost` for a node of this machine,
-  // and the nearest of its addresses otherwise.
+  // and the nearest of its addresses otherwise; and, where its machine's hub serves a web
+  // origin, the tool's path under that origin, which is where a browser should go.
   private def url(swarm: Swarm, advert: Advert): Optional[Text] =
     advert.services.filter(_.name == t"serve").head.let: service =>
       val host: Text =
         if advert.node.shares(swarm.node) then t"localhost"
         else Machine.ordered(advert.node.hosts).head.or(advert.node.machine)
 
-      located(host, service.port)
+      val hub: Optional[Advert] =
+        swarm.nodes().seek { other => other.node.tool == Wire.tool && other.node.identity == advert.node.identity }
+
+      hub.let(_.services.filter(_.name == t"serve").head).or(Unset) match
+        case origin: Service => t"http://$host:${origin.port.show}/${advert.node.tool}/"
+        case _               => located(host, service.port)
 
   private def located(host: Text, port: Int): Text = t"http://$host:${port.show}/"
 

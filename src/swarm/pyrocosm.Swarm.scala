@@ -355,8 +355,9 @@ extends Tether.Host, scala.caps.Pure:
       else service
 
     // A web front-end started outside the tool's services (`gallery serve <port>`) says so
-    // through the shared presence.
-    val declared: List[Service] = services()
+    // through the shared presence; so does one started on port 0, which took a port of its own.
+    val declared: List[Service] =
+      services().filter { service => !(service.name == t"serve" && service.port == 0) }
 
     val web: List[Service] =
       if declared.exists(_.name == t"serve") then Nil
@@ -402,8 +403,9 @@ extends Tether.Host, scala.caps.Pure:
   // ── the bus ──────────────────────────────────────────────────────────────────────────────
 
   // Every node known to this one, itself included, with what each last advertised; and every
-  // activity of every other node, as it was last updated.
-  val nodes: Live[List[Advert]] = Live(List(self))
+  // activity of every other node, as it was last updated. Lazy, since `self` is each kind of
+  // node's own, and its fields are not there while this class is being built.
+  lazy val nodes: Live[List[Advert]] = Live(List(self))
   val activities: Live[List[(Node, Activity)]] = Live(Nil)
 
   // When each node was last heard from, by key, and the newest sequence heard from each

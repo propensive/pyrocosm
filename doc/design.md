@@ -429,9 +429,22 @@ In `run` mode every tab shares the one session, so a `Located` moves them all, a
 does; a tool whose pages are per tab (fuel) uses `serve`. A `Local` destination travels over
 the swarm as an external URL, as an internal one does.
 
-**Later**: one HTTP server serving every tool's front-end under one origin (every link is
-root-absolute now, so that is a prefix on the page — `HtmlRenderer.href` is the one seam — and
-`Origin.url` becoming `/<tool>/`), and one MCP endpoint aggregating every tool's.
+**One origin.** The hub serves the machine's one web origin, on 8090 (or a port of its own
+while that is taken, which it advertises either way): every tool's front-end under it at
+`/<tool>/`, reached by the port the tool's node advertises — a `WebFrontend` on port 0 takes a
+free port of its own and says so through the presence — a page at `/` naming the tools, and
+the stylesheet. A request for a tool's path is passed to the tool's server as it is, and the
+response back; a browser's socket is tunnelled to the tool's (`Portal`, in `src/hub`). Nothing
+is rendered at the hub: the tool's front-end knows its prefix (`Presence.prefix`, which the
+tool's command line sets to `/<tool>`; `WebFrontend(prefix = …)` otherwise) and names every
+path under it — `HtmlRenderer.href`, the script, the stylesheet, the wordmark, `/open` — while
+accepting a request with or without it, so a page reached through the hub and one reached
+directly on the tool's own port are the same page. The script treats only a same-origin path
+under the prefix as this application's own, and sends `locate` with the prefix stripped, so
+the application, its fallback and its purview see their own paths; the purview cookie is kept
+for the prefix's paths alone. A leaf advertises its front-end's URL as its path under the hub's
+origin, so an activity card anywhere links there. Not yet: one MCP endpoint aggregating every
+tool's (`/<tool>/mcp` is proxied like any path), and two front-ends of one tool on one machine.
 
 ## Roadmap
 

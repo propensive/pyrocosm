@@ -118,20 +118,41 @@ object WebFrontend:
 // session's tabs, and every incoming message is checked against the handles its interface
 // actually offers before it becomes an `Event`. Both serve until `stop()`.
 // `fallback` answers any request the frontend does not (an application's own API, say); a
-// request it declines is a 404. `prefix` is the path the application is seen under by a browser
-// (`/fume`, say, behind a proxy which strips it), empty when it is the origin's root: the pages
-// name their paths under it, while every path the application sees — a `Located` event, the
-// fallback's request, a purview's entries — is its own, without it.
+// request it declines is a 404. A `port` of 0 is a free port of the frontend's own, behind
+// the machine's hub, which serves every tool's front-end under one origin. `prefix` is the path
+// the application is seen under there (`/fume`, say; the presence's, which the tool's command
+// line sets, unless given), empty at an origin's root: the pages name their paths under it, and
+// a request may name it or not — a page reached through the hub and one reached directly are
+// the same page — while every path the application sees (a `Located` event, the fallback's
+// request, a purview's entries) is its own, without it.
 class WebFrontend
   ( port:     Int,
     theme:    WebTheme = WebTheme.default,
     fallback: Http.Request => Optional[Http.Response] = _ => Unset,
     presence: Presence = Presence.shared,
-    prefix:   Text = t"" )
+    prefix:   Optional[Text] = Unset )
   ( using monitor: Monitor, probate: Probate, errorPage: WebserverErrorPage )
 extends pyrocosm.Frontend:
 
   private val stopped: juc.CountDownLatch = juc.CountDownLatch(1)
+
+  // The port actually served on: `port`, or the free one taken for a port of 0.
+  @caps.unsafe.untrackedCaptures
+  @volatile
+  private var bound: Int = port
+
+  // The prefix in force: the one given, or the presence's.
+  private def served: Text = prefix match
+    case prefix: Text => prefix
+    case _            => presence.prefix().or(t"")
+
+  // A request's target as the application knows it: without the prefix, when it names it.
+  private def strip(target: Text): Text =
+    val base: Text = served
+
+    if base.blank || target == base then (if base.blank then target else t"/")
+    else if target.starts(t"$base/") || target.starts(t"$base?") then target.skip(base.length)
+    else target
   private val counter: juca.AtomicInteger = juca.AtomicInteger(0)
   private val sessions: juc.ConcurrentHashMap[Text, Session] = juc.ConcurrentHashMap()
 
@@ -159,7 +180,7 @@ extends pyrocosm.Frontend:
           Block.paragraph(t"There is nothing to configure here yet. A tool is configured by its config.tel file: .pyrocosm/<tool>/config.tel in a project, or ~/.config/<tool>/config.tel for the user."),
           Block.Record
             ( List
-                ( Block.Entry(Inline.text(t"port"), List(Block.paragraph(port.toString.tt))),
+                ( Block.Entry(Inline.text(t"port"), List(Block.paragraph(bound.toString.tt))),
                   Block.Entry(Inline.text(t"theme"), List(Block.paragraph(theme.getClass.getSimpleName.nn.replace("$", "").nn.tt))) ),
               Inline.text(t"This frontend") ) )
 
@@ -168,7 +189,7 @@ extends pyrocosm.Frontend:
         ( Inline.text(t"Configuration"),
           List(Panel(Panel.Id(t"configuration"), Panel.Role.Primary, Unset, Live(content), Panel.Priority.Essential)) )
 
-    t"<!DOCTYPE html>${PyrocosmPage(interface, HtmlRenderer(prefix = prefix), theme, prefix = prefix).markup.show}"
+    t"<!DOCTYPE html>${PyrocosmPage(interface, HtmlRenderer(prefix = served), theme, prefix = served).markup.show}"
 
   // One interface and the tabs showing it. The handler is vouched pure, as the terminal
   // frontend's is: it lives exactly as long as the session.
@@ -180,8 +201,8 @@ extends pyrocosm.Frontend:
     @volatile
     var purview: Purview = interface.purview.or(Purview())
 
-    def renderer: HtmlRenderer = HtmlRenderer(purview, prefix)
-    def page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id, presence, prefix)
+    def renderer: HtmlRenderer = HtmlRenderer(purview, served)
+    def page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id, presence, served)
 
     // The reader's purview, as a page request's cookie says it is; nothing, without one.
     def adopt(cookies: Optional[Text]): Unit =
@@ -495,16 +516,18 @@ extends pyrocosm.Frontend:
     request.textHeaders.exists { header => header.key.lower == t"accept" && header.value.contains(t"text/html") }
 
   private def serving(): Unit =
-    presence.web() = port
+    bound = if port == 0 then Port[Tcp]().number else port
+    presence.web() = bound
 
-    val service = SocketServer(port).handle:
-      val path: Text = request.target.cut(t"?").at(Prim).or(t"/")
+    val service = SocketServer(bound).handle:
+      val target: Text = strip(request.target)
+      val path: Text = target.cut(t"?").at(Prim).or(t"/")
 
       // The page at a path: the session is told where it is before the page is rendered, so
       // that the first paint shows the right content, and the browser's own scroll to a
       // fragment finds its target.
       def page(path: Text): Http.Response =
-        sessionFor(request.target, fresh = true).lay(Http.Response(Http.NotFound)(t"No session")): session =>
+        sessionFor(target, fresh = true).lay(Http.Response(Http.NotFound)(t"No session")): session =>
           session.adopt(request.textHeaders.seek(_.key.lower == t"cookie").let(_.value))
           session.locate(path)
           val html: Text = t"<!DOCTYPE html>${session.page.markup.show}"
@@ -514,12 +537,12 @@ extends pyrocosm.Frontend:
         // A link from another tool's card: presses the activity's action here, and sends the
         // browser to the page which shows it — the shared one, or the session's own.
         case t"/open" =>
-          val query: Text = request.target.cut(t"?").at(Sec).or(t"")
+          val query: Text = target.cut(t"?").at(Sec).or(t"")
           val id: Optional[Text] = query.cut(t"&").seek(_.starts(t"activity=")).let(_.skip(t"activity=".length))
 
           id.let(locate(_)).lay(Http.Response(Http.NotFound)(t"No such activity")): (session, action) =>
             session.press(action)
-            val target: Text = if shared.present then t"$prefix/" else t"$prefix/?session=${session.id}"
+            val target: Text = if shared.present then t"$served/" else t"$served/?session=${session.id}"
             Http.Response(Http.SeeOther, location = target)()
 
         case t"/" | t"/index.html" => page(t"/")
@@ -534,7 +557,7 @@ extends pyrocosm.Frontend:
           Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(configuration.in[Data]))
 
         case t"/socket" =>
-          sessionFor(request.target, fresh = false).lay(Http.Response(Http.NotFound)(t"No session")): session =>
+          sessionFor(target, fresh = false).lay(Http.Response(Http.NotFound)(t"No session")): session =>
             Http.Response:
               val id = counter.incrementAndGet()
 
@@ -561,7 +584,15 @@ extends pyrocosm.Frontend:
         case _ =>
           val request0: Http.Request = caps.unsafe.unsafeAssumePure(summon[Http.Request])
 
-          fallback(request0).or:
+          // The fallback sees the application's own path too; the copy is vouched pure as the
+          // original was.
+          val request1: Http.Request =
+            if target == request0.target then request0
+            else
+              caps.unsafe.unsafeAssumePure:
+                Http.Request(request0.method, request0.version, request0.host, target, request0.textHeaders, request0.body)
+
+          fallback(request1).or:
             if navigating(request0) then page(path) else Http.Response(Http.NotFound)(t"Not found")
 
     try stopped.await()

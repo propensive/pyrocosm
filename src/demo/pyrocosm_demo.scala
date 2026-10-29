@@ -913,12 +913,16 @@ object gallery uses surveillance.Watcher:
         val port = words.at(if repl then Ter else Sec).let { (word: Text) => safely(word.as[Int]) }.or(8080)
         supervise:
           import parasite.probates.cancelProbate
+          // On port 0 the front-end takes a free port behind the machine's hub, which serves it
+          // under the gallery's path.
+          val where: Text = if port == 0 then t"behind the hub, at /gallery/" else t"at http://localhost:${port.toString}/"
+
           if repl then
-            Out.println(t"Serving the Pyrocosm REPL at http://localhost:${port.toString}/")
+            Out.println(t"Serving the Pyrocosm REPL $where")
             WebFrontend(port).serve(() => Repl())
           else
             val session = GallerySession()
-            Out.println(t"Serving the Pyrocosm gallery at http://localhost:${port.toString}/")
+            Out.println(t"Serving the Pyrocosm gallery $where")
             WebFrontend(port).run(session.interface)(session.handle)
         Exit.Ok
 

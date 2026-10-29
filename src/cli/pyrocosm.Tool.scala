@@ -581,6 +581,7 @@ object Tool:
           // The machine's hub, started if this daemon finds none, and the daemon's node on the
           // swarm, a leaf of it, started with the first invocation: it advertises whatever
           // services this daemon has launched. The leaf starts a hub again should the hub go.
+          Presence.shared.prefix() = t"/${tool.name}"
           Hubs.ensure(tool.name, tool.version)
           Swarm.start(tool.name, tool.version, () => Tool.offered(tool), revive = () => Hubs.ensure(tool.name, tool.version))
 

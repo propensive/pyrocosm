@@ -25,13 +25,20 @@ package pyrocosm
 import soundness.{Service as _, Standing as _, Status as _, Step as _, *}
 
 import Journal.{Event, Party}
+import perihelion.{Message, wsClient}
+
 import alphabets.hexLowerCase
+import codepages.utf8Codepage
 import denominative.dysasymptotics.linearSize
 import errorDiagnostics.emptyDiagnostics
+import httpBackends.javaNetHttp
+import internetAccess.online
+import logging.silentLogging
 import probates.cancelProbate
 import proscenium.List
 import strategies.throwUnsafely
 import threads.platformThreads
+import webserverErrorPages.minimalErrorPage
 
 // A later build's wire, for the acceptance tests: the same messages and one more, and an advert
 // with one more, optional, field. Derived here, in the unchecked test module, as `Wire` is in
@@ -157,6 +164,14 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       survived:  Boolean,
       orphaned:  Int,
       relinked:  Boolean )
+
+  private case class Served
+    ( prefixed: Boolean,
+      content:  Boolean,
+      listed:   Boolean,
+      direct:   Boolean,
+      missing:  Int,
+      pong:     Optional[Text] )
 
   private case class Relayed
     ( seen:      (Int, Int, Int, Int),
@@ -667,6 +682,88 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       test(m"the advertisement is withdrawn once the invitation is used, and a machine can be revoked"):
         (invited.withdrawn, invited.revoked >= 1)
       . assert(_ == (true, true))
+
+    suite(m"The web origin"):
+      // A hub in this JVM serves the machine's origin on a port of its own; a tool's front-end,
+      // on a free port behind it, is reached at `/<tool>/` — its page, and its socket, through
+      // the hub — and directly, as the same page; a tool nobody runs is not found; and the
+      // origin's own page lists the tool.
+      val served: Served =
+        supervise:
+          val runtime: Text = java.nio.file.Files.createTempDirectory("pyrocosm-origin").nn.toString.tt
+
+          given Environment = name =>
+            if name == t"XDG_RUNTIME_DIR" then runtime
+            else Optional(java.lang.System.getenv(name.s)).let(_.tt)
+
+          val port: Int = Port[Tcp]().number
+          val hub: Hub = Swarm.hub(t"0.1.0", Nil, port).or(panic(m"another process is the hub"))
+          val portal: Portal = Portal(hub, Port[Tcp]().number)
+          val origin: Int = portal.serve().or(panic(m"the origin could not be bound"))
+          hub.web = origin
+
+          val content: List[Block] = List(Block.paragraph(t"Alpha's page"))
+
+          val interface: Interface =
+            Interface
+              ( Inline.text(t"Alpha"),
+                List(Panel(Panel.Id(t"main"), Panel.Role.Primary, Unset, Live(content), Panel.Priority.Essential)) )
+
+          val presence: Presence = Presence()
+          val frontend: WebFrontend = WebFrontend(0, presence = presence, prefix = t"/alpha")
+          async(frontend.run(interface) { _ => () })
+          await(25)(presence.web().present)
+          val webPort: Int = presence.web().or(0)
+
+          val alpha: Swarm = Swarm.start(t"alpha", t"0.1.0", () => List(Service(t"serve", webPort)), Nil, port)
+          await(50)(hub.nodes().exists(_.node.tool == t"alpha"))
+
+          def fetch(base: Int, path: Text): Http.Response = t"http://127.0.0.1:${base.show}$path".as[HttpUrl].fetch()
+
+          val page: Text = fetch(origin, t"/alpha/").receive[Text]
+          val landing: Text = fetch(origin, t"/").receive[Text]
+          val direct: Text = fetch(webPort, t"/").receive[Text]
+          val missing: Int = fetch(origin, t"/beta/").status.code
+
+          // A ping over the browser's socket, tunnelled to the tool's, is answered with a pong.
+          val reply: Promise[Text] = Promise()
+          val url: Websocket.Url = t"ws://127.0.0.1:${origin.show}/alpha/socket".as[Websocket.Url]
+
+          val ping: Text =
+            t"""{"kind":"ping","id":"","text":"","caret":0,"index":0,"version":0,"label":""}"""
+
+          async:
+            url.exchange(())[Message]
+              { (message: Message) =>
+                  message match
+                    case Message.Binary(data) => reply.offer(data.utf8)
+                    case Message.Text(text)   => reply.offer(text)
+                  coaxial.Control.Terminate }
+              { transmitter => transmitter.send(Message.Text(ping)) }
+
+          val pong: Optional[Text] = safely(reply.await(5.0*Second))
+
+          Swarm.stop(t"alpha")
+          frontend.stop()
+          portal.stop()
+          hub.stop()
+
+          Served
+            ( page.contains(t"""<meta name="pyro-prefix" content="/alpha">"""), page.contains(t"Alpha's page"),
+              landing.contains(t"""href="/alpha/""""), direct.contains(t"""<meta name="pyro-prefix" content="/alpha">"""),
+              missing, pong )
+
+      test(m"a tool's page is served under its path on the origin, and is the same page directly"):
+        (served.prefixed, served.content, served.direct)
+      . assert(_ == (true, true, true))
+
+      test(m"the origin's own page lists the tool, and a tool nobody runs is not found"):
+        (served.listed, served.missing)
+      . assert(_ == (true, 404))
+
+      test(m"a socket through the origin reaches the tool, and its answer comes back"):
+        served.pong.let(_.contains(t"pong"))
+      . assert(_ == true)
 
     suite(m"The journal"):
       test(m"entries are returned oldest first, after the one asked for"):

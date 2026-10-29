@@ -184,8 +184,10 @@ object settings:
     "syndesis-core", "revolution-semver", "parasite-jvm")
   . map(component(soundness))
 
-  // The hub process: nothing beyond the swarm's, for now.
-  def hubDeps(soundness: String) = swarmDeps(soundness)
+  // The hub process: the swarm's, and the web's, for the one origin it serves every tool's
+  // front-end under (scintillate serves it, telekinesis and perihelion reach the tools).
+  def hubDeps(soundness: String) =
+    swarmDeps(soundness) ++ webDeps(soundness) ++ Seq("telekinesis-jvm").map(component(soundness))
 
   def demoDeps(soundness: String) = Seq("exoskeleton-completions", "ethereal-core").map(component(soundness))
   def testDeps(soundness: String) = Seq("probably-cli", "probably-events", "yossarian-core").map(component(soundness))
@@ -359,9 +361,15 @@ object pyrocosm extends Project:
 
   // The `pyrocosm` process: one per machine, the hub every tool's node is a leaf of, started by
   // the first tool's daemon from its own classpath. `dev.propensive:pyrocosm-hub`.
-  object hub extends Component(swarm), Publishing:
+  object hub extends Component(swarm, web), Publishing:
     def mvnDeps = Task(settings.hubDeps(deps.soundness()))
     def finalMainClass = "pyrocosm.Hubs"
+
+    // Unchecked like `remote`: the proxy lends a browser's socket and a tool's to each other
+    // across tasks, which the capture checker has no words for yet.
+    override def scalacOptions =
+      (settings.scalaOptions ++ settings.predef).filterNot: option =>
+        option == "-Ycc-new" || option == "-language:experimental.captureChecking"
 
   // The gallery: every node in both frontends, the fixture for judging appearance.
   object demo extends Component(terminal, web, cli):

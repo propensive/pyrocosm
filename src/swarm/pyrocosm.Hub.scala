@@ -74,6 +74,25 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
   // The leaves linked to this hub now.
   def leaves: List[Node] = neighbours.map(_(0))
 
+  // The port the hub serves the machine's one web origin on, once it does: every tool's
+  // front-end under it, as `/<tool>/`. Advertised as the hub's `serve` service.
+  @scala.caps.unsafe.untrackedCaptures
+  @volatile
+  private var web0: Optional[Int] = Unset
+
+  def web: Optional[Int] = web0
+
+  def web_=(port: Optional[Int]): Unit =
+    web0 = port
+    advertise()
+
+  override def self: Advert =
+    val advert: Advert = super.self
+
+    web0.lay(advert): port =>
+      val host: Text = advert.node.hosts.head.or(advert.node.machine)
+      advert.copy(services = Service(t"serve", port, t"http://$host:${port.show}/") :: advert.services)
+
   // Starts the hub, if this process can take the hub's lock: its listener for the machine's
   // leaves, on a port of its own, its registration, and its housekeeping. False if another
   // process is the hub.

@@ -60,6 +60,10 @@ class Presence():
   // The port this process's web front-end is serving on, while it is.
   val web: Live[Optional[Int]] = Live(Unset)
 
+  // The path this process's web front-end is served under (`/fume`, say) behind the machine's
+  // hub, which serves every tool's front-end under one origin; the tool's command line sets it.
+  val prefix: Live[Optional[Text]] = Live(Unset)
+
   @caps.unsafe.untrackedCaptures
   private var attached: List[Interface] = Nil
 
