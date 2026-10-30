@@ -105,12 +105,12 @@ object Peer:
       case Reason.NoIdentity(machine) =>
         m"machine $machine declares no identity fingerprint to pin"
 
-      case Reason.NoToken(machine)   => m"machine $machine declares no token"
-      case Reason.Unreachable(machine) => m"machine $machine could not be connected to"
-      case Reason.Refused(reason)    => m"the peer refused the connection: $reason"
+      case Reason.NoToken(machine)       => m"machine $machine declares no token"
+      case Reason.Unreachable(machine)   => m"machine $machine could not be connected to"
+      case Reason.Refused(reason)        => m"the peer refused the connection: $reason"
       case Reason.Protocol(theirs, ours) => m"the peer speaks protocol $theirs, not $ours"
-      case Reason.Disconnected       => m"the peer closed the connection during the handshake"
-      case Reason.Identity           => m"this machine's identity could not be created or read"
+      case Reason.Disconnected           => m"the peer closed the connection during the handshake"
+      case Reason.Identity               => m"this machine's identity could not be created or read"
 
   case class Error(reason: Error.Reason)(using Diagnostics)
   extends fulminate.Error(6040, reason.number)(m"the remote connection failed because $reason")
@@ -128,9 +128,10 @@ object Peer:
   // uppercase pairs.
   def parseFingerprint(text: Text): Optional[Data] =
     val stripped: Text =
-      (if text.lower.starts(t"sha256:") then text.s.substring(7).nn.tt else text).lower.s.replace(":", "").nn.tt
+      (if text.lower.starts(t"sha256:") then text.s.substring(7).nn.tt else text)
+      . lower.s.replace(":", "").nn.tt
 
-    val hex: Boolean = stripped.s.forall { c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') }
+    val hex: Boolean = stripped.s.forall: c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
     if stripped.s.length != 64 || !hex then Unset else safely(stripped.deserialize[Hex])
 
   // A machine's key material and the certificate it presents.
@@ -181,12 +182,12 @@ object Peer:
                 "secp256r1", "-dname", s"CN=$hostname", "-validity", "36500", "-storetype",
                 "PKCS12", "-keystore", keystore.encode.s, "-storepass", password.s, "-keypass",
                 password.s )
+
             . redirectErrorStream(true).nn.start().nn
 
           process.getInputStream.nn.readAllBytes()
 
-          if process.waitFor() != 0 || !keystore.existent()
-          then abort(Error(Error.Reason.Identity))
+          if process.waitFor() != 0 || !keystore.existent() then abort(Error(Error.Reason.Identity))
 
           passwordFile.write(password)
           restrict(keystore)
@@ -252,7 +253,8 @@ object Peer:
 
       channel.receive() match
         case Channel.Frame.Handshake(fingerprint, document) =>
-          if !Channel.same(fingerprint, handshake.fingerprint) then refuse(channel, Refusal.protocol)
+          if !Channel.same(fingerprint, handshake.fingerprint)
+          then refuse(channel, Refusal.protocol)
           else safely(handshake.decode(document)) match
             case Handshake.Hello(theirTool, protocol, theirVersion, theirToken, theirHost) =>
               if theirTool != tool then refuse(channel, Refusal.tool)
@@ -284,8 +286,8 @@ object Peer:
                     channel.sendHandshake(handshake.fingerprint, handshake.encode(welcome))
 
                     // What the worker knows of the controller: its tool's version and hostname.
-                    val controller =
-                      Info(theirTool, theirVersion, Machine.Identity(theirHost, t"", t"", 0, t""), Nil)
+                    val identity = Machine.Identity(theirHost, t"", t"", 0, t"")
+                    val controller = Info(theirTool, theirVersion, identity, Nil)
 
                     handler(Session(channel, controller))
 
@@ -329,14 +331,15 @@ object Peer:
     ( lambda: Session[message] => result )
   :   scala.Either[Error.Reason, result] =
 
-    machine.identity match
-      case fingerprint: Data =>
-        machine.token.let(Machine.secret(_)) match
-          case secret: Text => exchange(machine, fingerprint, secret, tool, version, codec, defaultPort)(lambda)
-          case _            => scala.Left(Error.Reason.NoToken(machine.name))
+    val anonymous: scala.Either[Error.Reason, result] =
+      scala.Left(Error.Reason.NoIdentity(machine.name))
 
-      case _ =>
-        scala.Left(Error.Reason.NoIdentity(machine.name))
+    machine.identity.lay(anonymous): fingerprint =>
+      machine.token.let(Machine.secret(_)) match
+        case secret: Text =>
+          exchange(machine, fingerprint, secret, tool, version, codec, defaultPort)(lambda)
+
+        case _ => scala.Left(Error.Reason.NoToken(machine.name))
 
   // ── invitations ──────────────────────────────────────────────────────────────────────────
 
@@ -418,13 +421,19 @@ object Peer:
 
   // The words of a reason, for a caller that has no `Diagnostics` to make an `Error` with.
   def explain(reason: Error.Reason): Text = reason match
-    case Error.Reason.NoIdentity(machine) => t"machine $machine declares no identity fingerprint to pin"
-    case Error.Reason.NoToken(machine)    => t"machine $machine declares no token"
-    case Error.Reason.Unreachable(machine) => t"machine $machine could not be connected to"
-    case Error.Reason.Refused(reason)     => t"the peer refused the connection: $reason"
+    case Error.Reason.NoIdentity(machine) =>
+      t"machine $machine declares no identity fingerprint to pin"
+
+    case Error.Reason.NoToken(machine)       => t"machine $machine declares no token"
+    case Error.Reason.Unreachable(machine)   => t"machine $machine could not be connected to"
+    case Error.Reason.Refused(reason)        => t"the peer refused the connection: $reason"
     case Error.Reason.Protocol(theirs, ours) => t"the peer speaks protocol $theirs, not $ours"
-    case Error.Reason.Disconnected        => t"the peer closed the connection during the handshake"
-    case Error.Reason.Identity            => t"this machine's identity could not be created or read"
+
+    case Error.Reason.Disconnected =>
+      t"the peer closed the connection during the handshake"
+
+    case Error.Reason.Identity =>
+      t"this machine's identity could not be created or read"
 
   // How long the next of a machine's addresses is waited for before it is tried alongside the
   // earlier ones, and how long, in all, any of them is waited for.
@@ -496,7 +505,9 @@ object Peer:
                   case Handshake.Granted(token) =>
                     welcomed(token)
 
-                  case Handshake.Welcome(theirTool, protocol, theirVersion, hostname, os, arch, cores, jvm, capabilities) =>
+                  case Handshake.Welcome
+                    ( theirTool, protocol, theirVersion, hostname, os, arch, cores, jvm,
+                      capabilities ) =>
                     if protocol != codec.protocol
                     then scala.Left(Error.Reason.Protocol(protocol, codec.protocol))
                     else

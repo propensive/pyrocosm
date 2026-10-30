@@ -26,14 +26,6 @@ import soundness.*
 
 import codepages.utf8Codepage
 
-// What kind of metadata a type is: the name of the notes ref that holds it (`bench` is
-// `refs/notes/pyrocosm/bench`) and its wire form, TEL text, as the rest of the ecosystem's
-// documents. An instance is normally made from the type's TEL codecs with `Recordable[Bench]("bench")`.
-trait Recordable extends Typeclass:
-  def kind: Text
-  def encode(value: Self): Text
-  def decode(text: Text): Optional[Self]
-
 object Recordable:
   def apply[value](kind0: Text)
     ( using encodable: value is Tel.Encodable, decodable: value is Tel.Decodable )
@@ -44,3 +36,12 @@ object Recordable:
       def kind: Text = kind0
       def encode(value: value): Text = value.in[Tel].show
       def decode(text: Text): Optional[value] = safely(text.read[Tel].as[value])
+
+// What kind of metadata a type is: the name of the notes ref that holds it (`bench` is
+// `refs/notes/pyrocosm/bench`) and its wire form, TEL text, as the rest of the ecosystem's
+// documents. An instance is normally made from the type's TEL codecs with
+// `Recordable[Bench]("bench")`.
+trait Recordable extends Typeclass:
+  def kind: Text
+  def encode(value: Self): Text
+  def decode(text: Text): Optional[Self]

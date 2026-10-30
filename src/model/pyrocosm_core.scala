@@ -22,6 +22,5 @@
                                                                                                   */
 package pyrocosm
 
-
 extension [value: Presentable as presentable](value: value)
   def exhibit: presentable.Form = presentable.exhibit(value)

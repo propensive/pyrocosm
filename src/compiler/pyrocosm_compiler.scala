@@ -42,18 +42,22 @@ import dysasymptotics.linearSize
 extension (token: harlequin.Token)
   def model: Token =
     val accent = Token.Accent.valueOf(token.accent.toString)
-    val role: Optional[Token.Role] = token.role.let { (role: harlequin.Role) => Token.Role.valueOf(role.toString) }
+
+    val role: Optional[Token.Role] =
+      token.role.let: (role: harlequin.Role) => Token.Role.valueOf(role.toString)
+
     Token(token.text, accent, role)
 
 // The style a diagnostic's severity marks with.
-private def noteStyle(importance: harlequin.Diagnostic.Importance): Block.Note.Style = importance match
-  case harlequin.Diagnostic.Importance.Error   => Block.Note.Style.Erroneous
-  case harlequin.Diagnostic.Importance.Warning => Block.Note.Style.Caution
-  case harlequin.Diagnostic.Importance.Info    => Block.Note.Style.Highlight
+private def noteStyle(importance: harlequin.Diagnostic.Importance): Block.Note.Style =
+  importance match
+    case harlequin.Diagnostic.Importance.Error   => Block.Note.Style.Erroneous
+    case harlequin.Diagnostic.Importance.Warning => Block.Note.Style.Caution
+    case harlequin.Diagnostic.Importance.Info    => Block.Note.Style.Highlight
 
 extension (code: SourceCode)
   def modelLines: List[Block.Line] =
-    code.lines.to[List].map { (line: List[harlequin.Token]) => Block.Line(line.map(_.model)) }
+    code.lines.to[List].map: (line: List[harlequin.Token]) => Block.Line(line.map(_.model))
 
   // The model's language for the language that highlighted the source.
   def modelLanguage: Language = code.language match
@@ -71,11 +75,14 @@ extension (code: SourceCode)
   // the fragment's first line.
   def modelNotes: List[Block.Note] =
     val focus: List[Block.Note] =
-      code.focus.lay(Nil) { (span: Span) => Block.Note.of(span, Block.Note.Style.Erroneous).lay(Nil)(List(_)) }
+      code.focus.lay(Nil): (span: Span) =>
+        Block.Note.of(span, Block.Note.Style.Erroneous).lay(Nil)(List(_))
 
     val diagnostics: List[Block.Note] =
       code.diagnostics.bind: (diagnostic: harlequin.Diagnostic) =>
-        Block.Note.of(diagnostic.span, noteStyle(diagnostic.importance), Inline.text(diagnostic.message)).lay(Nil)(List(_))
+        Block.Note
+        . of(diagnostic.span, noteStyle(diagnostic.importance), Inline.text(diagnostic.message))
+        . lay(Nil)(List(_))
 
     (focus + diagnostics).map(_.shifted(lines = code.offset))
 
@@ -83,7 +90,11 @@ extension (code: SourceCode)
   // where it came from, so it is numbered from there; a highlight of a whole text is not, unless
   // asked.
   def modelCode(numbered: Boolean = code.offset > 0): Block.Code =
-    Block.Code(code.modelLanguage, code.modelLines, code.modelNotes, if numbered then code.offset + 1 else Unset)
+    Block.Code
+      ( code.modelLanguage,
+        code.modelLines,
+        code.modelNotes,
+        if numbered then code.offset + 1 else Unset )
 
 given sourceCodePresentable: SourceCode is Presentable in Block = _.modelCode()
 
@@ -96,13 +107,15 @@ private def highlighted(text: Text, context: Scala.Context): Inline =
   Inline.Snippet(Language.Scala, Scala.highlight(text, context).flattened)
 
 private def markupInline(markup: Markup): Inline = markup match
-  case Markup.Textual(text)               => Inline.Textual(text)
-  case Markup.Code(_, _)                  => highlighted(markup.plain, Scala.Context.Term)
-  case Markup.Typed(_, _, _, _)           => highlighted(markup.plain, Scala.Context.Type)
-  case Markup.Symbolic(_, _, _, _)        => highlighted(markup.plain, Scala.Context.Term)
-  case Markup.Named(isType, _, _)         =>
+  case Markup.Textual(text)        => Inline.Textual(text)
+  case Markup.Code(_, _)           => highlighted(markup.plain, Scala.Context.Term)
+  case Markup.Typed(_, _, _, _)    => highlighted(markup.plain, Scala.Context.Type)
+  case Markup.Symbolic(_, _, _, _) => highlighted(markup.plain, Scala.Context.Term)
+
+  case Markup.Named(isType, _, _) =>
     highlighted(markup.plain, if isType then Scala.Context.Type else Scala.Context.Term)
-  case Markup.Spanned(_, _, children)     => Inline.Phrase(children.map(markupInline))
+
+  case Markup.Spanned(_, _, children) => Inline.Phrase(children.map(markupInline))
 
 // A compiler's notice as a diagnostic. The message is read for the semantic markup the compiler
 // embeds (delicious), so that a type shows as a type and a code sample as code, a multi-line
@@ -137,11 +150,12 @@ object Notices:
 
     val location: Optional[Block.Location] =
       if notice.file == t"" then Unset
-      else notice.span.lay(Block.Location(notice.file)) { (span: Span) => Block.Location.of(notice.file, span) }
+      else notice.span.lay(Block.Location(notice.file)): (span: Span) =>
+        Block.Location.of(notice.file, span)
 
     val message: List[Block] =
-      notice.markup.let(SemanticMessage.parse(_)).lay(paragraphs(stripAnsi(notice.message).trim)): message =>
-        blocks(message.markup, types)
+      notice.markup.let(SemanticMessage.parse(_))
+      . lay(paragraphs(stripAnsi(notice.message).trim)): message => blocks(message.markup, types)
 
     val excerpt: List[Block] =
       if lines.nil then Nil else
@@ -179,10 +193,16 @@ object Notices:
       case Markup.Code(_, _) =>
         if markup.plain.contains(t"\n") then
           flush()
-          blocks = Scala.highlight(stripAnsi(markup.plain), Scala.Context.Term).modelCode(false) :: blocks
-        else run = highlighted(markup.plain, Scala.Context.Term) :: run
 
-      case typed: Markup.Typed                => run = highlighted(types(typed), Scala.Context.Type) :: run
+          blocks =
+            Scala.highlight(stripAnsi(markup.plain), Scala.Context.Term).modelCode(false) :: blocks
+
+        else
+          run = highlighted(markup.plain, Scala.Context.Term) :: run
+
+      case typed: Markup.Typed =>
+        run = highlighted(types(typed), Scala.Context.Type) :: run
+
       case Markup.Symbolic(_, _, _, children) => children.each(phrase)
       case Markup.Named(_, _, children)       => children.each(phrase)
       case Markup.Spanned(_, _, children)     => children.each(phrase)
@@ -200,11 +220,16 @@ object Notices:
 
     List(Block.Paragraph(content))
 
+  // The keywords of a missing-given diagnostic's tree.
+  private val keywords: Set[Text] =
+    Set(t"resolving", t"found", t"requires", t"candidate", t"propose")
+
   // One line of a message as phrasing: a line of a missing-given diagnostic's tree (frontier's
   // `■ resolving Foo`, `└─ ▸ propose bar`, and so on) has its mark toned, its keyword kept and
   // its name highlighted as the type or value it is; any other line is text.
   private def lineInlines(line: Text): List[Inline] = line match
-    case r"$prefix([\s│├└─]*)$mark([■✓✗▪▸])\s+$keyword(resolving|found|requires|candidate|propose)\s+$name(\S.*?)$label(\s+\(.*\))?" =>
+    case r"$prefix([\s│├└─]*)$mark([■✓✗▪▸])\s+$keyword([a-z]+)\s+$name(\S.*?)$label(\s+\(.*\))?"
+      if keywords.has(keyword) =>
       val tone: Tone = mark match
         case t"■" => Tone.Accent
         case t"✓" => Tone.Success
@@ -215,14 +240,14 @@ object Notices:
       val context = if keyword == t"propose" then Scala.Context.Term else Scala.Context.Type
 
       val labelled: List[Inline] =
-        label.lay(Nil) { (label: Text) => List(Inline.Toned(Tone.Muted, Inline.text(label))) }
+        label.lay(Nil): (label: Text) => List(Inline.Toned(Tone.Muted, Inline.text(label)))
 
       List
         ( Inline.Toned(Tone.Muted, Inline.text(prefix)),
           Inline.Toned(tone, Inline.text(mark)),
           Inline.Textual(t" $keyword "),
-          highlighted(name, context) )
-      + labelled
+          highlighted(name, context) ) +
+        labelled
 
     case _ => List(Inline.Textual(line))
 

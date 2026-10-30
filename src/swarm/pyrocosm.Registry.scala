@@ -26,8 +26,6 @@ import java.nio.file as jnf
 
 import soundness.*
 
-import charsets.utf8Charset
-import filesystemBackends.javaBaseFilesystem
 import systems.javaBaseSystem
 
 // How the tools' daemons on one machine find the machine's hub: the hub writes one small file,
@@ -55,7 +53,9 @@ object Registry:
   // Where the record is: under the runtime directory, or the state home.
   def directory(using Environment): Optional[Path on Linux] =
     safely:
-      val base: Path on Linux = Directories.runtimeDir[Path on Linux].or(Directories.stateHome[Path on Linux])
+      val base: Path on Linux =
+        Directories.runtimeDir[Path on Linux].or(Directories.stateHome[Path on Linux])
+
       base / "pyrocosm" / "swarm"
 
   private val hubName: String = "hub.tel"
@@ -95,7 +95,7 @@ identity ${record.identity}$gateway
   private def parse(text: Text): Optional[Record] =
     val lines: List[Text] = text.cut(t"\n")
 
-    def number(key: Text): Optional[Long] = field(lines, key).let { text => safely(text.as[Long]) }
+    def number(key: Text): Optional[Long] = field(lines, key).let: text => safely(text.as[Long])
 
     field(lines, t"tool").let: tool =>
       number(t"pid").let: pid =>
@@ -112,7 +112,13 @@ identity ${record.identity}$gateway
       jnf.Files.createDirectories(root)
       val temporary: jnf.Path = root.resolve(temporaryName).nn
       jnf.Files.writeString(temporary, line(record).s)
-      jnf.Files.move(temporary, root.resolve(hubName).nn, jnf.StandardCopyOption.ATOMIC_MOVE, jnf.StandardCopyOption.REPLACE_EXISTING)
+
+      jnf.Files.move
+        ( temporary,
+          root.resolve(hubName).nn,
+          jnf.StandardCopyOption.ATOMIC_MOVE,
+          jnf.StandardCopyOption.REPLACE_EXISTING )
+
       true
     catch case _: Exception => false
 
@@ -138,14 +144,21 @@ identity ${record.identity}$gateway
   private def lock(root: jnf.Path): Optional[java.nio.channels.FileLock] =
     try
       jnf.Files.createDirectories(root)
+
+      val path: jnf.Path = root.resolve(lockName).nn
+
       val channel: java.nio.channels.FileChannel =
-        java.nio.channels.FileChannel.open(root.resolve(lockName).nn, jnf.StandardOpenOption.CREATE, jnf.StandardOpenOption.WRITE).nn
+        java.nio.channels.FileChannel
+        . open(path, jnf.StandardOpenOption.CREATE, jnf.StandardOpenOption.WRITE)
+        . nn
 
       val held: java.nio.channels.FileLock | Null = channel.tryLock()
+
       if held == null then
         channel.close()
         Unset
-      else held
+      else
+        held
     catch case _: Exception => Unset
 
 // The registry under `directory`; the machine's own, by default.

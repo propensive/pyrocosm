@@ -36,20 +36,24 @@ object Presences:
     val presence: Presence = Presence.shared
     val portable: Live[List[Activity]] = Live(Nil)
 
-    presence.local.bindWake { () => portable() = presence.local().map(outgoing(_)) }
+    presence.local.bindWake: () => portable() = presence.local().map(outgoing(_))
     swarm.expose(portable)
 
-    presence.web.bindWake { () => swarm.advertise() }
-    swarm.activities.bindWake { () => presence.remote() = incoming(swarm, swarm.activities()) }
-    swarm.nodes.bindWake { () => presence.peers() = origins(swarm, swarm.nodes()) }
+    presence.web.bindWake: () => swarm.advertise()
+    swarm.activities.bindWake: () => presence.remote() = incoming(swarm, swarm.activities())
+    swarm.nodes.bindWake: () => presence.peers() = origins(swarm, swarm.nodes())
 
   // An activity as it travels: an internal destination becomes the relative URL which opens it,
   // and a local one its page's relative URL; `incoming` makes either absolute at the other end.
   private def outgoing(activity: Activity): Activity = activity.destination match
-    case Inline.Destination.Internal(_) => activity.copy(destination = Inline.Destination.External(opener(activity.id)))
+    case Inline.Destination.Internal(_) =>
+      activity.copy(destination = Inline.Destination.External(opener(activity.id)))
+
     case Inline.Destination.Local(path, fragment) =>
-      activity.copy(destination = Inline.Destination.External(fragment.lay(path) { fragment => t"$path#$fragment" }))
-    case _                              => activity
+      val url: Text = fragment.lay(path): fragment => t"$path#$fragment"
+      activity.copy(destination = Inline.Destination.External(url))
+
+    case _ => activity
 
   private def opener(id: Text): Text = t"/open?activity=$id"
 
@@ -63,7 +67,8 @@ object Presences:
         else Machine.ordered(advert.node.hosts).head.or(advert.node.machine)
 
       val hub: Optional[Advert] =
-        swarm.nodes().seek { other => other.node.tool == Wire.tool && other.node.identity == advert.node.identity }
+        swarm.nodes().seek: other =>
+          other.node.tool == Wire.tool && other.node.identity == advert.node.identity
 
       hub.let(_.services.filter(_.name == t"serve").head).or(Unset) match
         case origin: Service => t"http://$host:${origin.port.show}/${advert.node.tool}/"
@@ -85,12 +90,19 @@ object Presences:
   // tool, and is not listed.
   private def origins(swarm: Swarm, adverts: List[Advert]): List[Origin] =
     val tools: List[Advert] = adverts.filter(_.node.tool != Wire.tool)
-    val all: scala.List[(Origin, Advert)] = tools.map { advert => (origin(swarm, advert), advert) }.stdlib
+
+    val all: scala.List[(Origin, Advert)] =
+      tools.map { advert => (origin(swarm, advert), advert) }.stdlib
 
     def named(origin: Origin, advert: Advert): Origin =
-      val twins: Int = all.count { (other, _) => other.tool == origin.tool && other.machine == origin.machine }
+      val twins: Int =
+        all.count: (other, _) => other.tool == origin.tool && other.machine == origin.machine
+
       val port: Optional[Int] = advert.services.filter(_.name == t"serve").head.let(_.port)
-      if twins > 1 then port.lay(origin) { port => origin.copy(tool = t"${origin.tool}:${port.show}") } else origin
+
+      if twins > 1
+      then port.lay(origin): port => origin.copy(tool = t"${origin.tool}:${port.show}")
+      else origin
 
     val labelled: scala.List[Origin] = all.map(named(_, _))
     List(labelled.sortBy { origin => (origin.tool.s, origin.machine.s, origin.url.or(t"").s) }*)
@@ -106,7 +118,7 @@ object Presences:
 
         val destination: Optional[Inline.Destination] = activity.destination match
           case Inline.Destination.External(path) if path.starts(t"/") =>
-            from.url.let { base => Inline.Destination.External(t"${base.keep(base.length - 1)}$path") }
+            from.url.let: base => Inline.Destination.External(t"${base.keep(base.length - 1)}$path")
 
           case Inline.Destination.Internal(_) => Unset
           case other                          => other
@@ -114,6 +126,6 @@ object Presences:
         List((from, activity.copy(destination = destination)))
 
     val sorted: scala.List[(Origin, Activity)] =
-      placed.stdlib.sortBy { (origin, _) => (origin.tool.s, origin.machine.s, origin.url.or(t"").s) }
+      placed.stdlib.sortBy: (origin, _) => (origin.tool.s, origin.machine.s, origin.url.or(t"").s)
 
     List(sorted*)

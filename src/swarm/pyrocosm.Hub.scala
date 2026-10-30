@@ -22,17 +22,13 @@
                                                                                                   */
 package pyrocosm
 
-import java.util.concurrent as juc
-import scala.collection.concurrent.TrieMap
-
 // `Service` is excluded from the umbrella: pyrocosm's own, declared in another file, would be
 // outranked by urticose's.
 import soundness.{Service as _, *}
 
 import Journal.{Event, Fingerprint, Obstacle, Party}
-import alphabets.hexLowerCase
-import denominative.dysasymptotics.{linearAccess, linearSize}
 import codepages.utf8Codepage
+import denominative.dysasymptotics.{linearAccess, linearSize}
 import errorDiagnostics.emptyDiagnostics
 
 // The machine's hub: the one node every tool's node on the machine is a leaf of, and the
@@ -45,8 +41,6 @@ final class Hub private[pyrocosm]
   ( version: Text, capabilities: List[Text], swarmPort: Int, backend: Discovery.Backend^{} )
   ( using environment: Environment )
 extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
-
-  import Swarm.{Connection, Caller}
 
   // Lazy, since `Swarm` asks `gateway` for its first advert before this class's fields exist.
   private lazy val gateway0: Atomic[Int] = Atomic(0)
@@ -91,7 +85,8 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
 
     web0.lay(advert): port =>
       val host: Text = advert.node.hosts.head.or(advert.node.machine)
-      advert.copy(services = Service(t"serve", port, t"http://$host:${port.show}/") :: advert.services)
+      val url: Text = t"http://$host:${port.show}/"
+      advert.copy(services = Service(t"serve", port, url) :: advert.services)
 
   // Starts the hub, if this process can take the hub's lock: its listener for the machine's
   // leaves, on a port of its own, its registration, and its housekeeping. False if another
@@ -113,6 +108,7 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
     case (identity, _) =>
       if identity.absent then Journal.log(Event.ListenFailed(0, Obstacle.NoIdentity))
       else Journal.log(Event.ListenFailed(0, Obstacle.NoToken))
+
       false
 
   // Listens for the machine's leaves, on an unused port, for as long as the hub lives: a port
@@ -143,8 +139,7 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
         val moment: Long = java.lang.System.currentTimeMillis
 
         heard.toList.foreach: (key, last) =>
-          if moment - last > (Swarm.forgetting.value*1000.0).toLong then
-            known(key).let(forget(_))
+          if moment - last > (Swarm.forgetting.value*1000.0).toLong then known(key).let(forget(_))
 
         elect()
 
@@ -156,7 +151,11 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
 
   private[pyrocosm] def retire(): Unit =
     registry.unregisterHub()
-    lock.let { held => safely(held.release()); safely(held.channel.nn.close()) }
+
+    lock.let: held =>
+      safely(held.release())
+      safely(held.channel.nn.close())
+
     lock = Unset
     Journal.log(Event.Unregistered(tool, pid))
 
@@ -168,8 +167,12 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
     val before: List[Text] = nodes().map(_.node.key)
     super.snapshotted(tether, advert, known)
 
-    known.filter { other => other.node.key != node.key && !before.has(other.node.key) }.each: other =>
-      broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, Bus.Event.Advertised(other)), tether)
+    val fresh: List[Advert] =
+      known.filter: other => other.node.key != node.key && !before.has(other.node.key)
+
+    fresh.each: other =>
+      val event: Bus.Event = Bus.Event.Advertised(other)
+      broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, event), tether)
 
   // ── what a leaf asks ─────────────────────────────────────────────────────────────────────
 
@@ -181,7 +184,7 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
     val words: List[Text] = request.argument.cut(t" ").filter(_ != t"")
     def port: Optional[Int] = words.head.let { text => safely(text.as[Int]) }.or(Unset)
 
-    val (ok, text): (Boolean, Text) = request.command match
+    val outcome: (Boolean, Text) = request.command match
       case t"listen" =>
         port.lay((false, t"no port")): port =>
           wantGateway(port, words.at(Sec).let(Machine.secret(_)))
@@ -193,19 +196,24 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
 
       case t"invite" =>
         port.lay((false, t"no port")): port =>
-          words.at(Sec).let { word => safely(Invitation.parse(word)) }.or(Unset).lay((false, t"no invitation")):
-            invitation =>
-              advertise(invitation, port)(using environment, summon[Monitor], summon[Probate], backend)
-              (true, t"")
+          val parsed = words.at(Sec).let { word => safely(Invitation.parse(word)) }.or(Unset)
+
+          parsed.lay((false, t"no invitation")): invitation =>
+            advertise(invitation, port)
+              ( using environment, summon[Monitor], summon[Probate], backend )
+
+            (true, t"")
 
       case t"connect" =>
-        safely(request.argument.in[Data].read[Tel]).let(Machine.parse(_).head).or(Unset).lay((false, t"no machine")): (machine: Machine) =>
-          connect(machine)
-          (true, t"")
+        safely(request.argument.in[Data].read[Tel])
+        . let(Machine.parse(_).head)
+        . or(Unset)
+        . lay((false, t"no machine")): (machine: Machine) =>
+            connect(machine)
+            (true, t"")
 
       case t"disconnect" =>
-        words.head.lay((false, t"no machine")): name =>
-          (disconnect(name), t"")
+        words.head.lay((false, t"no machine")): name => (disconnect(name), t"")
 
       case t"status" =>
         (true, status)
@@ -213,6 +221,7 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
       case _ =>
         (false, t"unknown command")
 
+    val (ok, text) = outcome
     tether.send(Wire.Reply(request.id, ok, text))
 
   // How this hub's links stand: `listening <port>` and `advertised <name>` where they apply,
@@ -221,16 +230,22 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
   def status(using Monitor): Text =
     def heard(standing: Tether.Standing): Text = standing.heard.let(_.long.show).or(t"0")
 
-    val lines: List[Text] =
-      listening.let { port => List(t"listening ${port.show}") }.or(Nil)
-      + advertised.let { name => List(t"advertised $name") }.or(Nil)
-      + connections.map { connection => t"connection ${connection.machine.name} ${heard(connection.standing)}" }
-      + visitors.map: visitor =>
-          val host: Text = visitor.peer match
-            case Party.Caller(hostname) => hostname.or(t"-")
-            case _                      => t"-"
-          t"visitor $host ${heard(visitor.standing)}"
+    val listened: List[Text] = listening.let { port => List(t"listening ${port.show}") }.or(Nil)
+    val announced: List[Text] = advertised.let { name => List(t"advertised $name") }.or(Nil)
 
+    val connected: List[Text] =
+      connections.map: connection =>
+        t"connection ${connection.machine.name} ${heard(connection.standing)}"
+
+    val visiting: List[Text] =
+      visitors.map: visitor =>
+        val host: Text = visitor.peer match
+          case Party.Caller(hostname) => hostname.or(t"-")
+          case _                      => t"-"
+
+        t"visitor $host ${heard(visitor.standing)}"
+
+    val lines: List[Text] = listened + announced + connected + visiting
     lines.join(t"\n")
 
   // ── the gateway ──────────────────────────────────────────────────────────────────────────
@@ -258,8 +273,7 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
     elect()
 
   private def elect()(using Monitor, Probate): Unit =
-    gatewayWanted.let: (port, secret) =>
-      if listening.absent then async(serveGateway(port, secret))
+    gatewayWanted.let: (port, secret) => if listening.absent then async(serveGateway(port, secret))
 
   // Accepts other machines on `port`, until `stopGateway` or until the port cannot be held.
   private def serveGateway(port: Int, secret: Text)(using Monitor, Probate): Unit =
@@ -357,7 +371,8 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
             Swarm.portKey        -> port.show )
 
       txt.let: txt =>
-        val description: Discovery.Description = Discovery.Description(label, Port.unsafe[Tcp](port), txt)
+        val description: Discovery.Description =
+          Discovery.Description(label, Port.unsafe[Tcp](port), txt)
 
         val outcome: Attempt[Unit, Discovery.Error] = attempt[Discovery.Error]:
           Swarm.nearby.advertise(description)(using backend):

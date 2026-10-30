@@ -22,15 +22,15 @@
                                                                                                   */
 package pyrocosm
 
+import java.util as ju
+
 import scala.caps
 import scala.collection.mutable as scm
 
-import java.util as ju
+import soundness.*
 
-import soundness.{Standing as _, Step as _, Token as _, *}
-
-import dysasymptotics.{linearAccess, linearSize}
 import columnAttenuation.ignoreAttenuation
+import dysasymptotics.linearSize
 
 // One table's rendering, kept between repaints: its escritoire layout, and per row its phrased
 // cells, its height and — once it has been in view — its lines. Rows are matched by identity
@@ -41,7 +41,9 @@ import columnAttenuation.ignoreAttenuation
 //
 // Paint-thread state, like the fixture that holds it; the mutable buffers are what the
 // annotation launders.
-class TableCache(renderer: TerminalRenderer, columns: List[Block.Column], caption: Optional[List[Inline]]):
+class TableCache
+  ( renderer: TerminalRenderer, columns: List[Block.Column], caption: Optional[List[Inline]] ):
+
   private given Text is Measurable = renderer.measurable
   private given Hyphenation = renderer.hyphenating
   private given TableStyle = renderer.tabling
@@ -109,9 +111,11 @@ class TableCache(renderer: TerminalRenderer, columns: List[Block.Column], captio
     lazy val previous: ju.IdentityHashMap[Block.Row, Int] =
       val map = ju.IdentityHashMap[Block.Row, Int]()
       var index = 0
+
       while index < rows.length do
         map.put(rows(index), index)
         index += 1
+
       map
 
     val rows1: scm.ArrayBuffer[Block.Row] = scm.ArrayBuffer()
@@ -148,6 +152,7 @@ class TableCache(renderer: TerminalRenderer, columns: List[Block.Column], captio
     if reflow then
       reflows += 1
       var i = 0
+
       while i < heights1.length do
         heights1(i) = -1
         lines1(i) = null
@@ -158,6 +163,7 @@ class TableCache(renderer: TerminalRenderer, columns: List[Block.Column], captio
 
     var i = 0
     val offsets1: scm.ArrayBuffer[Int] = scm.ArrayBuffer(0)
+
     while i < heights1.length do
       if heights1(i) < 0 then heights1(i) = current.height(cells1(i))
       offsets1 += offsets1(i) + heights1(i)
@@ -179,9 +185,11 @@ class TableCache(renderer: TerminalRenderer, columns: List[Block.Column], captio
       val chosen: Int = selected.lay(-1): action =>
         var found = -1
         var i = 0
+
         while found < 0 && i < rows.length do
           if rows(i).action == action then found = i
           i += 1
+
         found
 
       if chosen != highlighted then
@@ -203,15 +211,18 @@ class TableCache(renderer: TerminalRenderer, columns: List[Block.Column], captio
       val target = from - headerSize
       var low = 0
       var high = rows.length
+
       while low < high do
         val mid = (low + high)/2
         if offsets(mid + 1) <= target then low = mid + 1 else high = mid
 
       var i = low
+
       while i < rows.length && headerSize + offsets(i) < until do
         if lines(i) == null then
           lines(i) = layout.lines(cells(i), renderer.rowDecorations(rows(i), count, i == chosen))
           rendered += 1
+
         slice(lines(i).nn, headerSize + offsets(i))
         i += 1
 

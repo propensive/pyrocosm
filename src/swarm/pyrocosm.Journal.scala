@@ -242,17 +242,17 @@ object Journal:
     // this node doing what its configuration asked; the beats of a link, one a second each way,
     // and the events the bus carries are fine detail, as is the routine welcome.
     def level: Level = this match
-      case _: ListenFailed                   => Level.Fail
-      case _: Failed | _: Lost               => Level.Warn
-      case _: Unnegotiated | _: Unaccepted   => Level.Warn
-      case _: Unread | _: Oversized          => Level.Warn
-      case _: Unadvertised | _: Throttled    => Level.Warn
-      case _: Welcomed                       => Level.Fine
-      case Sent(_: Wire.Beat, _)             => Level.Fine
-      case Received(_: Wire.Beat, _)         => Level.Fine
+      case _: ListenFailed                                        => Level.Fail
+      case _: Failed | _: Lost                                    => Level.Warn
+      case _: Unnegotiated | _: Unaccepted                        => Level.Warn
+      case _: Unread | _: Oversized                               => Level.Warn
+      case _: Unadvertised | _: Throttled                         => Level.Warn
+      case _: Welcomed                                            => Level.Fine
+      case Sent(_: Wire.Beat, _)                                  => Level.Fine
+      case Received(_: Wire.Beat, _)                              => Level.Fine
       case Sent(message, _) if Wire.envelope(message).present     => Level.Fine
       case Received(message, _) if Wire.envelope(message).present => Level.Fine
-      case _                                 => Level.Info
+      case _                                                      => Level.Info
 
   // An identifier, as the first eight characters by which it is told apart in a log.
   def brief(id: Uuid): Text = id.show.keep(8)
@@ -283,9 +283,12 @@ object Journal:
     val kind: Text = envelope.event match
       case Bus.Event.Advertised(advert) => t"advertised ${advert.node.tool}"
       case Bus.Event.Left(node)         => t"left ${node.tool}"
-      case Bus.Event.Updated(node, text) => t"updated ${node.tool}'s ${Bus.decode(text).let(_.id).or(t"activity")}"
-      case Bus.Event.Ended(node, id)    => t"ended ${node.tool}'s $id"
-      case Bus.Event.Tool(tool, k, _)   => t"$tool's $k"
+
+      case Bus.Event.Updated(node, text) =>
+        t"updated ${node.tool}'s ${Bus.decode(text).let(_.id).or(t"activity")}"
+
+      case Bus.Event.Ended(node, id)  => t"ended ${node.tool}'s $id"
+      case Bus.Event.Tool(tool, k, _) => t"$tool's $k"
 
     t"carry $kind #${envelope.sequence.show}"
 

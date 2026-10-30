@@ -66,6 +66,9 @@ object settings:
     "-preview",
     "-deprecation",
     "-Wunused:imports",
+    // As Soundness: `nominative` is summoned by a macro, which `-Wunused:imports` does not see, so
+    // its load-bearing import is reported unused.
+    "-Wconf:origin=.*CssClass.nominative:s",
     "-Wimplausible-patterns",
     "-Xmax-inlines", "32",
     "-Yno-flexible-types",
@@ -73,13 +76,10 @@ object settings:
     "-Ycheck-all-patmat",
     "-language:experimental.modularity",
     "-language:experimental.dependent",
-    "-language:experimental.relaxedLambdaSyntax",
     "-language:experimental.genericNumberLiterals",
-    "-language:experimental.into",
     "-language:experimental.erasedDefinitions",
     "-language:implicitConversions",
     "-language:experimental.saferExceptions",
-    "-language:experimental.strictEqualityPatternMatching",
     "-language:experimental.subCases",
     "-language:experimental.multiSpreads",
     // Capture checking as throughout Soundness. Separation checking is left off for now, as in

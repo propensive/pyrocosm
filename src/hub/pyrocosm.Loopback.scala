@@ -22,13 +22,11 @@
                                                                                                   */
 package pyrocosm
 
-import soundness.{Control as _, Origin as _, Service as _, *}
+import soundness.*
 
-import codepages.utf8Codepage
 import denominative.capped
 import internetAccess.online
 import socketBackends.javaBaseSockets
-import strategies.throwUnsafely
 
 // How the hub talks HTTP to a tool's server on this machine: one HTTP/1.1 exchange per request,
 // over a connection of its own, closed once the answer is read. A client library's conveniences
@@ -57,14 +55,17 @@ object Loopback:
   // answer's end is the connection's.
   private def closing(request: Http.Request): Http.Request =
     val headers: List[Http.Header] =
-      Http.Header(t"connection", t"close") :: request.textHeaders.filter(_.key.lower != t"connection")
+      Http.Header(t"connection", t"close") ::
+        request.textHeaders.filter(_.key.lower != t"connection")
 
     Http.Request(request.method, 1.1, request.host, request.target, headers, request.body)
 
   // A request's body, read to its `Content-Length` and no further; empty without one.
   def bounded(request: Http.Request): Data =
     val length: Int =
-      request.textHeaders.seek(_.key.lower == t"content-length").let { header => safely(header.value.trim.as[Int]) }
+      request.textHeaders.seek(_.key.lower == t"content-length").let: header =>
+        safely(header.value.trim.as[Int])
+
       . or(Unset).or(0)
 
     if length <= 0 then Data() else
@@ -76,7 +77,7 @@ object Loopback:
       while reading && remaining > 0 do input.refill(Credit(remaining.toLong)) match
         case count: Int if count > 0 =>
           val take: Int = count.min(remaining)
-          val data: Data = input.lend { region => range => region.materialize(range.capped(take)) }
+          val data: Data = input.lend: region => range => region.materialize(range.capped(take))
           input.skip(take)
           result = result + data
           remaining -= take

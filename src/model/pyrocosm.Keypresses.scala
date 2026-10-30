@@ -35,9 +35,7 @@ import dysasymptotics.linearSize
 object Keypresses:
   private type CtrlChar =
     'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M' | 'N' | 'O' | 'P' |
-    'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '[' | '\\' | ']' | '^' | '_' | '@'
-
-  private val ctrlChars: Text = t"ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_@"
+      'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z' | '[' | '\\' | ']' | '^' | '_' | '@'
 
   private val named: Map[Text, Keypress.EditKey] =
     Map
@@ -69,27 +67,34 @@ object Keypresses:
       case key: Keypress.FunctionKey => key
       case other                     => editKey(other)
 
-  private def shift(keypress: Keypress): Optional[Keypress] = shiftable(keypress).let { (key: Keypress.EditKey | Keypress.FunctionKey) => Keypress.Shift(key) }
+  private def shift(keypress: Keypress): Optional[Keypress] =
+    shiftable(keypress).let: (key: Keypress.EditKey | Keypress.FunctionKey) => Keypress.Shift(key)
 
   private def alt(keypress: Keypress): Optional[Keypress] = keypress match
     case key: Keypress.Shift => Keypress.Alt(key)
-    case other               => shiftable(other).let { (key: Keypress.EditKey | Keypress.FunctionKey) => Keypress.Alt(key) }
+
+    case other =>
+      shiftable(other).let: (key: Keypress.EditKey | Keypress.FunctionKey) => Keypress.Alt(key)
 
   private def ctrl(keypress: Keypress): Optional[Keypress] = keypress match
     case key: Keypress.Alt   => Keypress.Ctrl(key)
     case key: Keypress.Shift => Keypress.Ctrl(key)
 
     case Keypress.CharKey(char) =>
-      if ctrlChars.contains(char) then Keypress.Ctrl(char.asInstanceOf[CtrlChar]) else Unset
+      char match
+        case ctrl: CtrlChar => Keypress.Ctrl(ctrl)
+        case _              => Unset
 
     case other =>
-      shiftable(other).let { (key: Keypress.EditKey | Keypress.FunctionKey) => Keypress.Ctrl(key) }
+      shiftable(other).let: (key: Keypress.EditKey | Keypress.FunctionKey) => Keypress.Ctrl(key)
 
   private def meta(keypress: Keypress): Optional[Keypress] = keypress match
     case key: Keypress.Ctrl  => Keypress.Meta(key)
     case key: Keypress.Alt   => Keypress.Meta(key)
     case key: Keypress.Shift => Keypress.Meta(key)
-    case other               => shiftable(other).let { (key: Keypress.EditKey | Keypress.FunctionKey) => Keypress.Meta(key) }
+
+    case other =>
+      shiftable(other).let: (key: Keypress.EditKey | Keypress.FunctionKey) => Keypress.Meta(key)
 
   // One bracketed piece, without its brackets: a modifier symbol, or a key.
   private def piece(content: Text): Optional[Piece] =
@@ -98,13 +103,17 @@ object Keypresses:
     else if content == t"⇧" then Piece.Modifier(shift)
     else if content == t"⌘" then Piece.Modifier(meta)
     else if content == t"␣" then Piece.Key(Keypress.CharKey(' '))
-    else if named(content).present then named(content).let { (key: Keypress.EditKey) => Piece.Key(key) }
-    else if content.length == 1 then Piece.Key(Keypress.CharKey(content.s.charAt(0)))
+    else if named(content).present then
+      named(content).let: (key: Keypress.EditKey) => Piece.Key(key)
+    else if content.length == 1 then
+      Piece.Key(Keypress.CharKey(content.s.charAt(0)))
     else if content.starts(t"F") && content.length > 1 then
-      safely(content.s.substring(1).nn.tt.as[Int]).let { (number: Int) => Piece.Key(Keypress.FunctionKey(number)) }
+      safely(content.s.substring(1).nn.tt.as[Int]).let: (number: Int) =>
+        Piece.Key(Keypress.FunctionKey(number))
     else if content.starts(t"⎋") && content.length == 2 then
       Piece.Key(Keypress.EscapeSeq(content.s.charAt(1)))
-    else Unset
+    else
+      Unset
 
   private enum Piece:
     case Modifier(apply: Keypress => Optional[Keypress])
@@ -113,7 +122,7 @@ object Keypresses:
   def parse(text: Text): Optional[Keypress] =
     if !(text.starts(t"[") && text.ends(t"]")) then Unset else
       val inner: Text = text.s.substring(1, text.s.length - 1).nn.tt
-      val pieces: List[Optional[Piece]] = inner.cut(t"]+[").map { (content: Text) => piece(content) }
+      val pieces: List[Optional[Piece]] = inner.cut(t"]+[").map: (content: Text) => piece(content)
 
       val present: List[Piece] = pieces.sweep { case piece: Piece => piece }
 

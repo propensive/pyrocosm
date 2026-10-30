@@ -28,6 +28,11 @@ import soundness.*
 
 import dysasymptotics.linearSize
 
+object Live:
+  extension [element](live: Live[List[element]])
+    def append(element: element): Unit = live.amend(_ :+ element)
+    def prepend(element: element): Unit = live.amend(element :: _)
+
 // A reactive cell: the one place where the model is mutable. An application assigns to it from
 // any thread — a benchmark reporter, a compile task, an event handler — and every frontend
 // currently showing it repaints. Modelled on ultimatum's `Reading`, and subject to the same
@@ -65,8 +70,3 @@ class Live[value](initial: value):
 
   // Atomic: a frontend's thread and the application's may both amend.
   def amend(lambda: value => value): Unit = synchronized(update(lambda(current)))
-
-object Live:
-  extension [element](live: Live[List[element]])
-    def append(element: element): Unit = live.amend(_ :+ element)
-    def prepend(element: element): Unit = live.amend(element :: _)

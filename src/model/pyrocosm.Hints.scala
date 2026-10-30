@@ -39,8 +39,7 @@ object Hints:
 
 case class Hints(hints: List[Hint]):
   def apply[hint <: Hint: ClassTag]: Optional[hint] =
-    hints.seek { (hint: Hint) => summon[ClassTag[hint]].runtimeClass.isInstance(hint) }
-    . let(_.asInstanceOf[hint])
+    hints.sweep { case value: hint => value }.head
 
   def has[hint <: Hint: ClassTag]: Boolean = apply[hint].present
-  def +(hint: Hint): Hints = Hints(hints :+ hint)
+  def + (hint: Hint): Hints = Hints(hints :+ hint)

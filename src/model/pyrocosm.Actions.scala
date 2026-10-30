@@ -31,40 +31,49 @@ import dysasymptotics.linearSize
 // always current, and a frontend validates an incoming action id against `of`.
 object Actions:
   def of(blocks: List[Block]): List[Action] =
-    blocks.bind { (block: Block) => ofBlock(block) }
+    blocks.bind: (block: Block) => ofBlock(block)
 
   private def one(action: Optional[Action]): List[Action] = action.lay(Nil: List[Action])(List(_))
 
   private def ofTree(node: Block.TreeNode): List[Action] =
-    one(node.action) + node.children.bind { (child: Block.TreeNode) => ofTree(child) }
+    one(node.action) + node.children.bind: (child: Block.TreeNode) => ofTree(child)
 
   private def ofBlock(block: Block): List[Action] = block match
-    case Block.Listing(_, items)         => items.bind { (item: Block.Item) => one(item.action) + of(item.content) }
-    case Block.Table(_, rows, _)         => rows.bind { (row: Block.Row) => one(row.action) }
-    case Block.Tree(roots)               => roots.bind { (root: Block.TreeNode) => ofTree(root) }
-    case Block.Graph(vertices, _)        => vertices.bind { (vertex: Block.Vertex) => one(vertex.action) }
+    case Block.Listing(_, items) =>
+      items.bind: (item: Block.Item) => one(item.action) + of(item.content)
+
+    case Block.Table(_, rows, _) => rows.bind: (row: Block.Row) => one(row.action)
+    case Block.Tree(roots)       => roots.bind: (root: Block.TreeNode) => ofTree(root)
+
+    case Block.Graph(vertices, _) =>
+      vertices.bind: (vertex: Block.Vertex) => one(vertex.action)
+
     case Block.Quotation(content)        => of(content)
     case Block.Notice(_, _, content)     => of(content)
     case Block.Disclosure(_, content, _) => of(content)
     case Block.Group(content)            => of(content)
-    case Block.Deck(leaves)              => leaves.bind { (leaf: Block.Leaf) => of(leaf.content) }
-    case Block.Record(entries, _)        => entries.bind { (entry: Block.Entry) => of(entry.value) }
+    case Block.Deck(leaves)              => leaves.bind: (leaf: Block.Leaf) => of(leaf.content)
+    case Block.Record(entries, _)        => entries.bind: (entry: Block.Entry) => of(entry.value)
     case _                               => Nil
 
-  def animated(blocks: List[Block]): Boolean = blocks.exists { (block: Block) => animatedBlock(block) }
+  def animated(blocks: List[Block]): Boolean = blocks.exists: (block: Block) => animatedBlock(block)
 
   // How many leading blocks are settled: every block before the first that animates. A
   // transcript's settled entries are history, which an inline frontend commits to the
   // scrollback.
   def settled(blocks: List[Block]): Int =
-    blocks.where { (block: Block) => animatedBlock(block) }.lay(blocks.size) { (index: Ordinal) => index.n0 }
+    blocks.where { (block: Block) => animatedBlock(block) }.lay(blocks.size): (index: Ordinal) =>
+      index.n0
 
   private def animatedBlock(block: Block): Boolean = block match
     case Block.Gauge(Status.Indeterminate(), _)            => true
     case Block.Gauge(Status.Standing(Standing.Running), _) => true
-    case Block.Gauge(Status.Steps(steps), _)               => steps.exists(_.standing == Standing.Running)
-    case Block.Quotation(content)                          => animated(content)
-    case Block.Notice(_, _, content)                       => animated(content)
-    case Block.Disclosure(_, content, _)                   => animated(content)
-    case Block.Group(content)                              => animated(content)
-    case _                                                 => false
+
+    case Block.Gauge(Status.Steps(steps), _) =>
+      steps.exists(_.standing == Standing.Running)
+
+    case Block.Quotation(content)        => animated(content)
+    case Block.Notice(_, _, content)     => animated(content)
+    case Block.Disclosure(_, content, _) => animated(content)
+    case Block.Group(content)            => animated(content)
+    case _                               => false

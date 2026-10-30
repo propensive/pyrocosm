@@ -47,10 +47,13 @@ case class Interface
   // Every `Live` cell reachable from this interface, for a frontend to bind its wake to.
   def cells: List[Live[?]] =
     def ofControl(control: Control): List[Live[?]] = control match
-      case Control.Button(_, _, enabled)          => List(enabled)
-      case Control.Field(_, _, value, decoration, _, _, history, revision) => List(value, decoration, history, revision)
-      case Control.Choice(_, _, current)          => List(current)
-      case Control.Toggle(_, _, state)            => List(state)
+      case Control.Button(_, _, enabled) => List(enabled)
 
-    panels.bind { (panel: Panel) => panel.content :: panel.controls.bind(ofControl) }
-    + controls.bind(ofControl) + List(activities)
+      case Control.Field(_, _, value, decoration, _, _, history, revision) =>
+        List(value, decoration, history, revision)
+
+      case Control.Choice(_, _, current) => List(current)
+      case Control.Toggle(_, _, state)   => List(state)
+
+    panels.bind { (panel: Panel) => panel.content :: panel.controls.bind(ofControl) } +
+      controls.bind(ofControl) + List(activities)

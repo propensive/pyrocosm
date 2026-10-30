@@ -22,14 +22,12 @@
                                                                                                   */
 package pyrocosm
 
-
 // `Service` is excluded from the umbrella: pyrocosm's own, declared in another file, would be
 // outranked by urticose's.
 import soundness.{Service as _, *}
 
 import Journal.{Event, Obstacle, Party}
-import denominative.dysasymptotics.{linearAccess, linearSize}
-import errorDiagnostics.emptyDiagnostics
+import denominative.dysasymptotics.linearAccess
 
 // A tool's node: a leaf of the machine's hub. It finds the hub through the registry, keeps one
 // link to it — made again, after a pause which grows with each failure, whenever it ends —
@@ -67,7 +65,8 @@ extends Swarm(tool, version, services, capabilities, swarmPort):
       val host: Text = node.hosts.head.or(node.machine)
 
       def routed(service: Service): Service =
-        if service.name == t"serve" then service.copy(url = t"http://$host:${origin.port.show}/$tool/")
+        if service.name == t"serve"
+        then service.copy(url = t"http://$host:${origin.port.show}/$tool/")
         else service
 
       advert.copy(services = advert.services.map(routed(_)))
@@ -127,7 +126,7 @@ extends Swarm(tool, version, services, capabilities, swarmPort):
 
   // The hub's link has ended: every other node was known through it.
   override protected def severed(tether: Tether, other: Node)(using Monitor): Unit =
-    nodes().filter(_.node.key != node.key).each { advert => forget(advert.node) }
+    nodes().filter(_.node.key != node.key).each: advert => forget(advert.node)
 
   // ── what the hub does for this leaf ──────────────────────────────────────────────────────
 
@@ -177,17 +176,20 @@ extends Swarm(tool, version, services, capabilities, swarmPort):
   override def disconnect()(using Monitor): Unit = ()
 
   override def connected(name: Text)(using Monitor): Boolean =
-    connections.exists { connection => connection.machine.name == name && connection.standing.heard.present }
+    connections.exists: connection =>
+      connection.machine.name == name && connection.standing.heard.present
 
   private def heard(word: Optional[Text]): Optional[Instant over Unix] =
-    word.let { text => safely(text.as[Long]) }.let { millis => if millis == 0L then Unset else Instant.of[Unix](millis) }
+    word.let { text => safely(text.as[Long]) }.let: millis =>
+      if millis == 0L then Unset else Instant.of[Unix](millis)
 
   override def connections(using Monitor): List[Connection] =
     status.filter(_.head == t"connection").bind: words =>
       words.at(Sec).lay(Nil: List[Connection]): name =>
-        List(Connection(Machine(name, Nil, Unset, Unset, Unset, Nil), Tether.Standing(heard(words.at(Ter)))))
+        val machine: Machine = Machine(name, Nil, Unset, Unset, Unset, Nil)
+        List(Connection(machine, Tether.Standing(heard(words.at(Ter)))))
 
   override def visitors(using Monitor): List[Caller] =
     status.filter(_.head == t"visitor").map: words =>
-      val host: Optional[Text] = words.at(Sec).let { text => if text == t"-" then Unset else text }
+      val host: Optional[Text] = words.at(Sec).let: text => if text == t"-" then Unset else text
       Caller(Party.Caller(host), Tether.Standing(heard(words.at(Ter))))

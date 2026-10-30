@@ -27,7 +27,6 @@ package pyrocosm
 // declared in another file.
 import soundness.{Figure as _, *}
 
-
 import monotonous.alphabets.base64Standard
 
 // The exhibitions of rich media, which exist only on the JVM because hallucination's codecs
@@ -46,11 +45,11 @@ import monotonous.alphabets.base64Standard
 // class, as `Presentable.quantity` is, since this is inline.
 inline given rasterPresentable: [raster <: Raster] => raster is Presentable in Block =
   scala.compiletime.summonFrom:
-    case given (`raster` <:< (Raster in Jpeg)) => Presentable.flow[raster] { raster => Media.image(raster, Jpeg()) }
-    case given (`raster` <:< (Raster in Gif))  => Presentable.flow[raster] { raster => Media.image(raster, Gif()) }
-    case given (`raster` <:< (Raster in Webp)) => Presentable.flow[raster] { raster => Media.image(raster, Webp()) }
-    case given (`raster` <:< (Raster in Bmp))  => Presentable.flow[raster] { raster => Media.image(raster, Bmp()) }
-    case _                                     => Presentable.flow[raster] { raster => Media.image(raster, Png()) }
+    case given (`raster` <:< (Raster in Jpeg)) => Presentable.flow[raster](Media.image(_, Jpeg()))
+    case given (`raster` <:< (Raster in Gif))  => Presentable.flow[raster](Media.image(_, Gif()))
+    case given (`raster` <:< (Raster in Webp)) => Presentable.flow[raster](Media.image(_, Webp()))
+    case given (`raster` <:< (Raster in Bmp))  => Presentable.flow[raster](Media.image(_, Bmp()))
+    case _                                     => Presentable.flow[raster](Media.image(_, Png()))
 
 given svgPresentable: Svg is Presentable in Block = svg =>
   val size: Text = t"${Media.dimension(svg.width)}×${Media.dimension(svg.height)}"

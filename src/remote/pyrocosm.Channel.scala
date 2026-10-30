@@ -24,10 +24,8 @@ package pyrocosm
 
 import soundness.*
 
-import stratiform.TelSchematic
-
 import alphabets.hexLowerCase
-import logging.silentLogging
+import stratiform.TelSchematic
 
 // A message channel between two Pyrocosm tools over a `coaxial.Duplex`: length-prefixed frames,
 // each either a BinTEL document of the tool's own message type or a run of raw bytes that
@@ -64,7 +62,7 @@ object Channel:
   def fingerprint(schema: Tels): Data =
     def renderType(kind: Tels.Type): Text = kind match
       case Tels.Struct(members, _) =>
-        val rendered = members.to[List].map { (member: Tels.Member) => renderMember(member) }
+        val rendered = members.to[List].map: (member: Tels.Member) => renderMember(member)
         t"{${rendered.join(t";")}}"
 
       case Tels.Scalar(_, encoding, _) => t"scalar(${encoding.or(t"")})"
@@ -89,7 +87,7 @@ object Channel:
       t"${select.name}[${variants.join(t",")}]"
 
     val selects =
-      schema.selects.to[List].map { (select: Tels.SelectDefinition) => renderSelect(select) }
+      schema.selects.to[List].map: (select: Tels.SelectDefinition) => renderSelect(select)
 
     val rendering: Text = t"${schema.name}|${renderType(schema.document)}|${selects.join(t"|")}"
 
@@ -111,7 +109,8 @@ object Channel:
   //   lazy val codec: Channel.Codec[Message] =
   //     import Channel.derivation.throwing
   //     val schema = Tels.tels[Message](t"my-tool")
-  //     Channel.Codec(t"my-tool", schema, m => Channel.encode(m, schema), Channel.decode[Message](_))
+  //     Channel.Codec
+  //       ( t"my-tool", schema, m => Channel.encode(m, schema), Channel.decode[Message](_) )
   //
   // A generic inline constructor taking the derived instances as `using` parameters was tried
   // and defeats the compiler's implicit-scope computation for the derivations, so the three
@@ -204,7 +203,7 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
   private def pull(): Boolean =
     source.refill(Credit(65536)) match
       case count: Int if count > 0 =>
-        val chunk: Data = source.lend { region => range => region.materialize(range.capped(count)) }
+        val chunk: Data = source.lend: region => range => region.materialize(range.capped(count))
         source.skip(count)
         buffer = Channel.join(List(buffer, chunk))
         true
@@ -221,8 +220,10 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
       val taken: Data = Channel.slice(buffer, 0, count)
       buffer = Channel.slice(buffer, count, buffer.length)
       taken
-    else if pull() then take(count)
-    else Unset
+    else if pull() then
+      take(count)
+    else
+      Unset
 
   private def readInt(data: Data): Int =
     def byte(index: Int): Int = data.readUnchecked(index) & 0xff
@@ -243,6 +244,7 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
 
             case Channel.handshakeTag =>
               val split: Int = payload.length.min(32)
+
               Channel.Frame.Handshake
                 ( Channel.slice(payload, 0, split), Channel.slice(payload, split, payload.length) )
 

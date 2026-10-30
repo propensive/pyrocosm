@@ -24,7 +24,6 @@ package pyrocosm
 
 import soundness.*
 
-import errorDiagnostics.emptyDiagnostics
 import probates.cancelProbate
 
 // The `swarm` subcommand every Pyrocosm tool has, as `Tool.standard` dispatches it: what this
@@ -85,7 +84,8 @@ object Swarming:
         if !quiet then
           Out.println(t"accepting other machines on port ${port.show}, in the background")
           Out.println(t"this machine's identity is ${swarm.node.identity}")
-          Out.println(t"`${tool.name} swarm disconnect` stops it; `${tool.name} swarm log` shows what it does")
+          val name: Text = tool.name
+          Out.println(t"`$name swarm disconnect` stops it; `$name swarm log` shows what it does")
 
         Exit.Ok
 
@@ -97,6 +97,7 @@ object Swarming:
         swarm.wantGateway(port, token)
         snooze(0.5*Second)
         swarm.listening.lay(failed())(accepting(_))
+
       . apply(already(_))
 
   // `<tool> swarm invite [--expires] [--port]`: starts the gateway, if this machine has none,
@@ -123,7 +124,8 @@ object Swarming:
             Err.println(t"")
             Err.println(t"  ${tool.name} swarm join $word")
             Err.println(t"")
-            Err.println(t"It admits one machine, for every Pyrocosm tool, until ${Journal.time(invitation.expires)}.")
+            val expiry: Text = Journal.time(invitation.expires)
+            Err.println(t"It admits one machine, for every Pyrocosm tool, until $expiry.")
             Err.println(t"Until then, a machine on the same network finds this one by name.")
             Exit.Ok
 
@@ -158,8 +160,13 @@ object Swarming:
       . protect:
           val invitation: Invitation = Invitation.parse(word)
           val hosts: List[Text] = Swarm.locate(invitation)
-          if !hosts.nil then Out.println(t"found ${invitation.name} nearby, at ${hosts.join(t", ")}")
-          val machine: Machine = swarm.join(Swarm.nearer(invitation, hosts), name.or(invitation.name))
+
+          if !hosts.nil
+          then Out.println(t"found ${invitation.name} nearby, at ${hosts.join(t", ")}")
+
+          val machine: Machine =
+            swarm.join(Swarm.nearer(invitation, hosts), name.or(invitation.name))
+
           joined(machine)
 
   // `<tool> swarm peers`: the machines this one has admitted by invitation.
@@ -208,7 +215,8 @@ object Swarming:
   // how loaded it last said it was, and when it was last heard from.
   private def described(standing: Tether.Standing): Text =
     def machine(advert: Advert): Text =
-      t"${advert.node.tool} ${advert.node.version}; ${advert.os} ${advert.arch}, ${advert.cores.show} cores; "
+      val cores: Text = advert.cores.show
+      t"${advert.node.tool} ${advert.node.version}; ${advert.os} ${advert.arch}, $cores cores; "
 
     def burden(load: Double): Text =
       val hundredths: Long = (load*100.0).toLong

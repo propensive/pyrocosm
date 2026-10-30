@@ -26,45 +26,6 @@ package pyrocosm
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Token as _, *}
 
-// The terminal's colours, by role. A theme answers for every tone, every syntax accent and the
-// handful of other roles the renderer distinguishes, so that no colour literal appears in the
-// renderer and a theme can be swapped by import.
-trait TerminalTheme:
-  def foreground: Chroma
-  def muted: Chroma
-  def tone(tone: Tone): Chroma
-  def accent(accent: Token.Accent): Chroma
-  def key: Chroma          // keystrokes
-  def reference: Chroma    // identifiers and hashes
-  def figure: Chroma       // numbers
-  def units: Chroma        // the units after an amount
-  def link: Chroma
-  def selection: Chroma    // the background of a focused, selected row
-
-  // The ground a subdued colour fades toward: what a repeated class or file name and a plumbing
-  // frame of a stack trace recede into. Dark by default, as the terminal themes here are.
-  def background: Chroma = Chroma(0x002b36)
-
-  // A stack trace's colours, digression's own by default so a trace reads the same here as in
-  // any other Soundness terminal: the file, the method and the line, and the five accents the
-  // packages take in turn.
-  def traceFile: Chroma = Chroma(0x5f9e9f)
-  def traceMethod: Chroma = Chroma(0xabcfdf)
-  def traceLine: Chroma = Chroma(0x47d1cc)
-
-  def traceAccents: List[Chroma] =
-    List(Chroma(0xf84020), Chroma(0xd88600), Chroma(0xfefe00), Chroma(0xfeae00), Chroma(0xaefe00))
-
-  // `chroma`, mixed toward the background by `factor`: `1.0` is the colour itself, `0.0` the
-  // background. As iridescence's `Palette#subdue`, but on a packed colour.
-  def subdue(chroma: Chroma, factor: Double): Chroma =
-    def channel(from: Int, to: Int): Int = (to + (from - to)*factor).toInt.max(0).min(255)
-
-    Chroma
-      ( channel(chroma.red, background.red),
-        channel(chroma.green, background.green),
-        channel(chroma.blue, background.blue) )
-
 object TerminalTheme:
   given default: TerminalTheme = Solarized
 
@@ -111,3 +72,42 @@ object TerminalTheme:
       case Token.Accent.Error    => red
       case Token.Accent.Unparsed => base0
       case Token.Accent.Command  => orange
+
+// The terminal's colours, by role. A theme answers for every tone, every syntax accent and the
+// handful of other roles the renderer distinguishes, so that no colour literal appears in the
+// renderer and a theme can be swapped by import.
+trait TerminalTheme:
+  def foreground: Chroma
+  def muted: Chroma
+  def tone(tone: Tone): Chroma
+  def accent(accent: Token.Accent): Chroma
+  def key: Chroma          // keystrokes
+  def reference: Chroma    // identifiers and hashes
+  def figure: Chroma       // numbers
+  def units: Chroma        // the units after an amount
+  def link: Chroma
+  def selection: Chroma    // the background of a focused, selected row
+
+  // The ground a subdued colour fades toward: what a repeated class or file name and a plumbing
+  // frame of a stack trace recede into. Dark by default, as the terminal themes here are.
+  def background: Chroma = Chroma(0x002b36)
+
+  // A stack trace's colours, digression's own by default so a trace reads the same here as in
+  // any other Soundness terminal: the file, the method and the line, and the five accents the
+  // packages take in turn.
+  def traceFile: Chroma = Chroma(0x5f9e9f)
+  def traceMethod: Chroma = Chroma(0xabcfdf)
+  def traceLine: Chroma = Chroma(0x47d1cc)
+
+  def traceAccents: List[Chroma] =
+    List(Chroma(0xf84020), Chroma(0xd88600), Chroma(0xfefe00), Chroma(0xfeae00), Chroma(0xaefe00))
+
+  // `chroma`, mixed toward the background by `factor`: `1.0` is the colour itself, `0.0` the
+  // background. As iridescence's `Palette#subdue`, but on a packed colour.
+  def subdue(chroma: Chroma, factor: Double): Chroma =
+    def channel(from: Int, to: Int): Int = (to + (from - to)*factor).toInt.max(0).min(255)
+
+    Chroma
+      ( channel(chroma.red, background.red),
+        channel(chroma.green, background.green),
+        channel(chroma.blue, background.blue) )

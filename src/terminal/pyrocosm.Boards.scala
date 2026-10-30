@@ -23,10 +23,10 @@
 package pyrocosm
 
 import java.util.concurrent as juc
+
 import scala.caps
 
 import soundness.*
-
 import gigantism.Every
 import pyrocosm.Board
 
@@ -40,16 +40,18 @@ import pyrocosm.Board
 object Boards:
   extension (board: Board)
     def show[result]
-       ( grace:     Long                = 1000L,
-         occupancy: Optional[Occupancy] = Unset,
-         theme:     TerminalTheme       = TerminalTheme.default )
-       (work: => result)
-       ( using Console, Monitor, Probate, Environment, Every[Terminal.Feature],
-               Tactic[Terminal.Error], Text is Measurable, Hyphenation, TableStyle, Gauging,
-               Gaugeable.Glyphs, InlineAnchoring, InlineGrowth, InlineShrink )
+      ( grace:     Long                = 1000L,
+        occupancy: Optional[Occupancy] = Unset,
+        theme:     TerminalTheme       = TerminalTheme.default )
+      ( work: => result )
+      ( using Console, Monitor, Probate, Environment, Every[Terminal.Feature],
+              Tactic[Terminal.Error], Text is Measurable, Hyphenation, TableStyle, Gauging,
+              Gaugeable.Glyphs, InlineAnchoring, InlineGrowth, InlineShrink )
     :   result =
 
-      val frontend: TerminalFrontend = caps.unsafe.unsafeAssumePure(TerminalFrontend(occupancy, theme))
+      val frontend: TerminalFrontend =
+        caps.unsafe.unsafeAssumePure(TerminalFrontend(occupancy, theme))
+
       val finished: juc.atomic.AtomicBoolean = juc.atomic.AtomicBoolean(false)
       val closed: juc.CountDownLatch = juc.CountDownLatch(1)
 
@@ -57,6 +59,7 @@ object Boards:
         def run(): Unit =
           try
             Thread.sleep(grace)
+
             if !finished.get then
               frontend.run(board.interface):
                 case Event.Closed => if !finished.get then board.leave()

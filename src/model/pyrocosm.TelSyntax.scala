@@ -35,7 +35,8 @@ object TelSyntax:
   private val sigil: Char = '#'
 
   def lines(source: Text): List[Block.Line] =
-    source.cut(t"\n").indexed.map { (line: Text, index: Ordinal) => Block.Line(tokens(line, index.n0 == 0)) }
+    source.cut(t"\n").indexed.map: (line: Text, index: Ordinal) =>
+      Block.Line(tokens(line, index.n0 == 0))
 
   // One line's tokens. The pragma is the first line when it begins with `tel`; a document
   // separator is the sigil twice; a comment is the sigil after any indentation.
@@ -70,6 +71,7 @@ object TelSyntax:
         val start = index
         while index < body.length && body.charAt(index) != ' ' do index += 1
         val word: Text = body.substring(start, index).nn.tt
+
         val accent: Token.Accent =
           if keyword then Token.Accent.Keyword
           else if numeric(word) then Token.Accent.Number
@@ -84,4 +86,5 @@ object TelSyntax:
   private def numeric(word: Text): Boolean =
     val text = word.s
     val digits = text.stripPrefix("-")
-    digits.nonEmpty && digits.forall { (char: Char) => char.isDigit || char == '.' } && digits.exists(_.isDigit)
+    digits.nonEmpty && digits.forall { (char: Char) => char.isDigit || char == '.' } &&
+      digits.exists(_.isDigit)

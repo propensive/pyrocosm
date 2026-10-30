@@ -34,7 +34,9 @@ object Handles:
   // A random per-process prefix keeps ids from two processes (a server and a replayed
   // recording, say) from colliding; the counter keeps them unique within one.
   private val prefix: String =
-    java.lang.Long.toHexString(java.lang.Double.doubleToLongBits(java.lang.Math.random()) & 0xffffffL).nn
+    java.lang.Long
+    . toHexString(java.lang.Double.doubleToLongBits(java.lang.Math.random()) & 0xffffffL)
+    . nn
 
   private val counter: juca.AtomicLong = juca.AtomicLong(0L)
 

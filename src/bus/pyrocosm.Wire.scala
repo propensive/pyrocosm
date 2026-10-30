@@ -99,8 +99,11 @@ object Bus:
 
   // An activity travels as its TEL text, under the model's own codecs for its inlines and
   // status — which evolve with the model — rather than under the bus's schema, which does not.
-  private lazy val activityEncodable: Activity is Tel.Encodable = Tel.EncodableDerivation.derived[Activity]
-  private lazy val activityDecodable: Activity is Tel.Decodable = Tel.DecodableDerivation.derived[Activity]
+  private lazy val activityEncodable: Activity is Tel.Encodable =
+    Tel.EncodableDerivation.derived[Activity]
+
+  private lazy val activityDecodable: Activity is Tel.Decodable =
+    Tel.DecodableDerivation.derived[Activity]
 
   def encode(activity: Activity): Text =
     val portable: Activity = activity.destination match
@@ -150,11 +153,17 @@ object Wire:
   // The model's leaf types with scalar codecs of their own (`pyrocosm_codecs.scala`), which the
   // schema must know as scalars too.
   given keypressSchematic: Keypress is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
-  given mathSchematic: archimedes.Math is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
+
+  given mathSchematic: archimedes.Math is TelSchematic over Tels.Type =
+    () => Tels.Scalar(Array.empty)
+
   given toneSchematic: Tone is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
   given glyphSchematic: Glyph is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
   given standingSchematic: Standing is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
-  given accentSchematic: Token.Accent is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
+
+  given accentSchematic: Token.Accent is TelSchematic over Tels.Type =
+    () => Tels.Scalar(Array.empty)
+
   given roleSchematic: Token.Role is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
 
   given instantEncodable: (Instant over Unix) is Tel.Encodable =
@@ -213,19 +222,31 @@ object Wire:
     val Envelope(origin, sequence, sent, hops, event) = envelope
 
     event match
-      case Bus.Event.Advertised(advert)     => Wire.Advertised(origin, sequence, sent, hops, advert)
-      case Bus.Event.Left(node)             => Wire.Left(origin, sequence, sent, hops, node)
-      case Bus.Event.Updated(node, text)    => Wire.Updated(origin, sequence, sent, hops, node, text)
-      case Bus.Event.Ended(node, id)        => Wire.Ended(origin, sequence, sent, hops, node, id)
-      case Bus.Event.Tool(tool, kind, data) => Wire.Tool(origin, sequence, sent, hops, tool, kind, data)
+      case Bus.Event.Advertised(advert)  => Wire.Advertised(origin, sequence, sent, hops, advert)
+      case Bus.Event.Left(node)          => Wire.Left(origin, sequence, sent, hops, node)
+      case Bus.Event.Updated(node, text) => Wire.Updated(origin, sequence, sent, hops, node, text)
+      case Bus.Event.Ended(node, id)     => Wire.Ended(origin, sequence, sent, hops, node, id)
+
+      case Bus.Event.Tool(tool, kind, data) =>
+        Wire.Tool(origin, sequence, sent, hops, tool, kind, data)
 
   def envelope(wire: Wire): Optional[Envelope] = wire match
-    case Wire.Advertised(origin, sequence, sent, hops, advert)  => Envelope(origin, sequence, sent, hops, Bus.Event.Advertised(advert))
-    case Wire.Left(origin, sequence, sent, hops, node)          => Envelope(origin, sequence, sent, hops, Bus.Event.Left(node))
-    case Wire.Updated(origin, sequence, sent, hops, node, text) => Envelope(origin, sequence, sent, hops, Bus.Event.Updated(node, text))
-    case Wire.Ended(origin, sequence, sent, hops, node, id)     => Envelope(origin, sequence, sent, hops, Bus.Event.Ended(node, id))
-    case Wire.Tool(origin, sequence, sent, hops, tool, kind, d) => Envelope(origin, sequence, sent, hops, Bus.Event.Tool(tool, kind, d))
-    case _                                                      => Unset
+    case Wire.Advertised(origin, sequence, sent, hops, advert) =>
+      Envelope(origin, sequence, sent, hops, Bus.Event.Advertised(advert))
+
+    case Wire.Left(origin, sequence, sent, hops, node) =>
+      Envelope(origin, sequence, sent, hops, Bus.Event.Left(node))
+
+    case Wire.Updated(origin, sequence, sent, hops, node, text) =>
+      Envelope(origin, sequence, sent, hops, Bus.Event.Updated(node, text))
+
+    case Wire.Ended(origin, sequence, sent, hops, node, id) =>
+      Envelope(origin, sequence, sent, hops, Bus.Event.Ended(node, id))
+
+    case Wire.Tool(origin, sequence, sent, hops, tool, kind, d) =>
+      Envelope(origin, sequence, sent, hops, Bus.Event.Tool(tool, kind, d))
+
+    case _ => Unset
 
   // What Pyrocosm's channel carries for the swarm: documents, opaquely. Pyrocosm's handshake
   // compares the fingerprint of a channel's schema and refuses any difference; the swarm's
@@ -258,6 +279,28 @@ enum Wire:
   case Snapshot(self: Advert, known: List[Advert])
   case Advertised(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, advert: Advert)
   case Left(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, node: Node)
-  case Updated(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, node: Node, activity: Text)
-  case Ended(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, node: Node, activity: Text)
-  case Tool(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, tool: Text, kind: Text, payload: Data)
+
+  case Updated
+    ( origin:   Text,
+      sequence: Long,
+      sent:     Instant over Unix,
+      hops:     Int,
+      node:     Node,
+      activity: Text )
+
+  case Ended
+    ( origin:   Text,
+      sequence: Long,
+      sent:     Instant over Unix,
+      hops:     Int,
+      node:     Node,
+      activity: Text )
+
+  case Tool
+    ( origin:   Text,
+      sequence: Long,
+      sent:     Instant over Unix,
+      hops:     Int,
+      tool:     Text,
+      kind:     Text,
+      payload:  Data )

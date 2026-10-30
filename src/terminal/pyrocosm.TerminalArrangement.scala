@@ -24,7 +24,6 @@ package pyrocosm
 
 import soundness.*
 
-
 // The terminal's arrangement solver: from the interface's panels, their roles and priorities,
 // and the terminal's size, to an Ultimatum pane tree. A rule table rather than a constraint
 // solver, so that it can be read, tested and revised.
@@ -46,7 +45,7 @@ object TerminalArrangement:
     // terminal's size drops any but an essential panel.
     def fits(panel: Panel): Boolean =
       val minimum = panel.hints[hints.Minimum]
-      val wide = minimum.lay(true) { hint => hint.columns <= columns && hint.rows <= rows }
+      val wide = minimum.lay(true): hint => hint.columns <= columns && hint.rows <= rows
 
       panel.priority match
         case Panel.Priority.Essential  => true
@@ -99,7 +98,9 @@ object TerminalArrangement:
       if panels.nil then Unset else stack(panels.map(framed)*)
 
     def widest(panels: List[Panel]): Optional[Int] =
-      panels.map(_.hints[hints.Minimum]).sweep { case minimum: hints.Minimum => minimum.columns }.maximum
+      panels.map(_.hints[hints.Minimum])
+      . sweep { case minimum: hints.Minimum => minimum.columns }
+      . maximum
 
     val versoWidth = widest(plan.verso).or(24)
     val rectoWidth = widest(plan.recto).or(32)
@@ -108,30 +109,38 @@ object TerminalArrangement:
       sized(pane, minWidth = versoWidth, maxWidth = versoWidth + 8)
 
     val centreBelow: List[Panel] = if plan.rectoBeside then Nil else plan.recto
+
     val centre: List[Pane] =
-      column(plan.centre + centreBelow).lay(Nil: List[Pane])(List(_))
-        + column(plan.log).lay(Nil: List[Pane])(List(_))
-        + column(plan.prompt).lay(Nil: List[Pane]): pane =>
-            if spaced then List(gap(hidden), pane.weight(0.0)) else List(pane.weight(0.0))
+      column(plan.centre + centreBelow).lay(Nil: List[Pane])(List(_)) +
+        column(plan.log).lay(Nil: List[Pane])(List(_)) +
+        column(plan.prompt).lay(Nil: List[Pane]): pane =>
+          if spaced then List(gap(hidden), pane.weight(0.0)) else List(pane.weight(0.0))
 
     val middle: Pane = if centre.nil then stack() else stack(centre*)
 
     val recto: Optional[Pane] =
-      if plan.rectoBeside then column(plan.recto).let { pane => sized(pane, minWidth = rectoWidth, maxWidth = rectoWidth + 16) }
-      else Unset
+      if plan.rectoBeside then
+        column(plan.recto).let: pane =>
+          sized(pane, minWidth = rectoWidth, maxWidth = rectoWidth + 16)
+      else
+        Unset
 
     val body: Pane =
-      strip((verso.lay(Nil: List[Pane])(List(_)) + List(middle) + recto.lay(Nil: List[Pane])(List(_)))*)
+      val panes: List[Pane] =
+        verso.lay(Nil: List[Pane])(List(_)) + List(middle) + recto.lay(Nil: List[Pane])(List(_))
+
+      strip(panes*)
 
     val rowsOf: List[Pane] =
-      title.lay(Nil: List[Pane])(List(_)) + toolbar.lay(Nil: List[Pane])(List(_)) + List(body)
-        + activities.lay(Nil: List[Pane])(List(_))
+      title.lay(Nil: List[Pane])(List(_)) + toolbar.lay(Nil: List[Pane])(List(_)) + List(body) +
+        activities.lay(Nil: List[Pane])(List(_))
 
     stack(rowsOf*)
 
   // A piece of a border: a rule or a corner, of fixed size while shown and of none while
   // every fixture hides.
-  private class Edge(hidden: () -> Boolean, columns: Int, rows: Int, draw: Board^ -> Unit) extends Fixture:
+  private class Edge(hidden: () -> Boolean, columns: Int, rows: Int, draw: Board^ -> Unit)
+  extends Fixture:
     def measure(width: Int): (Int, Int) = if hidden() then (0, 0) else (columns, rows)
 
     def render(canvas: Board^, focused: Boolean): Unit =
@@ -169,6 +178,7 @@ object TerminalArrangement:
     def verticalRule: Pane =
       Pane.Widget(Sizing(0.0, maxWidth = 1), new Edge(hidden, 1, 0, { canvas =>
         var row = 0
+
         while row < canvas.height do
           canvas.move(Prim, row.z)
           canvas.put(Teletype(style.vertical))
@@ -181,7 +191,8 @@ object TerminalArrangement:
 
     // The bands take no share of the stack's height (their rule's weight is for the strip's
     // width); the middle takes the child's share.
-    def band(left: Text, right: Text): Pane = strip(corner(left), horizontalRule, corner(right)).weight(0.0)
+    def band(left: Text, right: Text): Pane =
+      strip(corner(left), horizontalRule, corner(right)).weight(0.0)
 
     val share: Double = child match
       case Pane.Leaf(sizing, _)      => sizing.fraction
@@ -195,7 +206,10 @@ object TerminalArrangement:
 
   // A pane held to a column band: the sizing of every leaf beneath it is left alone, and the
   // branch itself is bounded.
-  private def sized(pane: Pane, minWidth: Int, maxWidth: Int): Pane = pane match
-    case Pane.Leaf(sizing, content)      => Pane.Leaf(sizing.copy(minWidth = minWidth, maxWidth = maxWidth), content)
-    case Pane.Widget(sizing, fixture)    => Pane.Widget(sizing.copy(minWidth = minWidth, maxWidth = maxWidth), fixture)
-    case Pane.Branch(sizing, arr, panes) => Pane.Branch(sizing.copy(minWidth = minWidth, maxWidth = maxWidth), arr, panes)
+  private def sized(pane: Pane, minWidth: Int, maxWidth: Int): Pane =
+    def bound(sizing: Sizing): Sizing = sizing.copy(minWidth = minWidth, maxWidth = maxWidth)
+
+    pane match
+      case Pane.Leaf(sizing, content)      => Pane.Leaf(bound(sizing), content)
+      case Pane.Widget(sizing, fixture)    => Pane.Widget(bound(sizing), fixture)
+      case Pane.Branch(sizing, arr, panes) => Pane.Branch(bound(sizing), arr, panes)

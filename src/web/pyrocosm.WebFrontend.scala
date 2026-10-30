@@ -23,21 +23,20 @@
 package pyrocosm
 
 import java.util.concurrent as juc
-import scala.jdk.CollectionConverters.*
 import java.util.concurrent.atomic as juca
+
 import scala.caps
 
 // Excluded from the umbrella: `Control` (coaxial), which would outrank this package's own
 // definitions, since a wildcard import beats a package member declared in another file.
-import soundness.{Control as _, Origin as _, *}
+import soundness.{Control as _, *}
 
-import perihelion.{Channel, Message}
-
-import dysasymptotics.{linearAccess, linearSize}
 import codepages.utf8Codepage
+import dysasymptotics.linearAccess
 import formatting.{compactJsonFormatting, compactCssFormatting}
-import strategies.throwUnsafely
 import logging.silentLogging
+import perihelion.{Channel, Message}
+import strategies.throwUnsafely
 
 // The messages the frontend and its script exchange as JSON. Flat case classes, so the shape is
 // plain for the script: a patch replaces the inner HTML of an element by id; an incoming message
@@ -45,7 +44,15 @@ import logging.silentLogging
 // `Control.Field`): an `edit`, `submit` or `enter` says which version it is of, and a `value`
 // passed on to another tab carries the version with it, so every tab numbers the text alike.
 case class Patch(kind: Text, id: Text, html: Text = t"", version: Int = 0)
-case class Incoming(kind: Text, id: Text = t"", text: Text = t"", caret: Int = 0, index: Int = 0, version: Int = 0, label: Text = t"")
+
+case class Incoming
+  ( kind:    Text,
+    id:      Text = t"",
+    text:    Text = t"",
+    caret:   Int  = 0,
+    index:   Int  = 0,
+    version: Int  = 0,
+    label:   Text = t"" )
 
 // The answer to an `enter`: whether the text is incomplete, and the version of the text the
 // decoration which says so was given for.
@@ -91,9 +98,9 @@ object WebFrontend:
   def cookie(purview: Purview): Text = purview.in[Json].show.urlEncode
 
   def purview(header: Text): Optional[Purview] =
-    header.cut(t";").map(_.trim).seek(_.starts(t"$cookieName=")).let { pair =>
+    header.cut(t";").map(_.trim).seek(_.starts(t"$cookieName=")).let: pair =>
       safely(pair.skip(cookieName.length + 1).urlDecode.read[Json].as[Purview]).let: purview0 =>
-        Purview(purview0.imports.filter(local(_)), purview0.bookmarks.filter(local(_))) }
+        Purview(purview0.imports.filter(local(_)), purview0.bookmarks.filter(local(_)))
 
   private def local(entry: Purview.Entry): Boolean = entry.path.starts(t"/")
 
@@ -153,6 +160,7 @@ extends pyrocosm.Frontend:
     if base.blank || target == base then (if base.blank then target else t"/")
     else if target.starts(t"$base/") || target.starts(t"$base?") then target.skip(base.length)
     else target
+
   private val counter: juca.AtomicInteger = juca.AtomicInteger(0)
   private val sessions: juc.ConcurrentHashMap[Text, Session] = juc.ConcurrentHashMap()
 
@@ -174,22 +182,34 @@ extends pyrocosm.Frontend:
   // The configuration page the menu bar links to: the same chrome, and for now a note on where
   // a tool's settings live. It has no session of its own.
   private lazy val configuration: Text =
+    val note: Text =
+      t"There is nothing to configure here yet. A tool is configured by its config.tel file: " +
+        t".pyrocosm/<tool>/config.tel in a project, or ~/.config/<tool>/config.tel for the user."
+
+    val themeName: Text = theme.getClass.getSimpleName.nn.replace("$", "").nn.tt
+
     val content: List[Block] =
       List
         ( Block.Heading(1, Inline.text(t"Configuration")),
-          Block.paragraph(t"There is nothing to configure here yet. A tool is configured by its config.tel file: .pyrocosm/<tool>/config.tel in a project, or ~/.config/<tool>/config.tel for the user."),
+          Block.paragraph(note),
           Block.Record
             ( List
                 ( Block.Entry(Inline.text(t"port"), List(Block.paragraph(bound.toString.tt))),
-                  Block.Entry(Inline.text(t"theme"), List(Block.paragraph(theme.getClass.getSimpleName.nn.replace("$", "").nn.tt))) ),
+                  Block.Entry(Inline.text(t"theme"), List(Block.paragraph(themeName))) ),
               Inline.text(t"This frontend") ) )
 
-    val interface =
-      Interface
-        ( Inline.text(t"Configuration"),
-          List(Panel(Panel.Id(t"configuration"), Panel.Role.Primary, Unset, Live(content), Panel.Priority.Essential)) )
+    val panel: Panel =
+      Panel
+        ( Panel.Id(t"configuration"),
+          Panel.Role.Primary,
+          Unset,
+          Live(content),
+          Panel.Priority.Essential )
 
-    t"<!DOCTYPE html>${PyrocosmPage(interface, HtmlRenderer(prefix = served), theme, prefix = served).markup.show}"
+    val interface = Interface(Inline.text(t"Configuration"), List(panel))
+    val renderer: HtmlRenderer = HtmlRenderer(prefix = served)
+    val page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, prefix = served)
+    t"<!DOCTYPE html>${page.markup.show}"
 
   // One interface and the tabs showing it. The handler is vouched pure, as the terminal
   // frontend's is: it lives exactly as long as the session.
@@ -202,11 +222,15 @@ extends pyrocosm.Frontend:
     var purview: Purview = interface.purview.or(Purview())
 
     def renderer: HtmlRenderer = HtmlRenderer(purview, served)
-    def page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, if shared.present then Unset else id, presence, served)
+
+    def page: PyrocosmPage =
+      val session: Optional[Text] = if shared.present then Unset else id
+      PyrocosmPage(interface, renderer, theme, session, presence, served)
 
     // The reader's purview, as a page request's cookie says it is; nothing, without one.
     def adopt(cookies: Optional[Text]): Unit =
-      if interface.purview.present then cookies.let(WebFrontend.purview(_)).let { purview0 => purview = purview0 }
+      if interface.purview.present
+      then cookies.let(WebFrontend.purview(_)).let: purview0 => purview = purview0
 
     // The purview has changed: every panel is shown again under it, the purview panel with it,
     // and the browser is told to keep it.
@@ -214,7 +238,8 @@ extends pyrocosm.Frontend:
       val renderer0: HtmlRenderer = renderer
 
       interface.panels.each: panel =>
-        broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", renderer0.blocks(panel.content()).show))
+        val html: Text = renderer0.blocks(panel.content()).show
+        broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", html))
 
       broadcast(Patch(t"replace", t"pyro-purview", renderer0.purviewPanel.show))
       broadcast(Patch(t"cookie", t"", WebFrontend.cookie(purview)))
@@ -222,7 +247,8 @@ extends pyrocosm.Frontend:
     // The wakes this session binds to the process-wide presence, to unbind — and no other
     // session's — when it closes.
     private val remoteWake: () -> Unit = caps.unsafe.unsafeAssumePure: () =>
-      broadcast(Patch(t"replace", t"pyro-activities-remote", renderer.remoteActivities(presence.remote()).show))
+      val html: Text = renderer.remoteActivities(presence.remote()).show
+      broadcast(Patch(t"replace", t"pyro-activities-remote", html))
 
     private val peersWake: () -> Unit = caps.unsafe.unsafeAssumePure: () =>
       broadcast(Patch(t"replace", t"pyro-menubar-tools", renderer.toolLinks(presence.peers()).show))
@@ -248,7 +274,8 @@ extends pyrocosm.Frontend:
     // pinging is dropped. A stuck pump is abandoned rather than stopped: `Channel.stop`
     // takes the lock its blocked `send` holds.
     private class Tab(channel: Channel):
-      private val queue: juc.LinkedBlockingQueue[Text] = juc.LinkedBlockingQueue(WebFrontend.backlog)
+      private val queue: juc.LinkedBlockingQueue[Text] =
+        juc.LinkedBlockingQueue(WebFrontend.backlog)
 
       @caps.unsafe.untrackedCaptures
       @volatile
@@ -282,7 +309,8 @@ extends pyrocosm.Frontend:
 
       tabs.forEach: (connection, tab) =>
         if !except.lay(false)(_ == connection.nn) then
-          if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text) then detach(connection.nn)
+          if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text)
+          then detach(connection.nn)
 
     // A patch to one tab alone: the answer to something it asked.
     def tell(connection: Int, patch: Patch): Unit =
@@ -314,14 +342,16 @@ extends pyrocosm.Frontend:
     def bindFigures(blocks: List[Block]): Unit =
       Figure.of(blocks).each: figure =>
         if figures.putIfAbsent(figure.id, figure) == null then
-          figure.revision.bindWake { () => figure.revision().let { revision => broadcast(figurePatch(figure, revision)) } }
+          figure.revision.bindWake: () =>
+            figure.revision().let: revision => broadcast(figurePatch(figure, revision))
 
     // What each cell repaints: the activities' holder, a panel's content, or a control's
     // holder. A panel's figures are bound after its content is sent, so a figure is on the page
     // before its revisions reach it.
     def bind(): Unit =
       interface.activities.bindWake: () =>
-        broadcast(Patch(t"replace", t"pyro-activities", renderer.activities(interface.activities()).show))
+        val html: Text = renderer.activities(interface.activities()).show
+        broadcast(Patch(t"replace", t"pyro-activities", html))
 
       presence.remote.bindWake(remoteWake)
       presence.peers.bindWake(peersWake)
@@ -331,12 +361,13 @@ extends pyrocosm.Frontend:
 
         panel.content.bindWake: () =>
           val content = panel.content()
-          broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", renderer.blocks(content).show))
+          val html: Text = renderer.blocks(content).show
+          broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", html))
           bindFigures(content)
 
       (interface.controls + interface.panels.bind(_.controls)).each:
         case Control.Field(input, _, value, decoration, _, _, history, revision) =>
-          decoration.bindWake { () =>
+          decoration.bindWake: () =>
             interface.fields.seek(_.input == input).let: field =>
               broadcast(Patch(t"replace", t"${input.id}-decoration", page.decoration(field).show))
 
@@ -344,19 +375,30 @@ extends pyrocosm.Frontend:
               // state, for the version it is at; a textarea has it set here.
               field.kind match
                 case Control.Field.Kind.Code(_) => ()
-                case _ => broadcast(Patch(if field.decoration().incomplete then t"class" else t"unclass", input.id, t"pyro-incomplete")) }
-          value.bindWake { () => if published.fresh(input.id, value()) then broadcast(Patch(t"value", input.id, value())) }
-          revision.bindWake { () => revision().let { proposal => broadcast(Patch(t"revise", input.id, proposal.in[Json].show)) } }
-          history.bindWake { () => broadcast(Patch(t"history", input.id, history().in[Json].show)) }
+
+                case _ =>
+                  val kind: Text = if field.decoration().incomplete then t"class" else t"unclass"
+                  broadcast(Patch(kind, input.id, t"pyro-incomplete"))
+
+          value.bindWake: () =>
+            if published.fresh(input.id, value()) then broadcast(Patch(t"value", input.id, value()))
+
+          revision.bindWake: () =>
+            revision().let: proposal =>
+              broadcast(Patch(t"revise", input.id, proposal.in[Json].show))
+
+          history.bindWake: () => broadcast(Patch(t"history", input.id, history().in[Json].show))
 
         case Control.Button(_, action, enabled) =>
-          enabled.bindWake { () => broadcast(Patch(if enabled() then t"enable" else t"disable", action.id)) }
+          enabled.bindWake: () =>
+            broadcast(Patch(if enabled() then t"enable" else t"disable", action.id))
 
         case Control.Toggle(toggle, _, state) =>
-          state.bindWake { () => broadcast(Patch(if state() then t"check" else t"uncheck", toggle.id)) }
+          state.bindWake: () =>
+            broadcast(Patch(if state() then t"check" else t"uncheck", toggle.id))
 
         case Control.Choice(choice, _, current) =>
-          current.bindWake { () => broadcast(Patch(t"select", choice.id, current().toString.tt)) }
+          current.bindWake: () => broadcast(Patch(t"select", choice.id, current().toString.tt))
 
     // An incoming message, checked against the interface, becomes an event; any message at all
     // shows the tab it came from is alive.
@@ -367,21 +409,24 @@ extends pyrocosm.Frontend:
       safely(payload.read[Json].as[Incoming]).let: incoming =>
         incoming.kind match
           case t"press" =>
-            interface.actions.seek(_.id == incoming.id).let { action => handle(Event.Pressed(action)) }
+            interface.actions.seek(_.id == incoming.id).let: action => handle(Event.Pressed(action))
 
           case t"edit" =>
             interface.fields.seek(_.input.id == incoming.id).let: field =>
               publish(connection, field, incoming.text, incoming.version)
-              if field.notification == Control.Field.Notify.Keystrokes
-              then handle(Event.Edited(field.input, incoming.text, incoming.caret, incoming.version))
+
+              if field.notification == Control.Field.Notify.Keystrokes then
+                handle(Event.Edited(field.input, incoming.text, incoming.caret, incoming.version))
 
           // The clearing of the field is an edit like any other, heard before the submission,
           // so whatever the application still had in flight for the text is overtaken.
           case t"submit" =>
             interface.fields.seek(_.input.id == incoming.id).let: field =>
               publish(connection, field, t"", incoming.version)
+
               if field.notification == Control.Field.Notify.Keystrokes
               then handle(Event.Edited(field.input, t"", 0, incoming.version))
+
               handle(Event.Submitted(field.input, incoming.text))
 
           // Enter pressed before the decoration of the latest edit reached the tab: the edit
@@ -390,7 +435,8 @@ extends pyrocosm.Frontend:
           case t"enter" =>
             interface.fields.seek(_.input.id == incoming.id).let: field =>
               val decoration = field.decoration()
-              tell(connection, Patch(t"verdict", field.input.id, Verdict(decoration.version, decoration.incomplete).in[Json].show))
+              val verdict: Text = Verdict(decoration.version, decoration.incomplete).in[Json].show
+              tell(connection, Patch(t"verdict", field.input.id, verdict))
 
           // A click on a local link, or the browser's back and forward: the path is the
           // application's own, so nothing checks it.
@@ -408,7 +454,7 @@ extends pyrocosm.Frontend:
               handle(Event.Chosen(choice.choice, incoming.index))
 
           case t"key" =>
-            Keypresses.parse(incoming.text).let { keypress => handle(Event.Key(keypress)) }
+            Keypresses.parse(incoming.text).let: keypress => handle(Event.Key(keypress))
 
           // An import toggle or a bookmark button: the frontend's own, answered without the
           // application, for an interface read under a purview.
@@ -440,7 +486,8 @@ extends pyrocosm.Frontend:
       // A task may retain only what is durable, which the session is not: the check it runs
       // after the grace period is vouched pure, as the wakes above are.
       if tabs.isEmpty && shared.absent then
-        val closeIfEmpty: () -> Unit = caps.unsafe.unsafeAssumePure(() => if tabs.isEmpty then close())
+        val closeIfEmpty: () -> Unit =
+          caps.unsafe.unsafeAssumePure: () => if tabs.isEmpty then close()
 
         async:
           snooze(WebFrontend.grace)
@@ -456,13 +503,15 @@ extends pyrocosm.Frontend:
         presence.remote.unbindWake(remoteWake)
         presence.peers.unbindWake(peersWake)
         interface.cells.each(_.unbindWakes())
-        figures.values.nn.forEach { figure => figure.nn.revision.unbindWakes() }
+        figures.values.nn.forEach: figure => figure.nn.revision.unbindWakes()
         handle(Event.Closed)
 
   // A session holds the monitor (for its grace timer) and its handler, both of which outlive
   // it; it is vouched pure so it can be kept and looked up.
   private def open(interface: Interface, handle: Event -> Unit): Session =
-    val session: Session = caps.unsafe.unsafeAssumePure(new Session(Handles.fresh('s'), interface, handle))
+    val session: Session =
+      caps.unsafe.unsafeAssumePure(new Session(Handles.fresh('s'), interface, handle))
+
     session.bind()
     sessions.put(session.id, session)
     presence.attach(interface)
@@ -497,10 +546,12 @@ extends pyrocosm.Frontend:
     shared.or:
       named.let { id => Optional(sessions.get(id)) }.or:
         val open0 = opener
+
         if fresh && open0 != null then
           val (interface, handle) = open0()
           this.open(interface, handle)
-        else Unset
+        else
+          Unset
 
   // The activity of this id, among those a session of this frontend publishes, with the
   // action its internal destination names: what `/open?activity=<id>` presses. Only an
@@ -509,11 +560,14 @@ extends pyrocosm.Frontend:
     val candidates: scala.List[Session] =
       shared.lay(sessions.values.nn.iterator.nn.asScala.toList)(scala.List(_))
 
-    candidates.iterator.map { session => WebFrontend.locate(session.interface.activities(), id).let((session, _)) }
+    candidates.iterator.map: session =>
+      WebFrontend.locate(session.interface.activities(), id).let((session, _))
+
     . collectFirst { case found: (Session, Action) @unchecked => found }.getOrElse(Unset)
 
   private def navigating(request: Http.Request): Boolean =
-    request.textHeaders.exists { header => header.key.lower == t"accept" && header.value.contains(t"text/html") }
+    request.textHeaders.exists: header =>
+      header.key.lower == t"accept" && header.value.contains(t"text/html")
 
   private def serving(): Unit =
     bound = if port == 0 then Port[Tcp]().number else port
@@ -523,41 +577,60 @@ extends pyrocosm.Frontend:
       val target: Text = strip(request.target)
       val path: Text = target.cut(t"?").at(Prim).or(t"/")
 
+      // What a request for a session none has is answered with.
+      def unsessioned: Http.Response = Http.Response(Http.NotFound)(t"No session")
+
       // The page at a path: the session is told where it is before the page is rendered, so
       // that the first paint shows the right content, and the browser's own scroll to a
       // fragment finds its target.
       def page(path: Text): Http.Response =
-        sessionFor(target, fresh = true).lay(Http.Response(Http.NotFound)(t"No session")): session =>
+        sessionFor(target, fresh = true).lay(unsessioned): session =>
           session.adopt(request.textHeaders.seek(_.key.lower == t"cookie").let(_.value))
           session.locate(path)
           val html: Text = t"<!DOCTYPE html>${session.page.markup.show}"
-          Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(html.in[Data]))
+
+          Http.Ok
+            ( List(Http.Header(t"content-type", t"text/html; charset=utf-8")),
+              Http.Body.Fixed(html.in[Data]) )
 
       path match
         // A link from another tool's card: presses the activity's action here, and sends the
         // browser to the page which shows it — the shared one, or the session's own.
         case t"/open" =>
           val query: Text = target.cut(t"?").at(Sec).or(t"")
-          val id: Optional[Text] = query.cut(t"&").seek(_.starts(t"activity=")).let(_.skip(t"activity=".length))
 
-          id.let(locate(_)).lay(Http.Response(Http.NotFound)(t"No such activity")): (session, action) =>
+          val id: Optional[Text] =
+            query.cut(t"&").seek(_.starts(t"activity=")).let(_.skip(t"activity=".length))
+
+          def unknown: Http.Response = Http.Response(Http.NotFound)(t"No such activity")
+
+          id.let(locate(_)).lay(unknown): (session, action) =>
             session.press(action)
-            val target: Text = if shared.present then t"$served/" else t"$served/?session=${session.id}"
+
+            val target: Text =
+              if shared.present then t"$served/" else t"$served/?session=${session.id}"
+
             Http.Response(Http.SeeOther, location = target)()
 
         case t"/" | t"/index.html" => page(t"/")
 
         case t"/pyrocosm.js" =>
-          Http.Ok(List(Http.Header(t"content-type", t"text/javascript; charset=utf-8")), Http.Body.Fixed(WebFrontend.script.in[Data]))
+          Http.Ok
+            ( List(Http.Header(t"content-type", t"text/javascript; charset=utf-8")),
+              Http.Body.Fixed(WebFrontend.script.in[Data]) )
 
         case t"/pyrocosm.css" =>
-          Http.Ok(List(Http.Header(t"content-type", t"text/css; charset=utf-8")), Http.Body.Fixed(stylesheet.in[Data]))
+          Http.Ok
+            ( List(Http.Header(t"content-type", t"text/css; charset=utf-8")),
+              Http.Body.Fixed(stylesheet.in[Data]) )
 
         case t"/config" =>
-          Http.Ok(List(Http.Header(t"content-type", t"text/html; charset=utf-8")), Http.Body.Fixed(configuration.in[Data]))
+          Http.Ok
+            ( List(Http.Header(t"content-type", t"text/html; charset=utf-8")),
+              Http.Body.Fixed(configuration.in[Data]) )
 
         case t"/socket" =>
-          sessionFor(target, fresh = false).lay(Http.Response(Http.NotFound)(t"No session")): session =>
+          sessionFor(target, fresh = false).lay(unsessioned): session =>
             Http.Response:
               val id = counter.incrementAndGet()
 
@@ -568,6 +641,7 @@ extends pyrocosm.Frontend:
                   message match
                     case Message.Text(payload) => session.receive(id, payload)
                     case _                     => ()
+
                   coaxial.Control.Continue(())
 
               val handle0: (state: Unit) ?=> Message -> coaxial.Control[Unit] = handler
@@ -590,7 +664,13 @@ extends pyrocosm.Frontend:
             if target == request0.target then request0
             else
               caps.unsafe.unsafeAssumePure:
-                Http.Request(request0.method, request0.version, request0.host, target, request0.textHeaders, request0.body)
+                Http.Request
+                  ( request0.method,
+                    request0.version,
+                    request0.host,
+                    target,
+                    request0.textHeaders,
+                    request0.body )
 
           fallback(request1).or:
             if navigating(request0) then page(path) else Http.Response(Http.NotFound)(t"Not found")
@@ -599,20 +679,6 @@ extends pyrocosm.Frontend:
     finally
       service.cancel()
       presence.web() = Unset
-      sessions.values.nn.forEach { session => session.nn.close() }
+      sessions.values.nn.forEach: session => session.nn.close()
       shared = Unset
       opener = null
-
-// The handles an interface offers, for validating what a browser sends. Every control counts:
-// the interface's own and those of its panels (the name says so, since `controls` unqualified
-// is the interface's own).
-extension (interface: Interface)
-  def fields: List[Control.Field] = interface.allControls.sweep { case field: Control.Field => field }
-  def toggles: List[Control.Toggle] = interface.allControls.sweep { case toggle: Control.Toggle => toggle }
-  def choices: List[Control.Choice] = interface.allControls.sweep { case choice: Control.Choice => choice }
-  def buttons: List[Control.Button] = interface.allControls.sweep { case button: Control.Button => button }
-  def allControls: List[Control] = interface.controls + interface.panels.bind(_.controls)
-
-  def actions: List[Action] =
-    interface.buttons.map(_.action) + interface.panels.bind { (panel: Panel) => Actions.of(panel.content()) }
-      + interface.shortcuts.map(_.action)

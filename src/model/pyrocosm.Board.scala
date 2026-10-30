@@ -23,6 +23,7 @@
 package pyrocosm
 
 import java.lang as jl
+
 import scala.caps
 
 import soundness.*
@@ -75,6 +76,11 @@ final class Board(val title: Text, throttle: Long = 100L):
     Interface
       ( Inline.text(title),
         List
-          ( Panel(Panel.Id(t"content"), Panel.Role.Primary, Unset, content, Panel.Priority.Essential,
-                hints = Hints(hints.Follow, hints.terminal.Border.None)) ),
+          ( Panel
+              ( Panel.Id(t"content"),
+                Panel.Role.Primary,
+                Unset,
+                content,
+                Panel.Priority.Essential,
+                hints = Hints(hints.Follow, hints.terminal.Border.None) ) ),
         hints = Hints(hints.terminal.Occupancy.Fullscreen) )

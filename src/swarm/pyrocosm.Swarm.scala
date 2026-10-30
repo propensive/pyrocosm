@@ -23,16 +23,17 @@
 package pyrocosm
 
 import java.util.concurrent as juc
+
 import scala.collection.concurrent.TrieMap
 
 // `Service` is excluded from the umbrella: pyrocosm's own, declared in another file, would be
 // outranked by urticose's.
 import soundness.{Service as _, *}
 
-import Journal.{Event, Fingerprint, Obstacle, Party}
+import Journal.{Event, Party}
 import alphabets.hexLowerCase
-import denominative.dysasymptotics.linearSize
 import errorDiagnostics.emptyDiagnostics
+
 // The swarm every Pyrocosm tool's daemon is a NODE of. On one machine, every tool's node is
 // a LEAF of the machine's one HUB — a process of its own, `pyrocosm`, started by the first tool
 // which needs it — which it finds through the `Registry` and links to over loopback, so that
@@ -109,10 +110,10 @@ object Swarm:
       val kind: Text = Swarm.kind(envelope.event)
       val near: Boolean = origin.lay(true)(_.shares(self))
 
-      (tools.nil || tool.lay(false)(tools.has(_)))
-      && (kinds.nil || kinds.has(kind))
-      && (origins.nil || origins.has(envelope.origin))
-      && (if near then local else remote)
+      (tools.nil || tool.lay(false)(tools.has(_))) &&
+        (kinds.nil || kinds.has(kind)) &&
+        (origins.nil || origins.has(envelope.origin)) &&
+        (if near then local else remote)
 
   // A subscription, until it is cancelled.
   trait Subscription:
@@ -177,6 +178,7 @@ object Swarm:
         val pure: () -> List[Service] = scala.caps.unsafe.unsafeAssumePure(services)
         val revive0: () -> Unit = scala.caps.unsafe.unsafeAssumePure(revive)
         val leaf: Leaf = Leaf(tool, version, pure, capabilities, swarmPort, revive0)
+
         instances.putIfAbsent(tool, leaf) match
           case Some(existing) =>
             existing
@@ -263,6 +265,7 @@ object Swarm:
         def scan(events: scala.collection.immutable.LazyList[Discovery.Event])
           ( using Monitor, Probate )
         :   Unit =
+
           if !events.isEmpty then
             events.head match
               case Discovery.Event.Found(instance) =>
@@ -351,17 +354,18 @@ extends Tether.Host, scala.caps.Pure:
 
     // Named rather than a lambda around the interpolation (the 3.9.0 `wildApprox` crash).
     def located(service: Service): Service =
-      if service.name == t"serve" && service.url.absent then service.copy(url = url(host, service.port))
+      if service.name == t"serve" && service.url.absent
+      then service.copy(url = url(host, service.port))
       else service
 
     // A web front-end started outside the tool's services (`gallery serve <port>`) says so
     // through the shared presence; so does one started on port 0, which took a port of its own.
     val declared: List[Service] =
-      services().filter { service => !(service.name == t"serve" && service.port == 0) }
+      services().filter: service => !(service.name == t"serve" && service.port == 0)
 
     val web: List[Service] =
       if declared.exists(_.name == t"serve") then Nil
-      else Presence.shared.web().lay(Nil: List[Service]) { port => List(Service(t"serve", port)) }
+      else Presence.shared.web().lay(Nil: List[Service]): port => List(Service(t"serve", port))
 
     val offered: List[Service] = (declared + web).map(located(_))
 
@@ -484,8 +488,7 @@ extends Tether.Host, scala.caps.Pure:
       val origin: Optional[Node] = apply(envelope.event)
       notify(origin, envelope)
 
-      if envelope.hops < Swarm.reach
-      then broadcast(envelope.copy(hops = envelope.hops + 1), tether)
+      if envelope.hops < Swarm.reach then broadcast(envelope.copy(hops = envelope.hops + 1), tether)
 
   // What a snapshot says: the other end's advert, and the adverts it holds of nodes this one
   // may not know. A snapshot is link-local, so nothing of it is passed on: the nodes it names
@@ -507,7 +510,7 @@ extends Tether.Host, scala.caps.Pure:
   private def apply(event: Bus.Event): Optional[Node] = event match
     case Bus.Event.Advertised(advert) =>
       val before: Optional[Node] = known(advert.node.key)
-      nodes.amend { all => advert :: all.filter(_.node.key != advert.node.key) }
+      nodes.amend: all => advert :: all.filter(_.node.key != advert.node.key)
       if before.absent && advert.node.key != node.key then Journal.log(Event.Appeared(advert.node))
       advert.node
 
@@ -518,11 +521,15 @@ extends Tether.Host, scala.caps.Pure:
     case Bus.Event.Updated(origin, text) =>
       Bus.decode(text).let: activity =>
         activities.amend: all =>
-          (origin, activity) :: all.filter { (other, existing) => other.key != origin.key || existing.id != activity.id }
+          (origin, activity) :: all.filter: (other, existing) =>
+            other.key != origin.key || existing.id != activity.id
+
       origin
 
     case Bus.Event.Ended(origin, id) =>
-      activities.amend(_.filter { (other, existing) => other.key != origin.key || existing.id != id })
+      activities.amend: all =>
+        all.filter: (other, existing) => other.key != origin.key || existing.id != id
+
       origin
 
     case Bus.Event.Tool(_, _, _) =>
@@ -583,7 +590,9 @@ extends Tether.Host, scala.caps.Pure:
   @scala.caps.unsafe.untrackedCaptures
   protected var links: List[(Text, Tether)] = Nil
 
-  protected def link(name: Text): Optional[Tether] = mutex(links.filter(_(0) == name)).head.let(_(1))
+  protected def link(name: Text): Optional[Tether] =
+    mutex(links.filter(_(0) == name)).head.let(_(1))
+
   protected def wants(name: Text): Boolean = mutex(wanted.filter(_.name == name)).head.present
 
   // What this node is asked to stay linked to, and how each link stands. A leaf asks the hub,
@@ -597,13 +606,14 @@ extends Tether.Host, scala.caps.Pure:
 
   // The callers from other machines which have made a lasting link to this node.
   def visitors(using Monitor): List[Caller] =
-    mutex(tethers).reverse.filter { t => t.lasting && t.side == Tether.Side.Remote && link(t.peer.show).absent }
+    mutex(tethers).reverse
+    . filter: t => t.lasting && t.side == Tether.Side.Remote && link(t.peer.show).absent
     . map: link => Caller(link.peer, link.standing)
 
   // The other nodes of this machine this one is linked to, and how each stands.
   def neighbours: List[(Node, Tether.Standing)] =
     mutex(tethers).reverse.filter(_.side == Tether.Side.Local).bind: tether =>
-      tether.node.lay(Nil: List[(Node, Tether.Standing)]) { node => List((node, tether.standing)) }
+      tether.node.lay(Nil: List[(Node, Tether.Standing)]): node => List((node, tether.standing))
 
   // Whether a lasting link to the machine of this name is open now.
   def connected(name: Text)(using Monitor): Boolean = link(name).present
@@ -645,12 +655,14 @@ extends Tether.Host, scala.caps.Pure:
     tether.side match
       case Tether.Side.Local =>
         forget(other)
-        broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, Bus.Event.Left(other)), tether)
+        val event: Bus.Event = Bus.Event.Left(other)
+        broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, event), tether)
 
       case Tether.Side.Remote =>
         nodes().filter(_.node.identity == other.identity).each: advert =>
           forget(advert.node)
-          broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, Bus.Event.Left(advert.node)), tether)
+          val event: Bus.Event = Bus.Event.Left(advert.node)
+          broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 1, event), tether)
 
       case _ =>
         ()
@@ -733,7 +745,7 @@ extends Tether.Host, scala.caps.Pure:
   // regardless, so that a node which joined since, or forgot it, learns of it.
   def advertise(): Unit =
     val advert: Advert = self
-    nodes.amend { all => advert :: all.filter(_.node.key != node.key) }
+    nodes.amend: all => advert :: all.filter(_.node.key != node.key)
     emit(Bus.Event.Advertised(advert))
 
   protected def announce()(using Monitor, Probate): Unit =
@@ -744,7 +756,9 @@ extends Tether.Host, scala.caps.Pure:
   // Says goodbye, stops what the node does of its own, and closes every link.
   private[pyrocosm] def stop()(using Monitor): Unit =
     if !stopping.swap(true) then
-      broadcast(Envelope(node.key, sequence.incrementAndGet(), now(), 0, Bus.Event.Left(node)), Unset)
+      broadcast
+        ( Envelope(node.key, sequence.incrementAndGet(), now(), 0, Bus.Event.Left(node)), Unset )
+
       halt()
       disconnect()
       mutex(tethers).each(_.close())
@@ -788,7 +802,8 @@ extends Tether.Host, scala.caps.Pure:
     Journal.log(Event.Connecting(machine, machine.portOr(swarmPort)))
 
     mitigate:
-      case Peer.Error(reason) => Swarm.Error(machine, failed(machine, Swarm.Error.Reason.Connection(reason)))
+      case Peer.Error(reason) =>
+        Swarm.Error(machine, failed(machine, Swarm.Error.Reason.Connection(reason)))
 
     . protect:
         Peer.connect[Data, Swarm.Reply](machine, Wire.tool, version, Wire.codec, swarmPort):
@@ -810,6 +825,7 @@ extends Tether.Host, scala.caps.Pure:
                   case pong: Wire.Pong => pong
                   case _: Wire         => answer()
                   case _               => Unset
+
                 case _ => Unset
 
             answer() match
@@ -827,7 +843,9 @@ extends Tether.Host, scala.caps.Pure:
 
     link(machine.name) match
       case tether: Tether =>
-        tether.ask(note).lay(abort(Swarm.Error(machine, failed(machine, Swarm.Error.Reason.Silent)))): (pong, elapsed) =>
+        def silent = abort(Swarm.Error(machine, failed(machine, Swarm.Error.Reason.Silent)))
+
+        tether.ask(note).lay(silent): (pong, elapsed) =>
           Swarm.Reply(pong.from, tether.release, elapsed)
 
       case _ =>

@@ -22,7 +22,6 @@
                                                                                                   */
 package pyrocosm
 
-
 // Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
 // definitions, since a wildcard import beats a package member declared in another file.
 import soundness.{Language as _, *}
@@ -77,8 +76,8 @@ object Presentable extends Presentable2:
     private def numeric(cells: List[List[Inline]]): Boolean =
       !cells.nil && cells.all:
         case Inline.Numeral(_, _) :: Nil => true
-        case Inline.Amount(_, _) :: Nil => true
-        case _                          => false
+        case Inline.Amount(_, _) :: Nil  => true
+        case _                           => false
 
     inline def tabulate[element <: Product: ProductReflection](list: List[element]): Block =
       val titles: List[Text] = contexts[element]() { [field] => context => label }.to[List]
@@ -87,13 +86,16 @@ object Presentable extends Presentable2:
         fields(element) { [field] => field => cell(contextual.exhibit(field)) }.to[List]
 
       val columns: List[Block.Column] = titles.indexed.map: (title, index) =>
-        val column = rows.map { (row: List[List[Inline]]) => row.at(index).or(Nil) }
+        val column = rows.map: (row: List[List[Inline]]) => row.at(index).or(Nil)
         val isNumeric = numeric(column)
         val alignment = if isNumeric then Block.Alignment.End else Block.Alignment.Start
         val sizing = if isNumeric then Block.Sizing.Rigid else Block.Sizing.Paragraph
         Block.Column(Inline.text(title), alignment, sizing, isNumeric)
 
-      Block.Table(columns, rows.map { (row: List[List[Inline]]) => Block.Row(row.map { (cell: List[Inline]) => Block.Cell(cell) }) })
+      val cells = rows.map: (row: List[List[Inline]]) =>
+        Block.Row(row.map { (cell: List[Inline]) => Block.Cell(cell) })
+
+      Block.Table(columns, cells)
 
   given inline: Inline is Presentable in Inline = identity(_)
   given block: Block is Presentable in Block = identity(_)
@@ -107,16 +109,17 @@ object Presentable extends Presentable2:
   // anonymous class: at an inline site the class form infers a capture variable for `Self` and
   // then fails the override check.
   inline given quantity: [units <: Measure] => Quantity[units] is Presentable in Inline =
-    phrase[Quantity[units]] { quantity => Inline.Amount.of(quantity) }
+    phrase[Quantity[units]]: quantity => Inline.Amount.of(quantity)
 
   // A list of case classes is a table, a column per field titled by the field's name, as
   // escritoire tabulates one. A column whose every cell is a figure or an amount is numeric.
   inline given table: [element <: Product: ProductReflection]
   =>  List[element] is Presentable in Block =
-    flow[List[element]] { list => Derivation.tabulate(list) }
+    flow[List[element]]: list => Derivation.tabulate(list)
 
   // A message's nested emphasis levels collapse to the model's single emphasis.
-  given message: Message is Presentable in Inline = message => Inline.Phrase(Inline.message(message))
+  given message: Message is Presentable in Inline =
+    message => Inline.Phrase(Inline.message(message))
 
   given error: Error is Presentable in Inline = error => message.exhibit(error.message)
 
@@ -173,20 +176,25 @@ object Presentable extends Presentable2:
       Block.Code(info.head.lay(Language.Plain)(Language(_)), lines(content))
 
     case Layout.BulletList(_, _, items*) =>
-      Block.Listing(false, List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) }))
+      val listed = List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) })
+      Block.Listing(false, listed)
 
     case Layout.OrderedList(_, _, _, _, items*) =>
-      Block.Listing(true, List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) }))
+      val listed = List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) })
+      Block.Listing(true, listed)
 
   private def lines(content: Text): List[Block.Line] =
-    content.cut(t"\n").map { (line: Text) => Block.Line(List(Token.plain(line))) }
+    content.cut(t"\n").map: (line: Text) => Block.Line(List(Token.plain(line)))
 
 trait Presentable2 extends Presentable3:
   // Below `table` in priority, so a list of products tabulates; above `derived`, so a list of
   // anything else lists rather than falling through to its `Showable`.
   given list: [element: Presentable as presentable] => List[element] is Presentable in Block =
     list =>
-      Block.Listing(false, list.map { (element: element) => Block.Item(Presentable.blocks(presentable.exhibit(element))) })
+      val items = list.map: (element: element) =>
+        Block.Item(Presentable.blocks(presentable.exhibit(element)))
+
+      Block.Listing(false, items)
 
 trait Presentable3:
   // The structural fallback applies to products only: a sum (a stdlib `List` or `Option`,
@@ -196,11 +204,14 @@ trait Presentable3:
   // derives one for any type, ending in a `toString` in curly quotes, so it is this fallback's
   // `toString` too.
   inline given derived: [value] => value is Presentable = scala.compiletime.summonFrom:
-    case given (`value` is Showable)       => Presentable.phrase[value] { value => Inline.Textual(value.show) }
-    case given ProductReflection[`value`]  => Presentable.Derivation.derived[value]
-    case given (`value` is Inspectable)    => Presentable.phrase[value] { value => Inline.Textual(value.inspect) }
+    case given (`value` is Showable) =>
+      Presentable.phrase[value]: value => Inline.Textual(value.show)
+
+    case given ProductReflection[`value`] => Presentable.Derivation.derived[value]
+
+    case given (`value` is Inspectable) =>
+      Presentable.phrase[value]: value => Inline.Textual(value.inspect)
 
 trait Presentable extends Typeclass.Pure, Formal:
   type Form <: Inline | Block
   def exhibit(value: Self): Form
-

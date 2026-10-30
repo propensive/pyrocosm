@@ -26,10 +26,10 @@ package pyrocosm
 // definition, since a wildcard import beats a package member declared in another file.
 import soundness.{Filter as _, *}
 
-import logging.silentLogging
 import codepages.utf8Codepage
 import environments.javaBaseEnvironment
 import errorDiagnostics.emptyDiagnostics
+import logging.silentLogging
 
 // Metadata attached to source states through git notes, for every Pyrocosm tool. Two families
 // of notes, all under `refs/notes/pyrocosm/`:
@@ -63,10 +63,14 @@ object Notes:
       case Diverged(remote: Text)
 
     given communicable: Reason is Communicable =
-      case Reason.BadRef(refspec)                => m"$refspec does not name a commit"
-      case Reason.GitFailed(exit, stderr)        => m"git exited with status $exit: $stderr"
-      case Reason.Undecodable(kind, fingerprint) => m"the $kind note on ${fingerprint.text} could not be decoded"
-      case Reason.Diverged(remote)               => m"the notes on $remote have diverged from the local notes"
+      case Reason.BadRef(refspec)         => m"$refspec does not name a commit"
+      case Reason.GitFailed(exit, stderr) => m"git exited with status $exit: $stderr"
+
+      case Reason.Undecodable(kind, fingerprint) =>
+        m"the $kind note on ${fingerprint.text} could not be decoded"
+
+      case Reason.Diverged(remote) =>
+        m"the notes on $remote have diverged from the local notes"
 
   case class Error(reason: Error.Reason)(using Diagnostics)
   extends fulminate.Error(m"the notes operation failed because $reason")
@@ -84,10 +88,11 @@ class Notes(root: Text):
 
     mitigate:
       case Exec.Error(_, _, stderr) => Notes.Error(GitFailed(-1, stderr.utf8))
+
     . protect:
       val job = Command((program :: arguments)*).fork[Text]()
       // A truncated write is a closed pipe: git has exited, and its status says why.
-      input.let { text => safely(job.stdin(Stream(text.bytestream))) }
+      input.let: text => safely(job.stdin(Stream(text.bytestream)))
       val output = job.await()
       val status = job.status()
       (status, output, job.errorText())
@@ -106,7 +111,9 @@ class Notes(root: Text):
 
   // A `git` command run against a throwaway index file. `env` sets the variable, since
   // guillotine has no per-command environment.
-  private def indexed(index: Text, input: Optional[Text])(arguments: List[Text]): Text raises Notes.Error =
+  private def indexed(index: Text, input: Optional[Text])(arguments: List[Text])
+  :   Text raises Notes.Error =
+
     // Two conses, not one chain: a chained `::` resolves to the underlying list's own.
     val command: List[Text] = t"git" :: arguments
     succeed(run(t"env", t"GIT_INDEX_FILE=$index" :: command, input))
@@ -127,14 +134,14 @@ class Notes(root: Text):
 
   private def hashes[hash](parse: Text => Optional[hash])(lines: List[Text]): List[hash] =
     def recur(lines: List[Text], done: List[hash]): List[hash] = lines match
-      case head :: tail => parse(head).lay(recur(tail, done)) { hash => recur(tail, hash :: done) }
+      case head :: tail => parse(head).lay(recur(tail, done)): hash => recur(tail, hash :: done)
       case _            => done.reverse
 
     recur(lines, Nil)
 
   def commit(refspec: Text): Commit raises Notes.Error =
     attempt(List(t"rev-parse", t"--verify", t"--quiet", t"$refspec^{commit}"))
-    . let { hash => Commit.parse(hash.trim) }
+    . let: hash => Commit.parse(hash.trim)
     . or(abort(Notes.Error(BadRef(refspec))))
 
   // The fingerprint of a commit under a filter: the commit's tree read into a throwaway index,
@@ -144,13 +151,16 @@ class Notes(root: Text):
     val listing = git(List(t"ls-tree", t"-r", t"-z", t"--name-only", commit.text))
     val excluded = listing.cut(nul).filter(_ != t"").filter(filter.excludes(_))
 
-    if excluded.nil then Fingerprint.unsafe(git(List(t"rev-parse", t"${commit.text}^{tree}")).trim) else
+    if excluded.nil
+    then Fingerprint.unsafe(git(List(t"rev-parse", t"${commit.text}^{tree}")).trim)
+    else
       val directory = java.nio.file.Files.createTempDirectory("pyrocosm-notes").nn
       val index = directory.resolve("index").nn.toString.tt
 
       try
         indexed(index, Unset)(List(t"read-tree", commit.text))
-        indexed(index, excluded.map(_ + nul).join)(List(t"update-index", t"--force-remove", t"-z", t"--stdin"))
+        val removal: Text = excluded.map(_ + nul).join
+        indexed(index, removal)(List(t"update-index", t"--force-remove", t"-z", t"--stdin"))
         Fingerprint.unsafe(indexed(index, Unset)(List(t"write-tree")).trim)
       finally
         java.nio.file.Files.deleteIfExists(directory.resolve("index").nn)
@@ -172,15 +182,18 @@ class Notes(root: Text):
   def read[value: Recordable as recordable](fingerprint: Fingerprint)
   :   Optional[value] raises Notes.Error =
 
-    attempt(List(t"notes", t"--ref=${Notes.ref(recordable.kind)}", t"show", fingerprint.text)).let: body =>
+    val ref: Text = t"--ref=${Notes.ref(recordable.kind)}"
+
+    attempt(List(t"notes", ref, t"show", fingerprint.text)).let: body =>
       recordable.decode(stripped(body))
       . or(abort(Notes.Error(Undecodable(recordable.kind, fingerprint))))
 
   def write[value: Recordable as recordable](fingerprint: Fingerprint, value: value)
   :   Unit raises Notes.Error =
 
-    feed(recordable.encode(value))
-      (List(t"notes", t"--ref=${Notes.ref(recordable.kind)}", t"add", t"-f", t"-F", t"-", fingerprint.text))
+    val ref: Text = t"--ref=${Notes.ref(recordable.kind)}"
+    val arguments: List[Text] = List(t"notes", ref, t"add", t"-f", t"-F", t"-", fingerprint.text)
+    feed(recordable.encode(value))(arguments)
 
   // The reverse index: every commit whose index note names the fingerprint. A scan of the index
   // ref, so linear in the number of annotated commits.
@@ -191,6 +204,7 @@ class Notes(root: Text):
         line.cut(t" ") match
           case _ :: target :: _ => target
           case _                => t""
+
       hashes(Commit.parse)(targets).filter(fingerprints(_).has(fingerprint))
 
   // The commits reachable from a refspec, newest first, up to a limit: the axis of a trend.
@@ -201,10 +215,15 @@ class Notes(root: Text):
   // local one is `Diverged`; an absent remote ref is nothing to fetch.
   def fetch(remote: Text = t"origin"): Unit raises Notes.Error =
     run(t"git", List(t"fetch", remote, Notes.refspec), Unset) match
-      case (0, _, _)                                              => ()
-      case (_, _, error) if error.contains(t"non-fast-forward")   => abort(Notes.Error(Diverged(remote)))
-      case (_, _, error) if error.contains(t"rejected")           => abort(Notes.Error(Diverged(remote)))
-      case (status, _, error)                                     => abort(Notes.Error(GitFailed(status, error.trim)))
+      case (0, _, _) => ()
+
+      case (_, _, error) if error.contains(t"non-fast-forward") =>
+        abort(Notes.Error(Diverged(remote)))
+
+      case (_, _, error) if error.contains(t"rejected") => abort(Notes.Error(Diverged(remote)))
+
+      case (status, _, error) =>
+        abort(Notes.Error(GitFailed(status, error.trim)))
 
   // Fetches, then pushes the notes refs; a push git rejects is `Diverged`, for the caller to
   // reconcile (`git notes merge`) before trying again.
@@ -214,4 +233,6 @@ class Notes(root: Text):
     run(t"git", List(t"push", remote, Notes.refspec), Unset) match
       case (0, _, _)                                    => ()
       case (_, _, error) if error.contains(t"rejected") => abort(Notes.Error(Diverged(remote)))
-      case (status, _, error)                           => abort(Notes.Error(GitFailed(status, error.trim)))
+
+      case (status, _, error) =>
+        abort(Notes.Error(GitFailed(status, error.trim)))

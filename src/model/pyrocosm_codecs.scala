@@ -34,8 +34,7 @@ import stratiform.TelSchematic
 // and `Block` codecs in the companions resolve them lexically, so a consumer never needs to.
 
 given keypressTelEncodable: Keypress is Tel.Encodable =
-  Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar): keypress =>
-    Tel.scalar(keypress.show)
+  Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar): keypress => Tel.scalar(keypress.show)
 
 // The decoders are vouched pure, as flame anchors its wire codecs: a derived decoder demands pure
 // field instances, and one that raises `Tel.Error` through a captured tactic is not. Each is
@@ -68,14 +67,25 @@ given mathTelDecodable: archimedes.Math is Tel.Decodable =
 // token, cell or phrase could never be read back.
 given textTelEncodable: Text is Tel.Encodable =
   Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar): text =>
-    if text == t"" then Tel.make(Tel.Compound(t"", Array.empty, Unset, Array.empty)) else Tel.scalar(text)
+    if text == t"" then Tel.make(Tel.Compound(t"", Array.empty, Unset, Array.empty))
+    else Tel.scalar(text)
 
 // The primitives, laundered the same way (their declared types name their tactic capture).
-given textTelDecodable: Text is Tel.Decodable = unsafely(caps.unsafe.unsafeAssumePure(Tel.textDecodable))
-given intTelDecodable: Int is Tel.Decodable = unsafely(caps.unsafe.unsafeAssumePure(Tel.intDecodable))
-given longTelDecodable: Long is Tel.Decodable = unsafely(caps.unsafe.unsafeAssumePure(Tel.longDecodable))
-given doubleTelDecodable: Double is Tel.Decodable = unsafely(caps.unsafe.unsafeAssumePure(Tel.doubleDecodable))
-given booleanTelDecodable: Boolean is Tel.Decodable = unsafely(caps.unsafe.unsafeAssumePure(Tel.booleanDecodable))
+
+given textTelDecodable: Text is Tel.Decodable =
+  unsafely(caps.unsafe.unsafeAssumePure(Tel.textDecodable))
+
+given intTelDecodable: Int is Tel.Decodable =
+  unsafely(caps.unsafe.unsafeAssumePure(Tel.intDecodable))
+
+given longTelDecodable: Long is Tel.Decodable =
+  unsafely(caps.unsafe.unsafeAssumePure(Tel.longDecodable))
+
+given doubleTelDecodable: Double is Tel.Decodable =
+  unsafely(caps.unsafe.unsafeAssumePure(Tel.doubleDecodable))
+
+given booleanTelDecodable: Boolean is Tel.Decodable =
+  unsafely(caps.unsafe.unsafeAssumePure(Tel.booleanDecodable))
 
 // The derived codecs for the model types, aliased by their companions (see the note in
 // `Inline`). The leaf codecs above are found lexically from here, and the recursion through
@@ -117,7 +127,7 @@ given figureTelDecodable: Figure is Tel.Decodable =
 // derived decoder for such an enum once failed under capture checking — Soundness #2152 fixed
 // that — but the form is the reason these remain.)
 private def scalar[value](encode: value -> Text): value is Tel.Encodable =
-  Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar) { value => Tel.scalar(encode(value)) }
+  Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar): value => Tel.scalar(encode(value))
 
 private def parsed[value](expected: Text)(decode: Text -> Optional[value]): value is Tel.Decodable =
   unsafely:
@@ -170,7 +180,8 @@ given chartKindTelSchematic: Block.Chart.Kind is TelSchematic over Tels.Type = s
 given sizingTelSchematic: Block.Sizing is TelSchematic over Tels.Type = scalarSchema
 
 // A figure is written as its snapshot, so its schema is the snapshot's, in every part.
-given figureTelSchematic: Figure is TelSchematic over Tels.Type = forwarded(Codecs.snapshotSchematic)
+given figureTelSchematic: Figure is TelSchematic over Tels.Type =
+  forwarded(Codecs.snapshotSchematic)
 
 // The model's sums, each with the schema stratiform derives. The derivations are recursive
 // through these givens, so each defers to its derivation, made the first time it is asked for.
@@ -222,7 +233,6 @@ private def forwarded[value, other](derived: => other is TelSchematic over Tels.
       override def rootLayers(naming: TelSchematic.Naming): List[Tels.Layer] =
         inner.rootLayers(naming)
 
-
 given sideTelEncodable: Block.Side is Tel.Encodable = scalar(kebab)
 given sideTelDecodable: Block.Side is Tel.Decodable = parsed("side")(byName(Block.Side.values))
 given toneTelEncodable: Tone is Tel.Encodable = scalar(kebab)
@@ -232,7 +242,10 @@ given glyphTelDecodable: Glyph is Tel.Decodable = parsed("glyph")(byName(Glyph.v
 given standingTelEncodable: Standing is Tel.Encodable = scalar(kebab)
 given standingTelDecodable: Standing is Tel.Decodable = parsed("standing")(byName(Standing.values))
 given accentTelEncodable: Token.Accent is Tel.Encodable = scalar(kebab)
-given accentTelDecodable: Token.Accent is Tel.Decodable = parsed("accent")(byName(Token.Accent.values))
+
+given accentTelDecodable: Token.Accent is Tel.Decodable =
+  parsed("accent")(byName(Token.Accent.values))
+
 given roleTelEncodable: Token.Role is Tel.Encodable = scalar(kebab)
 given roleTelDecodable: Token.Role is Tel.Decodable = parsed("role")(byName(Token.Role.values))
 given alignmentTelEncodable: Block.Alignment is Tel.Encodable = scalar(kebab)

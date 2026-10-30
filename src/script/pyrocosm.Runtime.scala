@@ -27,20 +27,6 @@ import anticipation.*
 import turbulence.*
 import vacuous.*
 
-// What a script receives from the tool that runs it (lira's fever.md §6a): its arguments, the
-// environment it was invoked in, the directory it was invoked from, and its standard streams. A
-// script's entry point is `def main(using Runtime): Unit`, and everything it would otherwise
-// take from ambient process state comes through this one capability — so the same script runs
-// unchanged in a fresh JVM, in a tool's resident daemon (whose own streams, environment and
-// directory are not the user's), or on another machine.
-//
-// A `Runtime` IS a `Stdio`, an `Environment` and a `WorkingDirectory` — the three have no member
-// in common — exactly as exoskeleton's `Invocation` is a `Stdio`: a body with a `Runtime` in
-// scope needs no other given for `Out.println`, `Environment.variable` or a relative path, and
-// no import of any given at all, which is what makes a one-line script possible.
-trait Runtime extends Stdio, Environment, WorkingDirectory:
-  def arguments: List[Text]
-
 object Runtime:
   def apply
     ( arguments:        List[Text],
@@ -65,3 +51,17 @@ object Runtime:
     def variable(name: Text): Optional[Text] = environment.variable(name)
     override def entries: Optional[Map[Text, Text]] = environment.entries
     def directory(): Text = workingDirectory.directory()
+
+// What a script receives from the tool that runs it (lira's fever.md §6a): its arguments, the
+// environment it was invoked in, the directory it was invoked from, and its standard streams. A
+// script's entry point is `def main(using Runtime): Unit`, and everything it would otherwise
+// take from ambient process state comes through this one capability — so the same script runs
+// unchanged in a fresh JVM, in a tool's resident daemon (whose own streams, environment and
+// directory are not the user's), or on another machine.
+//
+// A `Runtime` IS a `Stdio`, an `Environment` and a `WorkingDirectory` — the three have no member
+// in common — exactly as exoskeleton's `Invocation` is a `Stdio`: a body with a `Runtime` in
+// scope needs no other given for `Out.println`, `Environment.variable` or a relative path, and
+// no import of any given at all, which is what makes a one-line script possible.
+trait Runtime extends Stdio, Environment, WorkingDirectory:
+  def arguments: List[Text]

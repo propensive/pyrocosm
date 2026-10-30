@@ -26,7 +26,7 @@ import scala.collection.concurrent.TrieMap
 
 // Excluded from the umbrella: `Control`, `Origin` and `Service`, which would outrank this
 // package's own definitions.
-import soundness.{Control as _, Origin as _, Service as _, *}
+import soundness.{Service as _, *}
 
 import codepages.utf8Codepage
 import dynamicAccess.dynamicJson
@@ -46,14 +46,28 @@ object Aggregator:
   val protocol: Text = t"2025-06-18"
 
   // A JSON-RPC request, and the two answers.
-  case class Rpc(jsonrpc: Text = t"2.0", id: Optional[Json] = Unset, method: Text, params: Optional[Json] = Unset)
+  case class Rpc
+    ( jsonrpc: Text = t"2.0",
+      id:      Optional[Json] = Unset,
+      method:  Text,
+      params:  Optional[Json] = Unset )
+
   case class Result(jsonrpc: Text, id: Optional[Json], result: Json)
   case class Failure(jsonrpc: Text, id: Optional[Json], error: Fault)
   case class Fault(code: Int, message: Text)
 
   // What `initialize` answers with.
-  case class Initialization(protocolVersion: Text, capabilities: Capabilities, serverInfo: Implementation, instructions: Text)
-  case class Capabilities(tools: Listing = Listing(), prompts: Listing = Listing(), resources: Subscription = Subscription())
+  case class Initialization
+    ( protocolVersion: Text,
+      capabilities:    Capabilities,
+      serverInfo:      Implementation,
+      instructions:    Text )
+
+  case class Capabilities
+    ( tools:     Listing      = Listing(),
+      prompts:   Listing      = Listing(),
+      resources: Subscription = Subscription() )
+
   case class Listing(listChanged: Boolean = false)
   case class Subscription(subscribe: Boolean = false, listChanged: Boolean = false)
   case class Implementation(name: Text, version: Text, title: Text)
@@ -84,20 +98,27 @@ class Aggregator(hub: Hub, version: Text):
 
   // The tools serving a front-end on this machine, and the port of each.
   private def tools: List[(Text, Int)] =
-    hub.nodes().filter { advert => advert.node.shares(hub.node) && advert.node.tool != Wire.tool }.bind: advert =>
-      advert.services.seek(_.name == t"serve").lay(Nil: List[(Text, Int)]) { service => List((advert.node.tool, service.port)) }
+    hub.nodes()
+    . filter: advert => advert.node.shares(hub.node) && advert.node.tool != Wire.tool
+    . bind: advert =>
+        advert.services.seek(_.name == t"serve").lay(Nil: List[(Text, Int)]): service =>
+          List((advert.node.tool, service.port))
 
   private def header(request: Http.Request, key: Text): Optional[Text] =
     request.textHeaders.seek(_.key.lower == key).let(_.value)
 
   private def json(status: Http.Status, session: Optional[Text], body: Text): Http.Response =
     val headers: List[Http.Header] =
-      Http.Header(t"content-type", t"application/json") :: session.lay(Nil: List[Http.Header]) { id => List(Http.Header(sessionHeader, id)) }
+      Http.Header(t"content-type", t"application/json") ::
+        session.lay(Nil: List[Http.Header]): id => List(Http.Header(sessionHeader, id))
 
     status(headers, Http.Body.Fixed(body.in[Data]))
 
-  private def result(id: Optional[Json], result: Json): Text = Result(t"2.0", id, result).in[Json].show
-  private def failure(id: Optional[Json], code: Int, message: Text): Text = Failure(t"2.0", id, Fault(code, message)).in[Json].show
+  private def result(id: Optional[Json], result: Json): Text =
+    Result(t"2.0", id, result).in[Json].show
+
+  private def failure(id: Optional[Json], code: Int, message: Text): Text =
+    Failure(t"2.0", id, Fault(code, message)).in[Json].show
 
   // Answers a request for `/mcp`; what goes wrong here is said in the answer, since a handler
   // which throws closes the connection with nothing said.
@@ -114,11 +135,15 @@ class Aggregator(hub: Hub, version: Text):
 
         safely(body.read[Json].as[Rpc]) match
           case rpc: Rpc => post(session, rpc, body)
-          case _        => json(Http.Ok, session, failure(Unset, ParseError, t"The request was not a JSON-RPC request"))
+
+          case _ =>
+            val message: Text = t"The request was not a JSON-RPC request"
+            json(Http.Ok, session, failure(Unset, ParseError, message))
 
       case Http.Delete =>
         session.let(sessions.remove(_).getOrElse(Unset)).or(Unset).let: upstreams =>
-          upstreams.foreach { (tool, id) => tools.seek(_(0) == tool).let { (_, port) => send(port, Http.Delete, id, Unset) } }
+          upstreams.foreach: (tool, id) =>
+            tools.seek(_(0) == tool).let: (_, port) => send(port, Http.Delete, id, Unset)
 
         Http.Response(Http.NoContent)()
 
@@ -132,12 +157,19 @@ class Aggregator(hub: Hub, version: Text):
     case t"initialize" =>
       val id: Text = Uuid().show
       sessions(id) = TrieMap()
-      val protocol: Text = rpc.params.let { params => safely(params.as[Versioned]).let(_.protocolVersion).or(Unset) }.or(Aggregator.protocol)
+
+      val protocol: Text =
+        rpc.params.let: params => safely(params.as[Versioned]).let(_.protocolVersion).or(Unset)
+        . or(Aggregator.protocol)
+
+      val instructions: Text =
+        t"Every Pyrocosm tool on this machine, through its hub: a tool or prompt is named by its " +
+          t"tool and its own name, as fume_run."
+
+      val server: Implementation = Implementation(t"pyrocosm", version, t"Pyrocosm")
 
       val initialization: Initialization =
-        Initialization
-          ( protocol, Capabilities(), Implementation(t"pyrocosm", version, t"Pyrocosm"),
-            t"Every Pyrocosm tool on this machine, through its hub: a tool or prompt is named by its tool and its own name, as fume_run." )
+        Initialization(protocol, Capabilities(), server, instructions)
 
       json(Http.Ok, id, result(rpc.id, initialization.in[Json]))
 
@@ -148,16 +180,22 @@ class Aggregator(hub: Hub, version: Text):
       json(Http.Ok, session, result(rpc.id, t"{}".read[Json]))
 
     case t"tools/list" =>
-      json(Http.Ok, session, result(rpc.id, Tools(merged(session, body, t"tools", renamed = true)).in[Json]))
+      val listing: Tools = Tools(merged(session, body, t"tools", renamed = true))
+      json(Http.Ok, session, result(rpc.id, listing.in[Json]))
 
     case t"prompts/list" =>
-      json(Http.Ok, session, result(rpc.id, Prompts(merged(session, body, t"prompts", renamed = true)).in[Json]))
+      val listing: Prompts = Prompts(merged(session, body, t"prompts", renamed = true))
+      json(Http.Ok, session, result(rpc.id, listing.in[Json]))
 
     case t"resources/list" =>
-      json(Http.Ok, session, result(rpc.id, Resources(merged(session, body, t"resources", renamed = false)).in[Json]))
+      val listing: Resources = Resources(merged(session, body, t"resources", renamed = false))
+      json(Http.Ok, session, result(rpc.id, listing.in[Json]))
 
     case t"resources/templates/list" =>
-      json(Http.Ok, session, result(rpc.id, Templates(merged(session, body, t"resourceTemplates", renamed = false)).in[Json]))
+      val listing: Templates =
+        Templates(merged(session, body, t"resourceTemplates", renamed = false))
+
+      json(Http.Ok, session, result(rpc.id, listing.in[Json]))
 
     case t"tools/call" | t"prompts/get" =>
       rpc.params.let { params => safely(params.as[Named]) }.or(Unset) match
@@ -165,9 +203,11 @@ class Aggregator(hub: Hub, version: Text):
           name.cut(t"_", 2) match
             case List(tool, rest) if tools.exists(_(0) == tool) =>
               val port: Int = tools.seek(_(0) == tool).let(_(1)).or(0)
-              val renamed: Text = rpc.copy(params = rpc.params.let(_.updateDynamic("name")(rest))).in[Json].show
+              val params = rpc.params.let(_.updateDynamic("name")(rest))
+              val renamed: Text = rpc.copy(params = params).in[Json].show
+              val silent: Text = failure(rpc.id, InternalError, t"$tool did not answer")
 
-              call(session, tool, port, renamed).lay(json(Http.Ok, session, failure(rpc.id, InternalError, t"$tool did not answer"))): text =>
+              call(session, tool, port, renamed).lay(json(Http.Ok, session, silent)): text =>
                 json(Http.Ok, session, text)
 
             case _ =>
@@ -178,12 +218,14 @@ class Aggregator(hub: Hub, version: Text):
 
     case t"resources/read" =>
       // Whichever tool answers without an error has the resource.
-      val answers: List[Text] = tools.bind { (tool, port) => call(session, tool, port, body).let(List(_)).or(Nil) }
+      val answers: List[Text] =
+        tools.bind: (tool, port) => call(session, tool, port, body).let(List(_)).or(Nil)
 
       def ok(text: Text): Boolean = safely(text.read[Json].error).absent
 
-      answers.seek(ok(_)).lay(json(Http.Ok, session, failure(rpc.id, MethodNotFound, t"No tool has that resource"))): text =>
-        json(Http.Ok, session, text)
+      val absent: Text = failure(rpc.id, MethodNotFound, t"No tool has that resource")
+
+      answers.seek(ok(_)).lay(json(Http.Ok, session, absent)): text => json(Http.Ok, session, text)
 
     case other =>
       json(Http.Ok, session, failure(rpc.id, MethodNotFound, t"The method $other is not known"))
@@ -196,22 +238,30 @@ class Aggregator(hub: Hub, version: Text):
         val entries: List[Json] = safely(text.read[Json].result.apply(key).as[List[Json]]).or(Nil)
 
         entries.map: (entry: Json) =>
-          if renamed then safely(entry.updateDynamic("name")(t"${tool}_${entry.name.as[Text]}")).or(entry) else entry
+          if renamed
+          then safely(entry.updateDynamic("name")(t"${tool}_${entry.name.as[Text]}")).or(entry)
+          else entry
 
   // Posts `body` to the tool's `/mcp`, under this client's session with the tool, opened first
   // if there is none: the tool's answer, or nothing if the tool does not serve MCP.
   private def call(session: Optional[Text], tool: Text, port: Int, body: Text): Optional[Text] =
     val upstreams: TrieMap[Text, Text] = session.let(sessions.getOrElse(_, TrieMap())).or(TrieMap())
 
-    val id: Optional[Text] = upstreams.get(tool).map(Optional(_)).getOrElse(initialise(port)).tap: id =>
-      id.let { id => upstreams(tool) = id }
+    val id: Optional[Text] =
+      upstreams.get(tool).map(Optional(_)).getOrElse(initialise(port)).tap: id =>
+        id.let: id => upstreams(tool) = id
 
     id.let(send(port, Http.Post, _, body))
 
   // Opens a session with a tool: the id it gives, or nothing if it does not serve MCP.
   private def initialise(port: Int): Optional[Text] =
+    val client: Text = t"""{"name":"pyrocosm","version":"$version"}"""
+
+    val parameters: Text =
+      t"""{"protocolVersion":"${Aggregator.protocol}","capabilities":{},"clientInfo":$client}"""
+
     val initialize: Text =
-      Rpc(id = 0.in[Json], method = t"initialize", params = t"""{"protocolVersion":"${Aggregator.protocol}","capabilities":{},"clientInfo":{"name":"pyrocosm","version":"$version"}}""".read[Json]).in[Json].show
+      Rpc(id = 0.in[Json], method = t"initialize", params = parameters.read[Json]).in[Json].show
 
     val response: Optional[Http.Response] = exchange(port, Http.Post, headers(Unset), initialize)
 
@@ -222,16 +272,25 @@ class Aggregator(hub: Hub, version: Text):
           id
 
   private def headers(session: Optional[Text]): List[Http.Header] =
-    List(Http.Header(t"content-type", t"application/json"), Http.Header(t"accept", t"application/json, text/event-stream"))
-    + session.lay(Nil: List[Http.Header]) { id => List(Http.Header(sessionHeader, id)) }
+    val accept: Text = t"application/json, text/event-stream"
+
+    List(Http.Header(t"content-type", t"application/json"), Http.Header(t"accept", accept)) +
+      session.lay(Nil: List[Http.Header]): id => List(Http.Header(sessionHeader, id))
 
   // One exchange with a tool's `/mcp`.
-  private def exchange(port: Int, method: Http.Method, headers: List[Http.Header], body: Optional[Text])
+  private def exchange
+    ( port: Int, method: Http.Method, headers: List[Http.Header], body: Optional[Text] )
   :   Optional[Http.Response] =
 
     val data: Data = body.let(_.in[Data]).or(Data())
-    Loopback.exchange(port, Http.Request(method, 1.1, Loopback.loopback, t"/mcp", headers, () => Stream(data)))
+
+    val request: Http.Request =
+      Http.Request(method, 1.1, Loopback.loopback, t"/mcp", headers, () => Stream(data))
+
+    Loopback.exchange(port, request)
 
   // One request to a tool's `/mcp` under a session: the body of its answer, or nothing.
-  private def send(port: Int, method: Http.Method, session: Text, body: Optional[Text]): Optional[Text] =
+  private def send(port: Int, method: Http.Method, session: Text, body: Optional[Text])
+  :   Optional[Text] =
+
     exchange(port, method, headers(session), body).let(Loopback.text(_))
