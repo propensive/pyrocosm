@@ -1412,8 +1412,12 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     val imported: Purview = Purview(List(Purview.Entry(t"/api/com.example", t"com.example")))
 
+    // What remains of the name hints at the whole of it.
     val elided: List[Token] =
-      List(segment(t"Foo", Token.Accent.Typal, t"/api/com.example.Foo", false), Token.plain(t" "))
+      List
+        ( segment(t"Foo", Token.Accent.Typal, t"/api/com.example.Foo", false)
+          . copy(hint = t"com.example.Foo"),
+          Token.plain(t" ") )
 
     test(m"an empty purview elides nothing"):
       Purview().elide(qualifiedName)
@@ -1461,7 +1465,12 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"the web renders a qualified name short under a purview which imports its package"):
       HtmlRenderer(imported).tokens(qualifiedName).show
 
-    . assert(_ == link(t"/api/com.example.Foo", t"typal", t"Foo") + space)
+    . assert: html =>
+        val anchor: Text =
+          t"""<a href="/api/com.example.Foo" class="pyro-accent-typal pyro-locate" """ +
+            t"""title="com.example.Foo">Foo</a>"""
+
+        html == anchor + space
 
     val importButton: Text =
       t"""<button type="button" class="pyro-import pyro-active" data-path="/api/com.example" """ +
@@ -1555,6 +1564,19 @@ object Tests extends Suite(m"Pyrocosm tests"):
       html.block(rich).show.contains(t"""<tr id="length">""")
 
     . assert(_ == true)
+
+    test(m"a row's note is a row beneath it, one cell across the columns"):
+      val columns: List[Block.Column] =
+        List(Block.Column(Inline.text(t"a")), Block.Column(Inline.text(t"b")))
+
+      val row: Block.Row =
+        Block.Row(List(Block.Cell(Inline.text(t"1"))), note = Inline.text(t"one"))
+
+      html.block(Block.Table(columns, List(row))).show
+
+    . assert: html =>
+        html.contains(t"""<tr class="pyro-noted">""") &&
+          html.contains(t"""<tr class="pyro-note-row"><td colspan="2">one</td></tr>""")
 
     test(m"an item with a destination leads from its paragraph"):
       val two = Inline.Destination.Local(t"/two")
@@ -2404,6 +2426,31 @@ object Tests extends Suite(m"Pyrocosm tests"):
         result ==
           ( Control.Field.Splice(5, 0, t"l"), Control.Field.Splice(5, 1, t""),
             Control.Field.Splice(2, 1, t"-"), Control.Field.Splice(4, 0, t"") )
+
+    // ── Unclosed strings ──────────────────────────────────────────────────────────────────
+
+    def string(text: Text): Token = Token(text, Token.Accent.String)
+
+    test(m"an unclosed string is a string to the end of its line, and the next line is not"):
+      val tokens: List[Token] =
+        List(term(t"a"), Token.plain(t" "), sym(t"\"ab"), term(t"c"), Token.plain(t"\nd"))
+
+      Token.closeStrings(tokens)
+
+    . assert: result =>
+        result ==
+          List(term(t"a"), Token.plain(t" "), string(t"\"ab"), string(t"c"), Token.plain(t"\nd"))
+
+    test(m"an unclosed triple-quoted string is a string to the end of the input"):
+      Token.closeStrings(List(Token.plain(t"\"\"\"ab\ncd"), term(t"e")))
+
+    . assert(_ == List(string(t"\"\"\"ab\ncd"), string(t"e")))
+
+    test(m"a closed string is left as it is"):
+      val tokens: List[Token] = List(string(t"\"ab\""), term(t"c"))
+      Token.closeStrings(tokens)
+
+    . assert(_ == List(string(t"\"ab\""), term(t"c")))
 
     test(m"an identifier character typed at the end of a term extends it"):
       Token.rebase(List(term(t"pri")), Control.Field.Splice(3, 0, t"n"))

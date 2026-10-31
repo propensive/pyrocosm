@@ -40,6 +40,41 @@ object Token:
 
   def plain(text: Text): Token = Token(text, Accent.Unparsed)
 
+  // The tokens with every unclosed string literal accented as a string. A highlighter reports
+  // a literal that is still being typed as whatever its scanner recovers with — an error, a
+  // separator, or plain text to the end of the input — so the quote and what follows it would
+  // change colour as the closing quote is typed. From the first token not already a string
+  // which opens a literal, every token to the end of the line is a string; after `"""`, every
+  // token to the end of the input. A token which spans the line's end is split at it.
+  def closeStrings(tokens: List[Token]): List[Token] =
+    def opens(token: Token): Boolean =
+      token.accent != Accent.String && token.text.starts(t"\"")
+
+    // `open` is whether a literal is open, and `multiline` whether it is a `"""` one.
+    def recur(tokens: List[Token], open: Boolean, multiline: Boolean): List[Token] =
+      tokens match
+        case token :: rest =>
+          if !open then
+            if !opens(token) then token :: recur(rest, false, false)
+            else recur(tokens, true, token.text.starts(t"\"\"\""))
+          else
+            val text: String = token.text.s
+            val break: Int = text.indexOf('\n')
+
+            if multiline || break < 0
+            then token.copy(accent = Accent.String) :: recur(rest, true, multiline)
+            else
+              val string: Token =
+                token.copy(text = text.substring(0, break).nn.tt, accent = Accent.String)
+
+              val after: Token = token.copy(text = text.substring(break).nn.tt)
+              val kept: List[Token] = if string.text == t"" then Nil else List(string)
+              kept + (after :: recur(rest, false, false))
+
+        case _ => Nil
+
+    recur(tokens, false, false)
+
   // The one edit that turns `before` into `after`: the longest common prefix and suffix are
   // kept, and what lies between them is the splice. One keystroke, paste or recall is one.
   def splice(before: Text, after: Text): Control.Field.Splice =
@@ -159,13 +194,16 @@ object Token:
 // renderer without links shows it as any other token. A `chained` token continues the
 // qualified name the tokens before it began — `.` and `example` and `.` and `Foo`, after
 // `com` — so that a renderer can show each segment as a link of its own and the name up to it
-// as one thing, as `com.example` is when `example` is pointed at.
+// as one thing, as `com.example` is when `example` is pointed at. A `hint` is what a token
+// stands for in full, shown on demand — the qualified name a shortened one was shortened
+// from — where the medium has a tooltip.
 case class Token
   ( text:    Text,
     accent:  Token.Accent,
     role:    Optional[Token.Role]         = Unset,
     link:    Optional[Inline.Destination] = Unset,
-    chained: Boolean                      = false )
+    chained: Boolean                      = false,
+    hint:    Optional[Text]               = Unset )
 
 object Language:
   val Scala: Language = Language("scala")

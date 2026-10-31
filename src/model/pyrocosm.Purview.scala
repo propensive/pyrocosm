@@ -76,8 +76,11 @@ case class Purview(imports: List[Purview.Entry] = Nil, bookmarks: List[Purview.E
         tokens.indexed.each: (token: Token, index: Ordinal) =>
           if token.link.present && index.n0 < last && imported(token) then cut = index.n0
 
+        // What remains begins a run of its own, and its first token hints at the whole name,
+        // so that a reader can see what was elided.
         val kept: List[Token] =
           if cut < 0 then tokens else
+            val whole: Text = tokens.map(_.text).join
             var skipping: Boolean = true
             var first: Boolean = true
 
@@ -88,7 +91,7 @@ case class Purview(imports: List[Purview.Entry] = Nil, bookmarks: List[Purview.E
 
                 if first then
                   first = false
-                  List(token.copy(chained = false))
+                  List(token.copy(chained = false, hint = whole))
                 else
                   List(token)
 

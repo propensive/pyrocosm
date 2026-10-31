@@ -56,8 +56,17 @@ private def noteStyle(importance: harlequin.Diagnostic.Importance): Block.Note.S
     case harlequin.Diagnostic.Importance.Info    => Block.Note.Style.Highlight
 
 extension (code: SourceCode)
+  // The lines' tokens, with an unclosed string accented as one to the end of its line, or of
+  // the source after `"""`: the scanner recovers from one as a separator or plain text, which
+  // would show a string being typed in another colour until its closing quote.
   def modelLines: List[Block.Line] =
-    code.lines.to[List].map: (line: List[harlequin.Token]) => Block.Line(line.map(_.model))
+    val lines: List[List[Token]] =
+      code.lines.to[List].map: (line: List[harlequin.Token]) => line.map(_.model)
+
+    val joined: List[Token] = lines.indexed.bind: (line: List[Token], index: Ordinal) =>
+      if index.n0 == 0 then line else Token.plain(t"\n") :: line
+
+    Block.Line.split(Token.closeStrings(joined))
 
   // The model's language for the language that highlighted the source.
   def modelLanguage: Language = code.language match
