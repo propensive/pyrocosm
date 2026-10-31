@@ -495,6 +495,8 @@
     var selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
+    // The block caret follows a caret moved by the script as it does one moved by the reader.
+    drawCaret(editor);
   }
 
   // ── The block caret ──────────────────────────────────────────────────────────────────────
@@ -814,6 +816,9 @@
     recalls[editor.id] = historyOf(editor).length + (text === "" ? 0 : 1);
     clearSuggestion(editor);
     editor.textContent = "";
+    // The caret goes to the start of the blank field: the text it stood in has gone, and the
+    // block drawn over it would otherwise stay where it was.
+    placeCaret(editor, 0);
     emptiness(editor);
     var version = record(editor);
     send({ kind: "submit", id: editor.id, text: text, caret: 0, index: 0, version: version });
