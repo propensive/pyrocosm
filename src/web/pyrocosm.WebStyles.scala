@@ -501,7 +501,10 @@ object WebStyles:
         """ +
         css"""
           .pyro-solitary > code.pyro-code, .pyro-solitary > a > code.pyro-code,
-          .pyro-solitary > span > code.pyro-code, .pyro-solitary > a > span > code.pyro-code {
+          .pyro-solitary > span > code.pyro-code, .pyro-solitary > a > span > code.pyro-code,
+          .pyro-solitary > .pyro-node > summary > a > code.pyro-code,
+          .pyro-solitary > .pyro-node > summary > span > code.pyro-code,
+          .pyro-solitary > .pyro-node > summary > a > span > code.pyro-code {
             display: inline; line-height: inherit; background-color: transparent; border: 0;
             padding: 0
           }
