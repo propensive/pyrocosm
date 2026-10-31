@@ -144,17 +144,30 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
       accentClass(token.accent) :: extra
 
-    def plain: Html of Phrasing = Span(`class` = classes)(token.text)
+    // The hint is the element's title, which the browser shows as a tooltip.
+    val title: Text = token.hint.or(t"")
+
+    def plain: Html of Phrasing =
+      token.hint.lay(Span(`class` = classes)(token.text)): hint =>
+        Span(`class` = classes, title = hint)(token.text)
 
     token.link.lay[Html of Phrasing](plain): (link: Inline.Destination) =>
       link match
-        case Inline.Destination.External(url) => A(href = url, `class` = classes)(token.text)
+        case Inline.Destination.External(url) =>
+          if token.hint.absent then A(href = url, `class` = classes)(token.text)
+          else A(href = url, `class` = classes, title = title)(token.text)
 
         case Inline.Destination.Internal(action) =>
-          A(href = t"#", id = action.id, `class` = classes :+ cls(t"pyro-action"))(token.text)
+          val style = classes :+ cls(t"pyro-action")
+
+          if token.hint.absent then A(href = t"#", id = action.id, `class` = style)(token.text)
+          else A(href = t"#", id = action.id, `class` = style, title = title)(token.text)
 
         case local: Inline.Destination.Local =>
-          A(href = href(local), `class` = classes :+ cls(t"pyro-locate"))(token.text)
+          val style = classes :+ cls(t"pyro-locate")
+
+          if token.hint.absent then A(href = href(local), `class` = style)(token.text)
+          else A(href = href(local), `class` = style, title = title)(token.text)
 
   // The `href` of a local destination: its path under the prefix, and its fragment.
   private def href(local: Inline.Destination.Local): Text =
@@ -531,8 +544,12 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
         List(details)
 
-    node.action.lay(Li(content*)): action =>
-      Li(id = action.id, `class` = cls(t"pyro-action"))(content*)
+    // A label which is code alone is shown bare, as a cell's is: in a tree of names, a box
+    // around each says nothing.
+    val bare: List[Name[CssClass]] = solitaryClass(node.label)
+
+    node.action.lay(if bare.nil then Li(content*) else Li(`class` = bare)(content*)): action =>
+      Li(id = action.id, `class` = cls(t"pyro-action") :: bare)(content*)
 
   private def vertexLabel(vertex: Block.Vertex): Html of Phrasing =
     val label: Html of Phrasing =
@@ -903,21 +920,33 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
     val head = Thead(Tr(headings*))
 
-    val bodyRows = rows.map: (row: Block.Row) =>
+    // A row's note is a row of its own beneath it, one cell across every column, and the row
+    // above it loses its rule so that the two read as one.
+    val bodyRows = rows.bind: (row: Block.Row) =>
       val cells = columns.indexed.map: (column, index) =>
         val style: List[Name[CssClass]] = columnClasses(column)
 
         row.cells.at(index).lay(Td(`class` = style)(Html.Fragment[Phrasing]())): cell =>
           Td(`class` = style + solitaryClass(cell.content))(phrase(cell.content))
 
-      val classes: List[Name[CssClass]] =
+      val toned: List[Name[CssClass]] =
         row.tone.lay(Nil: List[Name[CssClass]]): tone => List(toneClass(tone))
+
+      val classes: List[Name[CssClass]] =
+        if row.note.nil then toned else toned :+ cls(t"pyro-noted")
 
       def plain: Html of "tr" =
         row.id.lay(Tr(`class` = classes)(cells*)): id => Tr(id = id, `class` = classes)(cells*)
 
-      row.action.lay(plain): action =>
+      val main: Html of "tr" = row.action.lay(plain): action =>
         Tr(id = action.id, `class` = cls(t"pyro-action") :: classes)(cells*)
+
+      if row.note.nil then List(main) else
+        val note: Html of "tr" =
+          Tr(`class` = cls(t"pyro-note-row") :: toned)
+            ( Td(colspan = columns.size)(phrase(row.note)) )
+
+        List(main, note)
 
     val body = Tbody(bodyRows*)
 

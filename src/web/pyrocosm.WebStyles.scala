@@ -79,7 +79,7 @@ object WebStyles:
 
       val rules: Text =
         t".$name { color: var(--pyro-accent-$lower) } " +
-          t".pyro-codeblock .$name { color: var(--pyro-code-accent-$lower) }"
+          t".pyro-codeblock .$name, .pyro-editor .$name { color: var(--pyro-code-accent-$lower) }"
 
       rules.read[Css]
 
@@ -483,15 +483,31 @@ object WebStyles:
         // others, mixed three parts in four with the surface it sits on, within a faint border, so
         // it reads as code without the block's dark ground. Code that is a whole paragraph or
         // cell is bare: a box around all of it marks nothing out.
+        //
+        // Inline code is an inline block with a line height of its own: as a plain inline,
+        // its text was painted up to a device pixel off the line's baseline, since each box's
+        // top is snapped to the pixel grid and the two fonts' ascents differ in their
+        // fractions, so a line's code sat a pixel high or low depending on where the line fell.
+        // An inline block is painted from its own snapped box, and at this line height its
+        // baseline lands with the prose's at every scale. Code alone in its cell, paragraph or
+        // label stays inline, since nothing sits beside it, and it may run to several lines.
         css"""
           code.pyro-code {
+            display: inline-block; line-height: 1.25;
             background-color: color-mix(in srgb, var(--pyro-inline-bg) 25%, var(--pyro-surface));
             border: 1px solid var(--pyro-inline-border); border-radius: var(--pyro-radius);
             padding: 0.05em 0.3em
           }
         """ +
         css"""
-          .pyro-solitary > code.pyro-code { background-color: transparent; border: 0; padding: 0 }
+          .pyro-solitary > code.pyro-code, .pyro-solitary > a > code.pyro-code,
+          .pyro-solitary > span > code.pyro-code, .pyro-solitary > a > span > code.pyro-code,
+          .pyro-solitary > .pyro-node > summary > a > code.pyro-code,
+          .pyro-solitary > .pyro-node > summary > span > code.pyro-code,
+          .pyro-solitary > .pyro-node > summary > a > span > code.pyro-code {
+            display: inline; line-height: inherit; background-color: transparent; border: 0;
+            padding: 0
+          }
         """ +
         css".pyro-reference { color: var(--pyro-reference) }" +
         css".pyro-figure { color: var(--pyro-figure); font-variant-numeric: tabular-nums }" +
@@ -657,6 +673,7 @@ object WebStyles:
         css"""
           .pyro-lineno {
             display: inline-block; user-select: none; color: var(--pyro-muted);
+            font-size: 0.75em; vertical-align: baseline;
             border-right: 1px solid color-mix(in srgb, var(--pyro-code-fg) 25%, transparent);
             padding-right: 0.75ch; margin-right: 1ch; text-align: right
           }
@@ -701,6 +718,15 @@ object WebStyles:
           .pyro-table {
             border-collapse: collapse; margin: 0 0 var(--pyro-space-6) 0; width: 100%;
             border-top: 2px solid var(--pyro-fg); border-bottom: 2px solid var(--pyro-fg)
+          }
+        """ +
+        // A row with a note loses its rule, which its note's row carries instead; the note is
+        // set small and muted, inset to the second column where there is one.
+        css"""
+          .pyro-table tr.pyro-noted > td { border-bottom: 0; padding-bottom: 0 }
+          .pyro-table tr.pyro-note-row > td {
+            padding-top: var(--pyro-space-1); color: var(--pyro-muted);
+            font-size: var(--pyro-text-small); line-height: 1.4
           }
         """ +
         css"""
@@ -802,19 +828,27 @@ object WebStyles:
           }
         """ +
         css".pyro-disclosure summary:hover::before { color: var(--pyro-tone-accent) }" +
-        // Each level of a tree indents by 1.5em: the marker's width and a little more.
+        // Each level of a tree indents by `--pyro-tree-step`, and the marker of a node which
+        // opens and closes sits within that step, hanging before its label: its own width
+        // (1.25em at 0.55em) and the margin after it fill the step exactly, so a leaf's label
+        // and a node's line up.
         css"""
           .pyro-tree, .pyro-tree ul {
-            list-style: none; padding-left: 0.25em; margin: 0;
+            --pyro-tree-step: 0.85em; list-style: none; padding-left: 0; margin: 0;
             border-left: 1px solid var(--pyro-border)
           }
         """ +
         css".pyro-tree { padding-left: 0; border-left: 0; margin: 0 0 var(--pyro-space-4) 0 }" +
-        css".pyro-tree li { padding-left: 1.25em }" +
+        css".pyro-tree li { padding-left: var(--pyro-tree-step) }" +
         css"""
           .pyro-node > summary { cursor: pointer; list-style: none; padding: var(--pyro-space-1) 0 }
         """ +
-        css".pyro-node > summary::before { margin-left: -3.182em }" +
+        css"""
+          .pyro-node > summary::before {
+            margin-left: calc(-1 * var(--pyro-tree-step) / 0.55);
+            margin-right: calc(var(--pyro-tree-step) / 0.55 - 1.25em)
+          }
+        """ +
         css"""
           .pyro-node > summary:hover { color: var(--pyro-tone-accent) }
           .pyro-node > summary:hover::before { color: var(--pyro-tone-accent) }
@@ -1077,6 +1111,14 @@ object WebStyles:
           }
         """ +
         css".pyro-controls > .pyro-field-group { flex: 1 1 100% }" +
+        // Leading controls head the panel, parted from the content beneath by the rule the
+        // trailing ones have above them.
+        css"""
+          .pyro-controls.pyro-leading {
+            margin-top: 0; padding-top: 0; border-top: 0; margin-bottom: var(--pyro-space-4);
+            padding-bottom: var(--pyro-space-4); border-bottom: 1px solid var(--pyro-border)
+          }
+        """ +
         css"""
           .pyro-panel-content:empty + .pyro-controls {
             margin-top: 0; padding-top: 0; border-top: 0
@@ -1169,13 +1211,34 @@ object WebStyles:
         """ +
         css".pyro-field::placeholder { color: var(--pyro-muted) }" +
         css".pyro-field-group { position: relative }" +
+        // A code field stands on the code ground, as a code block does, with the code accents
+        // (see `accent`); the browser's own caret is hidden, and the script draws a block one
+        // (`.pyro-caret`) the width of a character over the character at the caret, which
+        // inverts what it covers; it blinks, and goes when the field loses focus.
         css"""
           .pyro-editor {
             white-space: pre-wrap; word-break: break-word; min-height: 1.5em;
-            caret-color: var(--pyro-tone-accent)
+            background-color: var(--pyro-code-bg); color: var(--pyro-code-fg);
+            caret-color: transparent
           }
         """ +
-        css".pyro-suggestion { color: var(--pyro-muted) }" +
+        css"""
+          .pyro-caret {
+            position: absolute; pointer-events: none; display: none; z-index: 2;
+            background-color: #fff; mix-blend-mode: difference;
+            animation: pyro-blink 0.55s step-end infinite alternate
+          }
+          .pyro-field-group.pyro-focused > .pyro-caret { display: block }
+        """ +
+        // Read from text, as the sweep's keyframes are: the validator takes rules, not an
+        // at-rule. Stepped at the end and alternating, the caret holds through each cycle and
+        // its opposite through the next: shown, then hidden, for 0.55s each.
+        t"@keyframes pyro-blink { from { opacity: 1 } to { opacity: 0 } }".read[Css] +
+        css"""
+          .pyro-suggestion, .pyro-field-group > .pyro-placeholder {
+            color: color-mix(in srgb, var(--pyro-code-fg) 55%, transparent)
+          }
+        """ +
         css"""
           .pyro-placeholder {
             display: none; position: absolute; top: var(--pyro-space-3); left: var(--pyro-space-3);

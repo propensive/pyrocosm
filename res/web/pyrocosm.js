@@ -497,6 +497,72 @@
     selection.addRange(range);
   }
 
+  // ── The block caret ──────────────────────────────────────────────────────────────────────
+  // The browser's caret is hidden, and a block the width of one character is drawn over the
+  // character at the caret, inverting it: a `span.pyro-caret` in the field group, positioned
+  // from the selection's rectangle, and shown only while the editor has the focus and the
+  // selection is collapsed (a range is shown by the browser's own highlight). It is redrawn on
+  // every change of selection, and after a repaint moves the caret.
+
+  var widths = {};
+
+  function charWidth(editor) {
+    if (!(editor.id in widths)) {
+      var probe = document.createElement("span");
+      probe.textContent = "M";
+      probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+      probe.style.font = getComputedStyle(editor).font;
+      editor.parentNode.appendChild(probe);
+      widths[editor.id] = probe.getBoundingClientRect().width;
+      probe.remove();
+    }
+    return widths[editor.id];
+  }
+
+  // The rectangle of the caret's position: the collapsed range's own, or, at a node boundary
+  // where it has none, the node's (the trailing break's, or the editor's own content box).
+  function caretRect(editor, range) {
+    var rects = range.getClientRects();
+    if (rects.length) return rects[0];
+    var node = range.startContainer;
+    if (node.nodeType === 1) {
+      var child = node.childNodes[range.startOffset];
+      if (child && child.getBoundingClientRect) return child.getBoundingClientRect();
+    }
+    var box = editor.getBoundingClientRect(), style = getComputedStyle(editor);
+    var left = box.left + parseFloat(style.paddingLeft), top = box.top + parseFloat(style.paddingTop);
+    return { left: left, top: top, height: parseFloat(style.lineHeight) || box.height };
+  }
+
+  function drawCaret(editor) {
+    var group = editor.parentNode;
+    if (!group || !group.classList.contains("pyro-field-group")) return;
+    var box = group.querySelector(":scope > .pyro-caret");
+    if (!box) { box = document.createElement("span"); box.className = "pyro-caret"; group.appendChild(box); }
+    var selection = window.getSelection();
+    var focused = document.activeElement === editor && selection.rangeCount > 0 && selection.isCollapsed;
+    var range = focused ? selection.getRangeAt(0) : null;
+    if (range && !editor.contains(range.startContainer)) focused = false;
+    group.classList.toggle("pyro-focused", focused);
+    if (!focused) return;
+    var rect = caretRect(editor, range), origin = group.getBoundingClientRect();
+    box.style.left = (rect.left - origin.left) + "px";
+    box.style.top = (rect.top - origin.top) + "px";
+    box.style.width = charWidth(editor) + "px";
+    box.style.height = (rect.height || parseFloat(getComputedStyle(editor).lineHeight)) + "px";
+    // A caret just moved is solid: the blink starts over.
+    box.style.animation = "none";
+    void box.offsetWidth;
+    box.style.animation = "";
+  }
+
+  function drawCarets() {
+    document.querySelectorAll(".pyro-editor").forEach(drawCaret);
+  }
+
+  document.addEventListener("selectionchange", drawCarets);
+  window.addEventListener("resize", function () { widths = {}; drawCarets(); });
+
   // A trailing line break, so that an empty last line — or one of indentation alone — has a
   // line box of its own: without one, the caret after a final newline is drawn, and text typed
   // there lands, at the end of the line before. It is never part of the text.
@@ -599,6 +665,7 @@
         paintItems(editor, items);
         trailingBreak(editor);
         placeCaret(editor, caret);
+        drawCaret(editor);
       }
     }
     if (state) {
@@ -1480,6 +1547,8 @@
       editor.addEventListener("compositionstart", function () { composing[editor.id] = true; });
       editor.addEventListener("compositionend", function () { composing[editor.id] = false; edited(editor); });
       editor.addEventListener("keydown", function (event) { editorKey(editor, event); });
+      editor.addEventListener("focus", function () { drawCaret(editor); });
+      editor.addEventListener("blur", function () { drawCaret(editor); });
       editor.addEventListener("keyup", function (event) {
         if (event.key === "ArrowLeft" || event.key === "Home" || event.key === "End") suggest(editor);
       });

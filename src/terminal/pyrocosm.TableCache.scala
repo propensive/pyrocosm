@@ -165,7 +165,9 @@ class TableCache
     val offsets1: scm.ArrayBuffer[Int] = scm.ArrayBuffer(0)
 
     while i < heights1.length do
-      if heights1(i) < 0 then heights1(i) = current.height(cells1(i))
+      if heights1(i) < 0 then
+        heights1(i) = current.height(cells1(i)) + renderer.noteLines(rows1(i), width).size
+
       offsets1 += offsets1(i) + heights1(i)
       i += 1
 
@@ -220,7 +222,8 @@ class TableCache
 
       while i < rows.length && headerSize + offsets(i) < until do
         if lines(i) == null then
-          lines(i) = layout.lines(cells(i), renderer.rowDecorations(rows(i), count, i == chosen))
+          val decorations = renderer.rowDecorations(rows(i), count, i == chosen)
+          lines(i) = layout.lines(cells(i), decorations) + renderer.noteLines(rows(i), width)
           rendered += 1
 
         slice(lines(i).nn, headerSize + offsets(i))

@@ -57,3 +57,7 @@ object web:
     case Verso, Recto
   case class Icon(name: anticipation.Text) extends Hint
   case object Collapsed extends Hint
+
+  // A panel's controls before its content rather than after it: a search field at the head of
+  // the column whose results follow it, where a prompt's editor comes after the transcript.
+  case object Leading extends Hint

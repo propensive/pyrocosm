@@ -624,6 +624,14 @@ class TerminalRenderer
 
     List.fill(columns)(decoration)
 
+  // A row's note, beneath its cells: wrapped to the table's width, inset by two columns and
+  // faint, as a line which belongs to the row above it.
+  def noteLines(row: Block.Row, width: Int): List[Teletype] =
+    if row.note.nil then Nil
+    else
+      Flow.wrap(phrase(row.note), (width - 2).max(10)).to[List].map: (line: Teletype) =>
+        faint(e"  $line")
+
   def caption(caption: Optional[List[Inline]]): List[Teletype] =
     caption.lay(Nil: List[Teletype]): caption => List(faint(e"$Italic(${phrase(caption)})"))
 
@@ -647,7 +655,7 @@ class TerminalRenderer
     val body: List[Teletype] =
       phrased.bind: (row, cells) =>
         val chosen: Boolean = row.action.present && row.action == selected
-        layout.lines(cells, rowDecorations(row, count, chosen))
+        layout.lines(cells, rowDecorations(row, count, chosen)) + noteLines(row, width)
 
     layout.topRule.let(List(_)).or(Nil) + layout.titleLines + List(layout.titleRule) + body +
       layout.bottomRule.let(List(_)).or(Nil) + this.caption(caption)

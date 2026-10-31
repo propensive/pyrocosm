@@ -302,11 +302,22 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     val heading: Html of Flow =
       panel.title.lay(Html.Fragment[Flow]()): title => H2(renderer.phrase(title))
 
+    // The controls follow the content, as a prompt's editor follows its transcript, unless the
+    // panel asks for them first (`hints.web.Leading`), as a search field heads its results.
+    val leading: Boolean = panel.hints.has[hints.web.Leading.type]
+
     val controls: Html of Flow =
       if panel.controls.nil then Html.Fragment[Flow]()
-      else Footer(`class` = cls(t"pyro-controls"))(panel.controls.map(controlFlow)*)
+      else
+        val style: List[Name[CssClass]] =
+          if leading then List(cls(t"pyro-controls"), cls(t"pyro-leading"))
+          else List(cls(t"pyro-controls"))
 
-    Section(id = panelId(panel), `class` = classes)(heading, panelContent(panel), controls)
+        Footer(`class` = style)(panel.controls.map(controlFlow)*)
+
+    if leading
+    then Section(id = panelId(panel), `class` = classes)(heading, controls, panelContent(panel))
+    else Section(id = panelId(panel), `class` = classes)(heading, panelContent(panel), controls)
 
   private def cards(panels: List[Panel]): Html of Flow = Html.Fragment(panels.map(card)*)
 

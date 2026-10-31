@@ -84,12 +84,15 @@ object Block:
 
   // A row's `id`, like a heading's, is an anchor: the fragment of a local destination which
   // targets it, verbatim, so it must not look like a handle or a `pyro-` id. A row with an
-  // action is identified by the action, and the anchor is ignored.
+  // action is identified by the action, and the anchor is ignored. A `note` is a line beneath
+  // the row's cells, across the table's whole width: a description of what the row lists,
+  // which would be cramped as a column of its own.
   case class Row
     ( cells:  List[Cell],
       tone:   Optional[Tone]   = Unset,
       action: Optional[Action] = Unset,
-      id:     Optional[Text]   = Unset )
+      id:     Optional[Text]   = Unset,
+      note:   List[Inline]     = Nil )
 
   // An item either acts (a press the application handles) or leads to a destination; the
   // action wins when both are given.
