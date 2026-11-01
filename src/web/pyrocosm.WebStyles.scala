@@ -874,10 +874,12 @@ object WebStyles:
           }
         """ +
         // A drawing is shown at its own size, never stretched: its text then keeps the size it
-        // was set at. One wider than the matter scrolls sideways within its holder.
+        // was set at. One wider than the matter scrolls sideways within its holder, which the
+        // script pans with the pointer, so where there is a pointer the scrollbar is not shown.
         css"""
           .pyro-drawing { margin: 0 0 var(--pyro-space-4) 0; max-width: 100% }
           .pyro-drawing-holder { overflow-x: auto; max-width: 100% }
+          @media (hover: hover) { .pyro-drawing-holder { scrollbar-width: none } }
           .pyro-drawing svg { display: block; width: auto; height: auto; max-width: none }
           .pyro-drawing figcaption {
             color: var(--pyro-muted); font-size: var(--pyro-text-small);

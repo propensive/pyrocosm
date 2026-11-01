@@ -1487,7 +1487,26 @@
     deck.pyroDeck = { advance: advance, go: function (target) { go(target, false); }, count: leaves.length };
   }
 
+  // A drawing wider than its holder pans with the pointer: the holder is scrolled so that the
+  // pointer's position across it is the same position across the drawing, so moving from one
+  // edge to the other shows the whole of it at full size. A reader without a pointer scrolls it.
+  function wirePanning(holder) {
+    holder.addEventListener("mousemove", function (event) {
+      var spare = holder.scrollWidth - holder.clientWidth;
+      if (spare <= 0) return;
+      var box = holder.getBoundingClientRect();
+      var across = Math.min(Math.max((event.clientX - box.left) / box.width, 0), 1);
+      holder.scrollLeft = across * spare;
+    });
+  }
+
   function wire(root) {
+    root.querySelectorAll(".pyro-drawing-holder").forEach(function (holder) {
+      if (holder.dataset.pyroPanning) return;
+      holder.dataset.pyroPanning = "1";
+      wirePanning(holder);
+    });
+
     root.querySelectorAll(".pyro-deck").forEach(function (deck) {
       if (deck.dataset.pyroWired) return;
       deck.dataset.pyroWired = "1";
