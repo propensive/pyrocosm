@@ -72,6 +72,8 @@ object Tool:
   object UpgradeFailed extends Status(10, t"the newer release could not be downloaded or staged")
   object UsageError extends Status(2, t"the command line was not understood")
   object NoMachine extends Status(11, t"no machine of that name is configured")
+  object NoWeb extends Status(13, t"this tool has no web front-end to serve")
+  object NotServing extends Status(14, t"the web front-end was not being served")
   object RemoteFailed extends Status(12, t"the connection to another machine could not be made")
 
   // The standard subcommands and flags, in an object so that `Install` does not shadow
@@ -80,6 +82,17 @@ object Tool:
     val About = Subcommand("about", "show this tool's name, version, runtime and swarm")
     val Install = Subcommand("install", "install shell tab-completions and the manpage")
     val Quit = Subcommand("quit", "stop the background daemon, and any web front-end it serves")
+
+    // `serve` starts the web front-end in the daemon and returns; `serve stop` stops it. The
+    // word is suggested only for a tool with a web front-end, through the hidden twin.
+    val Serve = Subcommand("serve", "serve the web front-end from the daemon, in the background")
+    val HiddenServe = Subcommand("serve", "serve the web front-end", hidden = true)
+    val Stop = Subcommand("stop", "stop serving the web front-end")
+
+    // The port the web front-end serves on: `--port` on the command line, or `port` in a config
+    // file, which is also what starts it with the daemon; 0 is a free port behind the hub.
+    val Port =
+      Setting[Text](t"port", t"the port the web front-end serves on; 0 for one behind the hub")
 
     // `upgrade` is always accepted, but SUGGESTED only while a newer release is known: the
     // hidden twin is what `standard` matches against otherwise (`upgradeCommand`).
@@ -201,6 +214,11 @@ object Tool:
   // declared union, true for every handle, so every flag would read as present. Nor named
   // `present`, which an inline body resolves to that same extension applied as a function.
   private def flagPresent(flag: Flag of Unit)(using Cli, Interpreter): Boolean = flag().present
+
+  // Whether every argument is a flag: `serve --port 8080` is the daemon's `serve`, while
+  // `serve repl` is the application's own.
+  private def flagsOnly(arguments: List[Argument]): Boolean =
+    arguments.all: (argument: Argument) => argument().starts(t"-")
 
   // Reads (and so registers) a setting, for the same reason.
   private def settingValue(setting: Setting of Text)(using Cli, Interpreter, Configurator)
@@ -408,10 +426,11 @@ object Tool:
     // resolved from the INVOCATION's working directory (each daemon client has its own), never
     // the daemon process's — and the user's.
     //
-    // Matching a `Subcommand` also SUGGESTS it, so `about`, `install` and `quit` are offered by
-    // tab-completion alongside the application's own subcommands, and the help tree behind the
-    // manpage descends into them. `--version` is offered for `<name> -<TAB>` without being
-    // attached to every subcommand. An application with a flag-first arm of its own still sees
+    // Matching a `Subcommand` also SUGGESTS it, so `about`, `install`, `quit` and `serve` are
+    // offered by tab-completion alongside the application's own subcommands, and the help tree
+    // behind the manpage descends into them. `--version` is offered for `<name> -<TAB>` without
+    // being attached to every subcommand. An application with a flag-first arm of its own still
+    // sees
     // its invocation, since only a present `--version` is consumed here.
     // `inline`, so that `dispatch` is expanded in place: as a closure it would capture the
     // `Cli` and `Resident` that are also passed here, which separation checking (on in
@@ -521,8 +540,20 @@ object Tool:
 
             case _ =>
               val upgrade: Subcommand = tool.upgradeCommand
+              val serve: Subcommand = tool.serveCommand
 
               arguments match
+                // `serve` alone, or with flags, is the daemon's; `serve` with a word after it
+                // which is not `stop` is the application's own, as `gallery serve repl` is.
+                case serve() :: Tool.ui.Stop() :: _ =>
+                  execute(tool.stopServing())
+
+                case serve() :: rest if Tool.flagsOnly(rest) =>
+                  val port: Optional[Int] =
+                    Tool.settingValue(Tool.ui.Port).let: text => safely(text.as[Int])
+
+                  execute(tool.startServing(port))
+
                 case upgrade() :: _ =>
                   // The manifest is fetched afresh for a real invocation only — never for a
                   // tab-completion — so that `upgrade` sees a release published since the daily
@@ -676,6 +707,77 @@ object Tool:
     // otherwise. Either way the word is accepted.
     private def upgradeCommand(using resident: Resident): Subcommand =
       if tool.available.present then Tool.ui.Upgrade else Tool.ui.HiddenUpgrade
+
+    // The `serve` subcommand to match: suggested for a tool with a web front-end, hidden
+    // otherwise, when the word is still accepted, and answered.
+    private def serveCommand: Subcommand =
+      if tool.web.present then Tool.ui.Serve else Tool.ui.HiddenServe
+
+    // Where the web front-end on `port` is found: under the machine's hub for a port of 0,
+    // which the hub holds, and at the port itself otherwise.
+    def address(port: Int): Text =
+      if port == 0 then t"http://localhost:${Hubs.port.toString.tt}/${tool.name}/"
+      else t"http://localhost:${port.toString.tt}/"
+
+    // Starts the web front-end in the daemon, on the port asked for, else the configured one,
+    // else the front-end's own, unless the daemon serves it already: the invocation returns at
+    // once, and the front-end runs until `serve stop` or `quit`. The task runs under the
+    // daemon's monitor, which outlives the invocation, as a configured `serve` does.
+    private def startServing(port: Optional[Int])
+      ( using invocation: Invocation, monitor: Monitor, configurator: Configurator )
+    :   Tool.NoWeb.type | Exit =
+
+      given Stdio = invocation.stdio
+
+      def noWeb: Tool.NoWeb.type =
+        Out.println(t"${tool.name}: ${Tool.NoWeb.description}")
+        Tool.NoWeb
+
+      tool.web.lay[Tool.NoWeb.type | Exit](noWeb): (web: Web) =>
+        val key: Text = Text(s"${tool.name.s}/${web.keyword.s}")
+
+        val chosen: Int =
+          port.or:
+            configurator.read(web.portKeyword).let { text => safely(text.as[Int]) }.or(web.port)
+
+        if Tool.serving.putIfAbsent(key, web) != null then
+          val running: Int = Optional(Tool.ports.get(key)).or(chosen)
+          Out.println(t"${tool.name}: already serving at ${tool.address(running)}")
+        else
+          val settings: Text -> Optional[Text] =
+            scala.caps.unsafe.unsafeAssumePure: (name: Text) => configurator.read(name)
+
+          Tool.ports.put(key, chosen)
+          async(web.serve(chosen, settings))
+          val stopping: Text = t"`${tool.name} serve stop` stops it"
+          Out.println(t"${tool.name}: serving at ${tool.address(chosen)} ($stopping)")
+
+        Exit.Ok
+
+    // Stops the web front-end the daemon serves, leaving the daemon running.
+    private def stopServing()(using invocation: Invocation)
+    :   Tool.NotServing.type | Exit | Tool.NoWeb.type =
+
+      given Stdio = invocation.stdio
+
+      def notServing: Tool.NotServing.type =
+        Out.println(t"${tool.name}: ${Tool.NotServing.description}")
+        Tool.NotServing
+
+      tool.web match
+        case web: Web =>
+          val key: Text = Text(s"${tool.name.s}/${web.keyword.s}")
+
+          Optional(Tool.serving.remove(key)).lay[Tool.NotServing.type | Exit](notServing):
+            (service: Service) =>
+              service.stop()
+              Tool.ports.remove(key)
+              Out.println(t"${tool.name}: stopped serving")
+              Exit.Ok
+
+        case _ =>
+          Out.println(t"${tool.name}: ${Tool.NoWeb.description}")
+          Tool.NoWeb
 
     // Reports, once and on standard error, what the launcher did with a staged upgrade: this
     // invocation's launcher checked `.pending` before it connected, so its verdict is already on
