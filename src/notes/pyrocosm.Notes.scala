@@ -203,6 +203,11 @@ class Notes(root: Text):
   def dirty(): Boolean raises Notes.Error =
     git(List(t"status", t"--porcelain", t"--untracked-files=no")).trim != t""
 
+  // Any object a refspec names — a commit, a tree or a blob — by its hash; `Unset` for none.
+  def resolve(refspec: Text): Optional[Fingerprint] raises Notes.Error =
+    attempt(List(t"rev-parse", t"--verify", t"--quiet", t"--end-of-options", refspec))
+    . let: hash => Fingerprint.parse(hash.trim)
+
   // The kind of object a hash names — `commit`, `tree`, `blob` — or `Unset` for none.
   def objectType(hash: Text): Optional[Text] raises Notes.Error =
     attempt(List(t"cat-file", t"-t", hash)).let(_.trim)
@@ -233,15 +238,23 @@ class Notes(root: Text):
   def write[value: Recordable as recordable](fingerprint: Fingerprint, value: value)
   :   Unit raises Notes.Error =
 
-    val ref: Text = t"--ref=${Notes.ref(recordable.kind)}"
-    val body: Fingerprint = blob(recordable.encode(value))
-    git(List(t"notes", ref, t"add", t"-f", t"-C", body.text, fingerprint.text))
+    write(recordable.kind, fingerprint, recordable.encode(value))
+
+  // The same, for a body that is not a `Recordable`'s: the bytes, under `kind`.
+  def write(kind: Text, target: Fingerprint, body: Data): Unit raises Notes.Error =
+    val ref: Text = t"--ref=${Notes.ref(kind)}"
+    val object0: Fingerprint = blob(body)
+    git(List(t"notes", ref, t"add", t"-f", t"-C", object0.text, target.text))
 
   // The note of `kind` on an object, as bytes: through `git notes`, or, when the object it
   // annotated has been pruned, through the notes ref's own tree, where it survives — flat, or
   // fanned out past a size, so both layouts are tried.
   def note(kind: Text, target: Fingerprint): Optional[Data] raises Notes.Error =
-    val ref: Text = Notes.ref(kind)
+    noteAt(Notes.ref(kind), target)
+
+  // The same, at any notes ref: how a tool reads the notes it kept elsewhere before they moved
+  // under `refs/notes/pyrocosm/`.
+  def noteAt(ref: Text, target: Fingerprint): Optional[Data] raises Notes.Error =
     val hash: Text = target.text
 
     def shown(arguments: List[Text]): Optional[Data] = runData(arguments, Unset) match
@@ -257,9 +270,11 @@ class Notes(root: Text):
     val ref: Text = t"--ref=${Notes.ref(kind)}"
     feed(text)(List(t"notes", ref, t"append", t"-F", t"-", target.text))
 
-  // Every object annotated under `kind`.
-  def noted(kind: Text): List[Fingerprint] raises Notes.Error =
-    attempt(List(t"notes", t"--ref=${Notes.ref(kind)}", t"list")).lay(Nil): listing =>
+  // Every object annotated under `kind`; and at any notes ref.
+  def noted(kind: Text): List[Fingerprint] raises Notes.Error = notedAt(Notes.ref(kind))
+
+  def notedAt(ref: Text): List[Fingerprint] raises Notes.Error =
+    attempt(List(t"notes", t"--ref=$ref", t"list")).lay(Nil): listing =>
       val targets = lines(listing).map: line =>
         line.cut(t" ") match
           case _ :: target :: _ => target

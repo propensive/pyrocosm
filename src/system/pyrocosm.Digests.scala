@@ -54,7 +54,7 @@ object Digests:
       // contains, so that a change to either changes the whole.
       val parts: List[Text] =
         files.map: file =>
-          t"${relative(root, file.encode)}\u0000${Filing.data(file).lay(t"absent")(of(_))}"
+          t"${Filing.relative(root, file.encode)}\u0000${Filing.data(file).lay(t"absent")(of(_))}"
 
       of(parts*)
     else
@@ -62,7 +62,3 @@ object Digests:
 
   def classpath(entries: List[Text]): Text =
     of(entries.map { (entry: Text) => tree(unsafely(entry.as[Path on Linux])) }*)
-
-  // `path` with `root/` removed from its front, if it is beneath it.
-  private[pyrocosm] def relative(root: Text, path: Text): Text =
-    if path.starts(t"$root/") then path.skip(root.length + 1) else path

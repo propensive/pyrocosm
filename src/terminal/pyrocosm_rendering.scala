@@ -25,11 +25,10 @@ package pyrocosm
 import soundness.*
 
 // The givens every tool imports to render blocks in a terminal — the table style, the text
-// metric and the gauge palette — by one import, `import pyrocosm.standardRendering.*`, so that
+// metric and the gauge palette — by one import, `import pyrocosm.standardRendering.given`, so that
 // every tool draws alike; the gauge palette comes from the terminal theme in scope, so that a
 // gauge is in the theme's colours.
 object standardRendering:
-  export tableStyles.thickTableStyle
-  export textMetrics.uniformMetric
-
+  given tableStyle: TableStyle = tableStyles.thickTableStyle
+  given metric: Char is Measurable = textMetrics.uniformMetric
   given gaugePalette: (theme: TerminalTheme) => GaugePalette = theme.gaugePalette

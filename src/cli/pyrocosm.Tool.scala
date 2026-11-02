@@ -91,8 +91,8 @@ object Tool:
       setting.lay(Nil: List[Text])(_.cut(t":")).filter(_ != t"").map(resolve(_))
 
     // `path` relative to the root, when it is beneath it.
-    def relative(path: Path on Linux): Text = Digests.relative(root.encode, path.encode)
-    def relative(path: Text): Text = Digests.relative(root.encode, path)
+    def relative(path: Path on Linux): Text = Filing.relative(root.encode, path.encode)
+    def relative(path: Text): Text = Filing.relative(root.encode, path)
 
     // The non-empty primary atoms of every field of the configuration named `keyword`.
     def atoms(keyword: Text): List[Text] = Tool.atoms(config, keyword)
@@ -743,7 +743,7 @@ object Tool:
       if tool.web.present then Tool.ui.Serve else Tool.ui.HiddenServe
 
     // The project the working directory is in (see `Project`).
-    def project(directory: Text)(using Environment): Project =
+    def project(directory: Text): Project =
       val file: Optional[Path on Linux] = tool.repoFile(directory)
 
       val root: Path on Linux =
@@ -778,16 +778,13 @@ object Tool:
       Tool.UsageError
 
     // The width to render at: the terminal's, from `COLUMNS` in the invocation's environment
-    // when it is set, or the terminal's own report of it, else 100 where nothing says; and never
-    // more than 160, past which a line of prose is hard to read.
-    def columns(using resident: Resident, environment: Environment): Int =
+    // when it is set, else 100 where nothing says; and never more than 160, past which a line
+    // of prose is hard to read.
+    def columns(using Environment): Int =
       val declared: Optional[Int] =
         safely(Environment.columns[Text].as[Int]).let: width => if width > 0 then width else Unset
 
-      val reported: Optional[Int] =
-        resident.windowSize.let: (width, _) => if width > 0 then width else Unset
-
-      declared.or(reported).or(100).min(160)
+      declared.or(100).min(160)
 
     // Where the web front-end on `port` is found: under the machine's hub for a port of 0,
     // which the hub holds, and at the port itself otherwise.

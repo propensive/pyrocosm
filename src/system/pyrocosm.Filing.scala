@@ -61,6 +61,9 @@ object Filing:
   // Deletes `path` and everything beneath it, if it exists.
   def wipe(path: Path on Linux): Unit = safely(path.wipe())
 
+  // Whether `path` exists.
+  def exists(path: Path on Linux): Boolean = safely(path.existent()).or(false)
+
   // Whether `path` is a directory.
   def directory(path: Path on Linux): Boolean =
     safely(path.entry() == Directory).or(false)
@@ -71,6 +74,11 @@ object Filing:
     val path: Path on Linux = unsafely(directory.toString.tt.as[Path on Linux])
 
     try block(path) finally wipe(path)
+
+  // `path` with `root/` removed from its front, if it is beneath it: how a tool names a file
+  // of a project to its user.
+  def relative(root: Text, path: Text): Text =
+    if path.starts(t"$root/") then path.skip(root.length + 1) else path
 
   // The canonical form of `path`: symlinks resolved, as `realpath`, or `path` itself if it
   // does not exist.

@@ -771,7 +771,7 @@ The conventions the tools share, decided 2026-11-02:
   store, a classpath's identity.
 - **Notes.** Every tool's git notes live under `refs/notes/pyrocosm/<kind>`, so one refspec
   publishes them all; a kind's body is whatever bytes its `Recordable` says.
-- **Rendering.** `import pyrocosm.standardRendering.*` is the one import of the table style,
+- **Rendering.** `import pyrocosm.standardRendering.given` is the one import of the table style,
   the text metric and the gauge palette; a gauge is in the terminal theme's colours, and a
   theme says what its ground is.
 

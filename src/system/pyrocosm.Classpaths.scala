@@ -24,65 +24,13 @@ package pyrocosm
 
 import soundness.*
 
-// The classpath as a tool that compiles — a script runner, a REPL, a documentation tool —
-// names it: an entry from a path, by its suffix; a path from an entry; the running process's
-// own entries, through hellenism; and the options every such compile passes the fork, which
-// are the ones Pyrocosm and the tools are themselves built with, minus a build's own choices
-// of warnings and checks, which code written at a prompt should not have to satisfy.
+// The classpath as a tool that loads or compiles code names it: an entry from a path, by its
+// suffix, and a path from an entry.
 object Classpaths:
-  def entry(path: Text): Classpath.Entry =
+  def entry(path: Text): Classpath.Entry.Directory | Classpath.Entry.Jar =
     if path.ends(t".jar") then Classpath.Entry.Jar(path) else Classpath.Entry.Directory(path)
 
   def path(entry: Classpath.Entry): Optional[Text] = entry match
     case Classpath.Entry.Jar(path)       => path
     case Classpath.Entry.Directory(path) => path
     case _                               => Unset
-
-  // The process's classpath, from its own entries (the loader's, or `java.class.path`), with
-  // `entries` after them.
-  def local(entries: List[Text] = Nil)(using System): LocalClasspath =
-    val own: LocalClasspath = LocalClasspath.of(Classloader.threadContext)
-
-    val extra: List[Classpath.Entry.Directory | Classpath.Entry.Jar] = entries.map: entry =>
-      if entry.ends(t".jar") then Classpath.Entry.Jar(entry) else Classpath.Entry.Directory(entry)
-
-    LocalClasspath((own.entries + extra)*)
-
-  // The fork's repairs, which reading Soundness's TASTy needs, and the language features
-  // Soundness idioms use.
-  val houseOptions: List[Text] = List(
-    t"-Zalias-captures",
-    t"-Zdiagnostic-givens",
-    t"-Zgiven-prefixes",
-    t"-Zinline-source-maps",
-    t"-Zopaque-mutability",
-    t"-Zpure-iarrays",
-    t"-Zretains-bounds",
-    t"-Zretains-skolems",
-    t"-Zspreadable-varargs",
-    t"-Zunboxed-pure-types",
-    t"-Zunion-captures",
-    t"-experimental",
-    t"-new-syntax",
-    t"-feature",
-    t"-preview",
-    t"-deprecation",
-    t"-Xmax-inlines", t"32",
-    t"-Yno-flexible-types",
-    t"-Yexplicit-nulls",
-    t"-language:experimental.modularity",
-    t"-language:experimental.dependent",
-    t"-language:experimental.relaxedLambdaSyntax",
-    t"-language:experimental.genericNumberLiterals",
-    t"-language:experimental.into",
-    t"-language:experimental.erasedDefinitions",
-    t"-language:implicitConversions",
-    t"-language:experimental.saferExceptions",
-    t"-language:experimental.strictEqualityPatternMatching",
-    t"-language:experimental.subCases",
-    t"-language:experimental.multiSpreads")
-
-  // The predef options: proscenium's, with `packages` imported after it.
-  def imports(packages: Text*): List[Text] =
-    val all: List[Text] = List(t"java.lang", t"proscenium") + List(packages*)
-    List(t"-Yno-predef", t"-Yimports:${all.join(t",")}")

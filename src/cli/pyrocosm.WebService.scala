@@ -38,7 +38,13 @@ object WebService:
   // One tab's session: its interface, its handler, and what the ticker does for it.
   case class Session(interface: Interface, handle: Event => Unit, tick: () => Unit = () => ())
 
-  def apply(port0: Int = 0, every: Duration = 0.25*Second)(open: () -> Session): Tool.Web =
+  // `fallback` answers the requests the front-end does not — an API the same origin serves.
+  def apply
+    ( port0:    Int                                           = 0,
+      every:    Duration                                      = 0.25*Second,
+      fallback: Http.Request -> Optional[Http.Response]       = _ => Unset )
+    ( open: () -> Session )
+  :   Tool.Web =
 
     new Tool.Web:
       def port: Int = port0
@@ -50,7 +56,10 @@ object WebService:
       def serve(port: Int)(using Monitor, Probate): Unit =
         val serving: Atomic[Boolean] = Atomic(true)
         val live: juc.ConcurrentHashMap[Session, Boolean] = juc.ConcurrentHashMap()
-        val running: WebFrontend = scala.caps.unsafe.unsafeAssumePure(WebFrontend(port))
+
+        val running: WebFrontend =
+          scala.caps.unsafe.unsafeAssumePure(WebFrontend(port, fallback = fallback))
+
         frontend = running
 
         try
