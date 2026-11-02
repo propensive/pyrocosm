@@ -22,8 +22,6 @@
                                                                                                   */
 package pyrocosm
 
-import java.lang as jl
-
 import scala.caps
 
 import soundness.*
@@ -41,6 +39,13 @@ import soundness.*
 final class Board(val title: Text, throttle: Long = 100L):
   val content: Live[List[Block]] = Live(Nil)
 
+  // The content again, for a web view alone — with the charts a browser can draw, say — which
+  // is not a panel of this interface, so a terminal never draws it.
+  val web: Live[List[Block]] = Live(Nil)
+
+  @caps.unsafe.untrackedCaptures
+  private val dirty: Atomic[Boolean] = Atomic(true)
+
   @caps.unsafe.untrackedCaptures
   @volatile
   private var painted: Long = 0L
@@ -55,7 +60,7 @@ final class Board(val title: Text, throttle: Long = 100L):
   // The content and the progress from the run's current state, unless the last repaint was too
   // recent; `force` for the final state, which must always be shown.
   def refresh(force: Boolean = false)(content: => List[Block], progress: => List[Activity]): Unit =
-    val now = jl.System.currentTimeMillis
+    val now: Long = aviation.now().long
 
     if force || now - painted >= throttle then
       painted = now
@@ -64,6 +69,21 @@ final class Board(val title: Text, throttle: Long = 100L):
 
   // Content that only grows: the newest block joins the end, where the panel keeps its view.
   def append(block: Block): Unit = content.append(block)
+
+  // The other way to feed a board: events only MARK it, and `repaint`, called by a task of its
+  // own, rebuilds the content and the progress when something has changed since the last
+  // paint, or when forced — so the thread consuming a run's events never renders, and a burst
+  // of events costs one repaint.
+  def mark(): Unit = dirty() = true
+
+  def repaint(force: Boolean = false)(paint: => (List[Block], List[Activity])): Unit =
+    if dirty.swap(false) || force then
+      val (content, progress) = paint
+      this.content() = content
+      interface.activities() = progress
+
+  // The board's progress, for a card of it elsewhere.
+  def activity: Optional[Activity] = interface.activities().head
 
   // The progress as one captioned gauge: the board's activity, which has no destination, as
   // the board is the run's own view.

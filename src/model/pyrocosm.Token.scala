@@ -33,6 +33,22 @@ object Token:
   enum Accent:
     case Error, Number, String, Term, Typal, Keyword, Symbol, Parens, Modifier, Unparsed, Command
 
+  object Accent:
+    // The accent spelled by its lower-case name, as harlequin's accents are named on a wire;
+    // `Term` for a name that is none of them.
+    def parse(name: Text): Accent = name.s match
+      case "keyword"  => Keyword
+      case "modifier" => Modifier
+      case "typal"    => Typal
+      case "string"   => String
+      case "number"   => Number
+      case "symbol"   => Symbol
+      case "parens"   => Parens
+      case "error"    => Error
+      case "unparsed" => Unparsed
+      case "command"  => Command
+      case _          => Term
+
   // Whether a term or type token is a definition or a use of one; a styling policy may set
   // bindings in italic, say, on top of the accent's colour.
   enum Role:

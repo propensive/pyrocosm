@@ -31,7 +31,7 @@ import soundness.*
 // `2d 1h 0m 5s`), or milliseconds below a second (`420ms`). Relative times within the hour are
 // aviation's English ("just now", "8 minutes ago"); beyond it, the clock time today, the day
 // and month this year, and the full date otherwise.
-object Durations:
+object Timing:
   private val units: List[(Text, Double)] =
     List(t"ms" -> 0.001, t"s" -> 1.0, t"m" -> 60.0, t"h" -> 3600.0, t"d" -> 86400.0)
 
