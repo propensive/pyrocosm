@@ -3180,7 +3180,7 @@ credential nameless
 
         test(m"a store keeps what it is given under its digest, and rejects a lie"):
           java.nio.file.Files.createDirectories(java.nio.file.Path.of(root.s, "store"))
-          val store = Blobs.Store(path(t"store"))
+          val store = ObjectStore(path(t"store"), t".jar")
           val data = ascii(t"blob")
           val digest = Blobs.digest(data)
           val stored = store.put(digest, data)
@@ -3190,7 +3190,7 @@ credential nameless
         . assert(_ == (true, false, true, List(t"0"*64)))
 
         test(m"an assembly stores a blob once its last chunk arrives"):
-          val store = Blobs.Store(path(t"store"))
+          val store = ObjectStore(path(t"store"), t".jar")
           val data: Data = Data.fill(3000): i => (i*7).toByte
           val digest = Blobs.digest(data)
           val assembly = Blobs.Assembly(store)

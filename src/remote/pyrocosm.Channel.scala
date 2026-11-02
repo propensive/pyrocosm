@@ -137,21 +137,6 @@ object Channel:
 
   def same(left: Data, right: Data): Boolean = Array.same(left, right)
 
-  private def join(parts: List[Data]): Data =
-    val total: Int = parts.fold(0)(_ + _.length)
-    val out = Array.allocate[Byte](total)
-    var offset: Int = 0
-
-    parts.each: part =>
-      out.place(part, 0, offset, part.length)
-      offset += part.length
-
-    Array.freeze(out)
-
-  def slice(data: Data, from: Int, until: Int): Data =
-    val out = Array.allocate[Byte]((until - from).max(0))
-    if until > from then out.place(data, from, 0, until - from)
-    Array.freeze(out)
 
 // One end of a connection, speaking `codec`'s messages. Reads block; writes are serialised by
 // a mutex so frames from concurrent senders never interleave. The `Duplex` contract is a
@@ -205,7 +190,7 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
       case count: Int if count > 0 =>
         val chunk: Data = source.lend: region => range => region.materialize(range.capped(count))
         source.skip(count)
-        buffer = Channel.join(List(buffer, chunk))
+        buffer = Frames.join(List(buffer, chunk))
         true
 
       case count: Int =>
@@ -217,8 +202,8 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
   // Exactly `count` bytes from the head of the stream, or `Unset` if it ends first.
   private def take(count: Int): Optional[Data] =
     if buffer.length >= count then
-      val taken: Data = Channel.slice(buffer, 0, count)
-      buffer = Channel.slice(buffer, count, buffer.length)
+      val taken: Data = Frames.slice(buffer, 0, count)
+      buffer = Frames.slice(buffer, count, buffer.length)
       taken
     else if pull() then
       take(count)
@@ -236,7 +221,7 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
       if length < 1 then Channel.Frame.Closed else
         take(length).lay(Channel.Frame.Closed): body =>
           val tag: Byte = body.readUnchecked(0)
-          val payload: Data = Channel.slice(body, 1, body.length)
+          val payload: Data = Frames.slice(body, 1, body.length)
 
           tag match
             case Channel.messageTag => Channel.Frame.Message(codec.decode(payload))
@@ -246,7 +231,7 @@ class Channel[message](codec: Channel.Codec[message], duplex: Duplex):
               val split: Int = payload.length.min(32)
 
               Channel.Frame.Handshake
-                ( Channel.slice(payload, 0, split), Channel.slice(payload, split, payload.length) )
+                ( Frames.slice(payload, 0, split), Frames.slice(payload, split, payload.length) )
 
             case _ =>
               Channel.Frame.Closed

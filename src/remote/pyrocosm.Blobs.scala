@@ -24,16 +24,13 @@ package pyrocosm
 
 import soundness.*
 
-import alphabets.hexLowerCase
 import filesystemBackends.javaBaseFilesystem
 import filesystemOptions.dereferenceSymlinks
 import filesystemTraversal.preOrderTraversal
-import logging.silentLogging
-import providers.javaBaseProvider
 import systems.javaBaseSystem
 
 // Content-addressed shipping of classpath entries between machines. A jar is named by the
-// SHA-256 of its bytes; a directory of classes is first bundled into a jar deterministically
+// Blake3 digest of its bytes (`Digests`); a directory of classes is first bundled into a jar deterministically
 // — entries sorted by path, epoch timestamps — so that the same classes give the same digest
 // however they were laid down. A machine keeps every blob it has received under
 // `$XDG_CACHE_HOME/pyrocosm/blobs/<digest>.jar`, shared by every tool on it, so a worker asks
@@ -46,7 +43,7 @@ object Blobs:
   // A frame's worth of a blob in transit.
   val chunk: Int = 1024*1024
 
-  def digest(data: Data): Text = data.digest[Sha2[256]].serialize[Hex]
+  def digest(data: Data): Text = Digests.of(data)
 
   private def relative(root: Path on Linux, path: Path on Linux): Text =
     val prefix: Text = root.encode
@@ -93,26 +90,17 @@ object Blobs:
         if offset >= data.length then acc.reverse
         else
           val until: Int = (offset + chunk).min(data.length)
-          recur(until, (offset, Channel.slice(data, offset, until)) :: acc)
+          recur(until, (offset, Frames.slice(data, offset, until)) :: acc)
 
       recur(0, Nil)
 
   // The cache directory, created if absent; `Unset` if the environment names no cache home or
   // it cannot be created.
   def store(using Environment): Optional[Store] =
-    safely(Xdg.cacheHome[Path on Linux] / "pyrocosm" / "blobs").let: directory =>
-      safely:
-        if !directory.existent() then directory.create[Directory](CreateFlag.Parents)
-        Store(directory)
+    safely(Xdg.cacheHome[Path on Linux] / "pyrocosm" / "blobs").let(ObjectStore.at(_, t".jar"))
 
-  class Store(val directory: Path on Linux):
-    def path(digest: Text): Path on Linux = unsafely(directory / t"$digest.jar")
-    def has(digest: Text): Boolean = path(digest).existent()
-    def missing(digests: List[Text]): List[Text] = digests.filter(!has(_))
-
-    // Stores `data` under `digest` if the bytes really have it; `false` otherwise.
-    def put(digest: Text, data: Data): Boolean =
-      if Blobs.digest(data) != digest then false else safely(path(digest).write(data)).present
+  // The blob cache is a content-addressed store of `.jar` files.
+  type Store = ObjectStore
 
   // Reassembles blobs from chunks as they arrive, in any interleaving, and stores each when
   // its last chunk has come. `receive` answers whether a completed blob was good.
@@ -130,16 +118,5 @@ object Blobs:
         Unset
       else
         parts = parts.omit(digest)
-        val whole: Data = join(sofar.reverse)
+        val whole: Data = Frames.join(sofar.reverse)
         store.put(digest, whole)
-
-  private def join(parts: List[Data]): Data =
-    val total: Int = parts.fold(0)(_ + _.length)
-    val out = Array.allocate[Byte](total)
-    var offset: Int = 0
-
-    parts.each: part =>
-      out.place(part, 0, offset, part.length)
-      offset += part.length
-
-    Array.freeze(out)

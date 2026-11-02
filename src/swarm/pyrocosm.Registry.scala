@@ -58,9 +58,7 @@ object Registry:
 
       base / "pyrocosm" / "swarm"
 
-  private val hubName: String = "hub.tel"
   private val lockName: String = "hub.lock"
-  private val temporaryName: String = ".hub.tel.tmp"
 
   private def gatewayLine(port: Int): Text = t"\ngateway ${port.show}"
 
@@ -107,37 +105,19 @@ identity ${record.identity}$gateway
 
   private def path(directory: Path on Linux): jnf.Path = jnf.Path.of(directory.encode.s).nn
 
-  private def write(root: jnf.Path, record: Record): Boolean =
-    try
-      jnf.Files.createDirectories(root)
-      val temporary: jnf.Path = root.resolve(temporaryName).nn
-      jnf.Files.writeString(temporary, line(record).s)
+  private def write(directory: Path on Linux, record: Record): Boolean =
+    safely(directory / "hub.tel").lay(false)(Filing.replace(_, line(record)))
 
-      jnf.Files.move
-        ( temporary,
-          root.resolve(hubName).nn,
-          jnf.StandardCopyOption.ATOMIC_MOVE,
-          jnf.StandardCopyOption.REPLACE_EXISTING )
-
-      true
-    catch case _: Exception => false
-
-  private def delete(root: jnf.Path): Unit =
-    try jnf.Files.deleteIfExists(root.resolve(hubName).nn) catch case _: Exception => ()
+  private def delete(directory: Path on Linux): Unit =
+    safely(directory / "hub.tel").let(Filing.wipe(_))
 
   // The record, if its process is still running; a dead one is deleted as it is found.
-  private def read(root: jnf.Path): Optional[Record] =
-    val path: jnf.Path = root.resolve(hubName).nn
-    val text: Text | Null = try jnf.Files.readString(path).nn.tt catch case _: Exception => null
-
-    if text == null then Unset else parse(text) match
-      case record: Record =>
+  private def read(directory: Path on Linux): Optional[Record] =
+    safely(directory / "hub.tel").let: path =>
+      Filing.text(path).let(parse(_)).let: record =>
         if record.alive then record else
-          try jnf.Files.deleteIfExists(path) catch case _: Exception => ()
+          Filing.wipe(path)
           Unset
-
-      case _ =>
-        Unset
 
   // Takes the hub's lock, if no process holds it: the lock, which lasts until it is released or
   // the process ends. Absent if another process holds it, or it could not be made.
@@ -165,15 +145,14 @@ identity ${record.identity}$gateway
 class Registry(directory: Optional[Path on Linux]):
   import Registry.Record
 
-  private def root: Optional[jnf.Path] = directory.let(Registry.path(_))
-
   // The machine's hub, if a live one is registered; the record of a dead one is deleted.
-  def hub(): Optional[Record] = root.let(Registry.read(_)).or(Unset)
+  def hub(): Optional[Record] = directory.let(Registry.read(_)).or(Unset)
 
   // Writes `record` whole, then moves it into place.
-  def registerHub(record: Record): Boolean = root.lay(false)(Registry.write(_, record))
+  def registerHub(record: Record): Boolean = directory.lay(false)(Registry.write(_, record))
 
-  def unregisterHub(): Unit = root.let(Registry.delete(_))
+  def unregisterHub(): Unit = directory.let(Registry.delete(_))
 
   // The hub's lock, if this process can take it.
-  def lockHub(): Optional[java.nio.channels.FileLock] = root.let(Registry.lock(_)).or(Unset)
+  def lockHub(): Optional[java.nio.channels.FileLock] =
+    directory.let { directory => Registry.lock(Registry.path(directory)) }.or(Unset)
