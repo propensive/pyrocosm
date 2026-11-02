@@ -96,60 +96,21 @@ object Hubs:
   // leaves only itself on `java.class.path` — then `java.class.path`, which is everything for a
   // JVM started on an assembly. A location is listed once.
   def classpath(loader: Optional[ClassLoader] = Optional(classOf[Hub].getClassLoader)): List[Text] =
-    def urls(loader: ClassLoader | Null): scala.List[Text] =
-      if loader == null then scala.Nil else
-        val own: scala.List[Text] = loader match
-          case loader: java.net.URLClassLoader =>
-            scala.collection.immutable.ArraySeq.unsafeWrapArray(loader.getURLs.nn).toList
-            . flatMap: url =>
-                safely(jnf.Path.of(url.nn.toURI).nn.toString.tt).let(scala.List(_)).or(scala.Nil)
-
-          case _ =>
-            scala.Nil
-
-        own ++ urls(loader.nn.getParent)
-
-    val entries: scala.Array[String | Null] =
-      java.lang.System.getProperty("java.class.path").nn.split(java.io.File.pathSeparator).nn
-
-    val system: scala.List[Text] =
-      scala.collection.immutable.ArraySeq.unsafeWrapArray(entries)
-      . toList.map(_.nn.tt).filter(!_.blank)
-
-    List((loader.lay(scala.Nil)(urls(_)) ++ system).distinct*)
+    Runtimes.classpath(loader.or(Thread.currentThread.nn.getContextClassLoader.nn))
 
   // A JVM of its own, from the classpath this JVM loaded Pyrocosm from, with the daemon's
   // environment, its output to the log file; nothing is read from it, and it is not waited for.
   private def spawn(tool: Text, version: Text)(using environment: Environment): Unit =
-    try
-      val executable: String = java.lang.System.getProperty("java.home").nn + "/bin/java"
-      val classpath: String = Hubs.classpath().join(java.io.File.pathSeparator.nn.tt).s
+    val executable: Text = t"${java.lang.System.getProperty("java.home").nn}/bin/java"
+    val classpath: Text = Hubs.classpath().join(java.io.File.pathSeparator.nn.tt)
+    val command: List[Text] = List(executable, t"-cp", classpath, t"pyrocosm.Hubs", tool, version)
 
-      val command: java.util.List[String] =
-        java.util.List.of(executable, "-cp", classpath, "pyrocosm.Hubs", tool.s, version.s).nn
+    def pair(name: Text): List[(Text, Text)] =
+      environment.variable(name).lay(Nil): value => List((name, value))
 
-      val builder: ProcessBuilder = ProcessBuilder(command)
-      builder.redirectInput(ProcessBuilder.Redirect.from(java.io.File("/dev/null")))
+    val variables: List[(Text, Text)] = inherited.bind(pair(_))
 
-      logFile match
-        case log: jnf.Path =>
-          jnf.Files.createDirectories(log.getParent.nn)
-          builder.redirectErrorStream(true)
-          builder.redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile.nn))
-
-        case _ =>
-          builder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
-          builder.redirectError(ProcessBuilder.Redirect.DISCARD)
-
-      val variables: java.util.Map[String, String] = builder.environment().nn
-      variables.clear()
-
-      inherited.each: name =>
-        environment.variable(name).let: value => variables.put(name.s, value.s)
-
-      builder.start()
-      ()
-    catch case _: Exception => ()
+    Processes.detach(command, variables, logFile.let(_.toString.tt), inherit = false)
 
   // The hub process. Its arguments are the tool which started it and that tool's version.
   def main(arguments: scala.Array[String]): Unit =

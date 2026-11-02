@@ -24,7 +24,7 @@ package pyrocosm
 
 // Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
 // definitions, since a wildcard import beats a package member declared in another file.
-import soundness.{Language as _, *}
+import soundness.*
 
 import dysasymptotics.linearAccess
 
@@ -143,48 +143,9 @@ object Presentable extends Presentable2:
   // Any XML node, since `Self` is exact and a parsed document is typed by its node kind.
   given xml: [xml <: Xml] => xml is Presentable in Block = Trees.xml(_)
 
-  // A Markdown document, converted node for node. Both emphasis strengths become the model's
-  // one emphasis; inline HTML is dropped; an inline image becomes a link to it.
+  // A Markdown document, converted node for node (`Markdowns`).
   given markdown: (Markdown of Layout) is Presentable in Block = markdown =>
-    Block.Group(markdown.children.map(layout))
-
-  private def phrasing(nodes: List[Prose]): List[Inline] = nodes.map(prose)
-
-  private def prose(node: Prose): Inline = node match
-    case Prose.Textual(text)       => Inline.Textual(text)
-    case Prose.Emphasis(children*) => Inline.Emphasis(phrasing(List.from(children)))
-    case Prose.Strong(children*)   => Inline.Strong(phrasing(List.from(children)))
-    case Prose.Code(code)          => Inline.Snippet(Language.Plain, List(Token.plain(code)))
-    case Prose.Softbreak           => Inline.Textual(" ")
-    case Prose.Linebreak           => Inline.Break()
-    case Prose.HtmlInline(_)       => Inline.Textual("")
-
-    case Prose.Link(destination, _, content*) =>
-      Inline.Link(Inline.Destination.External(destination), phrasing(List.from(content)))
-
-    case Prose.Image(destination, _, content*) =>
-      Inline.Link(Inline.Destination.External(destination), phrasing(List.from(content)))
-
-  private def layout(node: Layout): Block = node match
-    case Layout.Paragraph(_, prose*)      => Block.Paragraph(phrasing(List.from(prose)))
-    case Layout.Heading(_, level, prose*) => Block.Heading(level, phrasing(List.from(prose)))
-    case Layout.BlockQuote(_, layouts*)   => Block.Quotation(List.from(layouts.map(layout)))
-    case Layout.ThematicBreak(_)          => Block.Rule()
-    case Layout.HtmlBlock(_, html)        => Block.Code(Language("html"), lines(html))
-
-    case Layout.CodeBlock(_, info, content) =>
-      Block.Code(info.head.lay(Language.Plain)(Language(_)), lines(content))
-
-    case Layout.BulletList(_, _, items*) =>
-      val listed = List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) })
-      Block.Listing(false, listed)
-
-    case Layout.OrderedList(_, _, _, _, items*) =>
-      val listed = List.from(items.map { (item: List[Layout]) => Block.Item(item.map(layout)) })
-      Block.Listing(true, listed)
-
-  private def lines(content: Text): List[Block.Line] =
-    content.cut(t"\n").map: (line: Text) => Block.Line(List(Token.plain(line)))
+    Block.Group(Markdowns.convert(markdown))
 
 trait Presentable2 extends Presentable3:
   // Below `table` in priority, so a list of products tabulates; above `derived`, so a list of

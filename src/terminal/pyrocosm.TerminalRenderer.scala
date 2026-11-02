@@ -882,3 +882,11 @@ class TerminalRenderer
   // Plain text, for logs and machine-adjacent output.
   def plain(blocks0: List[Block], width: Int): Text =
     blocks(blocks0, width).map(_.plain).join(t"\n")
+
+  // The blocks, printed: diagnostics and reports to the error stream, as every tool prints
+  // them, and output to the output stream.
+  def print(blocks0: List[Block], width: Int)(using Stdio): Unit =
+    blocks(blocks0, width).each(Err.println(_))
+
+  def printOut(blocks0: List[Block], width: Int)(using Stdio): Unit =
+    blocks(blocks0, width).each(Out.println(_))

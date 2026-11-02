@@ -29,20 +29,31 @@ import soundness.{Token as _, *}
 object TerminalTheme:
   given default: TerminalTheme = Solarized
 
-  // Solarized dark, the scheme fume's reports have always used; the syntax accents follow
-  // flame's editor palette where solarized has no equivalent.
-  object Solarized extends TerminalTheme:
-    private val base01 = Chroma(0x586e75)
-    private val base0 = Chroma(0x93a1a1)
-    private val yellow = Chroma(0xb58900)
-    private val orange = Chroma(0xcb4b16)
-    private val red = Chroma(0xdc322f)
-    private val magenta = Chroma(0xd33682)
-    private val violet = Chroma(0x6c71c4)
-    private val blue = Chroma(0x268bd2)
-    private val cyan = Chroma(0x2aa198)
-    private val green = Chroma(0x859900)
+  // An iridescence colour as the packed form a theme is written in.
+  def chroma(color: Color in Srgb): Chroma = color.chroma
 
+  // Solarized dark, the scheme fume's reports have always used, in iridescence's own values;
+  // the syntax accents follow flame's editor palette where solarized has no equivalent.
+  object Solarized extends TerminalTheme:
+    private object colours extends iridescence.Solarized:
+      val luminosity: Brightness = Brightness.Dark
+      val background: Color in Srgb = this.base03
+      val foreground: Color in Srgb = this.base3
+
+    private val base03 = chroma(colours.base03)
+    private val base02 = chroma(colours.base02)
+    private val base01 = chroma(colours.base01)
+    private val base0 = chroma(colours.base0)
+    private val yellow = chroma(colours.yellow)
+    private val orange = chroma(colours.orange)
+    private val red = chroma(colours.red)
+    private val magenta = chroma(colours.magenta)
+    private val violet = chroma(colours.violet)
+    private val blue = chroma(colours.blue)
+    private val cyan = chroma(colours.cyan)
+    private val green = chroma(colours.green)
+
+    def background: Chroma = base03
     def foreground: Chroma = base0
     def muted: Chroma = base01
     def key: Chroma = yellow
@@ -50,7 +61,7 @@ object TerminalTheme:
     def figure: Chroma = base0
     def units: Chroma = cyan
     def link: Chroma = blue
-    def selection: Chroma = Chroma(0x073642)
+    def selection: Chroma = base02
 
     def tone(tone: Tone): Chroma = tone match
       case Tone.Success => green
@@ -89,8 +100,9 @@ trait TerminalTheme:
   def selection: Chroma    // the background of a focused, selected row
 
   // The ground a subdued colour fades toward: what a repeated class or file name and a plumbing
-  // frame of a stack trace recede into. Dark by default, as the terminal themes here are.
-  def background: Chroma = Chroma(0x002b36)
+  // frame of a stack trace recede into. Every theme says what its ground is, since a theme on
+  // a black terminal which faded toward another's dark blue would not fade at all.
+  def background: Chroma
 
   // A stack trace's colours, digression's own by default so a trace reads the same here as in
   // any other Soundness terminal: the file, the method and the line, and the five accents the
@@ -103,11 +115,31 @@ trait TerminalTheme:
     List(Chroma(0xf84020), Chroma(0xd88600), Chroma(0xfefe00), Chroma(0xfeae00), Chroma(0xaefe00))
 
   // `chroma`, mixed toward the background by `factor`: `1.0` is the colour itself, `0.0` the
-  // background. As iridescence's `Palette#subdue`, but on a packed colour.
+  // background, as iridescence mixes.
   def subdue(chroma: Chroma, factor: Double): Chroma =
-    def channel(from: Int, to: Int): Int = (to + (from - to)*factor).toInt.max(0).min(255)
+    chroma.packed.srgb.mix(background.packed.srgb, 1.0 - factor.max(0.0).min(1.0)).chroma
 
-    Chroma
-      ( channel(chroma.red, background.red),
-        channel(chroma.green, background.green),
-        channel(chroma.blue, background.blue) )
+  // The theme's colours for a gauge, by the roles a gauge draws with: the track is the ground
+  // a little toward the foreground, the fill the accent, its leading edge the info tone.
+  def gaugePalette: GaugePalette =
+    val ground: Color in Srgb = background.packed.srgb
+    val ink: Color in Srgb = foreground.packed.srgb
+    val rail: Color in Srgb = subdue(foreground, 0.15).packed.srgb
+    val bar: Color in Srgb = tone(Tone.Accent).packed.srgb
+    val edge: Color in Srgb = tone(Tone.Info).packed.srgb
+    val faint: Color in Srgb = muted.packed.srgb
+    val good: Color in Srgb = tone(Tone.Success).packed.srgb
+    val warn: Color in Srgb = tone(Tone.Warning).packed.srgb
+    val bad: Color in Srgb = tone(Tone.Failure).packed.srgb
+
+    new GaugePalette:
+      val background: Color in Srgb = ground
+      val foreground: Color in Srgb = ink
+      val track: Color in Srgb = rail
+      val fill: Color in Srgb = bar
+      val leadingEdge: Color in Srgb = edge
+      val caption: Color in Srgb = ink
+      val muted: Color in Srgb = faint
+      val success: Color in Srgb = good
+      val warning: Color in Srgb = warn
+      val danger: Color in Srgb = bad

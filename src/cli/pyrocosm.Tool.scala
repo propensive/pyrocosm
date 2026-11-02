@@ -24,8 +24,6 @@ package pyrocosm
 
 import java.util.concurrent as juc
 
-import scala.collection.concurrent.TrieMap
-
 import soundness.*
 
 import charsets.utf8Charset
@@ -75,6 +73,42 @@ object Tool:
   object NoWeb extends Status(13, t"this tool has no web front-end to serve")
   object NotServing extends Status(14, t"the web front-end was not being served")
   object RemoteFailed extends Status(12, t"the connection to another machine could not be made")
+  object Unimplemented extends Status(15, t"this feature is not implemented yet")
+  object NoCredential extends Status(16, t"no credential of that name is configured")
+
+  // A project a command runs in: the nearest `.pyrocosm/<name>/config.tel` at or above the
+  // working directory names it, and its root is three levels up from the file — the directory
+  // holding `.pyrocosm/`. Without one, the working directory is the root and there is no
+  // configuration. Every path a configuration names is resolved against the root: absolute if
+  // it starts with `/`, and under the root otherwise.
+  case class Project(root: Path on Linux, file: Optional[Path on Linux], config: Optional[Tel]):
+    def resolve(entry: Text): Path on Linux =
+      if entry.starts(t"/") then unsafely(entry.as[Path on Linux])
+      else unsafely((root.encode + t"/" + entry).as[Path on Linux])
+
+    // The paths a `:`-separated setting names, resolved; nothing for an unset one.
+    def entries(setting: Optional[Text]): List[Path on Linux] =
+      setting.lay(Nil: List[Text])(_.cut(t":")).filter(_ != t"").map(resolve(_))
+
+    // `path` relative to the root, when it is beneath it.
+    def relative(path: Path on Linux): Text = Filing.relative(root.encode, path.encode)
+    def relative(path: Text): Text = Filing.relative(root.encode, path)
+
+    // The non-empty primary atoms of every field of the configuration named `keyword`.
+    def atoms(keyword: Text): List[Text] = Tool.atoms(config, keyword)
+
+  // The non-empty primary atoms of every field of a document named `keyword`: a list-valued
+  // setting as a TEL file writes one, a field per entry.
+  def atoms(document: Optional[Tel], keyword: Text): List[Text] =
+    document.lay(Nil: List[Text]): tel =>
+      tel.fields(keyword).to[List].map(_.primaryAtom).filter(_ != t"")
+
+  // The exit statuses: `2` and `8` to `31` are Pyrocosm's, for the statuses above and those to
+  // come; a tool's own are `32` to `99`, so that no tool's collides with the standard ones;
+  // `130` is a command the user interrupted, as a shell reports one.
+  val firstToolStatus: Int = 32
+  val lastToolStatus: Int = 99
+  val abortExit: Int = 130
 
   // The standard subcommands and flags, in an object so that `Install` does not shadow
   // `exoskeleton.Install`, the error type, for the rest of this one.
@@ -145,19 +179,35 @@ object Tool:
       new Setting(t"swarmPort", Flag[Text](t"port", false, List('p'), description), Unset):
         type Topic = Text
 
-  private case class Cached(modified: Long, size: Long, config: Optional[Tel])
+  // Because a tool runs as a daemon, parsed configurations are cached across invocations and
+  // invalidated whenever the file's modification time or size changes — so an edit is
+  // honoured by the very next command with no daemon restart. A file that fails to parse is
+  // treated (and cached) as absent rather than aborting the command; no tool requires a
+  // configuration file to exist. Reads and parses the file in two separately-scoped `safely`
+  // regions — one `Tactic` for the filesystem read, another for the TEL parse — rather than one
+  // region with a union `Tactic`: a single tactic would be captured by both the path-reader
+  // given and the TEL aggregator, which separation checking rejects as overlapping hidden
+  // capabilities.
+  private val documents: Memo[Tel] = Memo: file =>
+    safely(file.read[Data]).let: data => safely(data.read[Tel])
 
-  // Because a tool runs as a daemon, parsed configurations are cached across invocations,
-  // keyed by the file's absolute path, and invalidated whenever its modification time or size
-  // changes — so an edit is honoured by the very next command with no daemon restart. A file
-  // that fails to parse is treated (and cached) as absent rather than aborting the command; no
-  // tool requires a configuration file to exist.
-  private val cache: TrieMap[Text, Cached] = TrieMap()
+  private def document(file: Path on Linux): Optional[Tel] = documents(file)
 
   // The services launched in this daemon, by tool name and keyword: at most one of each per
   // tool, for as long as the daemon lives, or until `quit`. The instances are pure, so the map
   // holds them without laundering.
   private val serving: juc.ConcurrentHashMap[Text, Service] = juc.ConcurrentHashMap()
+
+  // The services this daemon runs, as `<tool>/<keyword>` and the port of each.
+  def services: List[(Text, Int)] =
+    val iterator = ports.entrySet.nn.iterator.nn
+    var found: List[(Text, Int)] = Nil
+
+    while iterator.hasNext do
+      val entry = iterator.next.nn
+      found = (entry.getKey.nn, entry.getValue.nn) :: found
+
+    found.reverse
 
   // The newest release each tool in this daemon knows of, by tool name, from the last check
   // (`refresh`); and the tools whose daily check has been started in this daemon.
@@ -166,34 +216,6 @@ object Tool:
 
   // How old a cached manifest may be before it is fetched again: the check is daily.
   private val checkInterval: Long = 24*60*60*1000L
-
-  // Reads and parses the file in two separately-scoped `safely` regions — one `Tactic` for the
-  // filesystem read, another for the TEL parse — rather than one region with a union `Tactic`:
-  // a single tactic would be captured by both the path-reader given and the TEL aggregator,
-  // which separation checking rejects as overlapping hidden capabilities.
-  private def parse(file: Path on Linux): Optional[Tel] =
-    safely(file.read[Data]).let: data => safely(data.read[Tel])
-
-  // The parsed document at `file`, freshly stat-checked on every call: one `stat` yields both
-  // the modification time and the size, so the change check costs a single filesystem
-  // operation per invocation. `Unset` if the file does not exist.
-  private def document(file: Path on Linux): Optional[Tel] =
-    safely(summon[FilesystemBackend on Linux].stat(file, true)).let: stat =>
-      val key: Text = file.encode
-
-      def reload(): Optional[Tel] =
-        val parsed: Optional[Tel] = parse(file)
-        cache(key) = Cached(stat.modified, stat.size, parsed)
-        parsed
-
-      val cached: Optional[Cached] = cache.getOrElse(key, Unset)
-
-      cached match
-        case cached: Cached if cached.modified == stat.modified && cached.size == stat.size =>
-          cached.config
-
-        case _ =>
-          reload()
 
   // A configuration source for the `Setting` cascade over one document: keyed by the setting's
   // canonical camelCase name, translated to its kebab-case TEL keyword, and applying the three
@@ -300,11 +322,7 @@ object Tool:
       val names: List[Suggestion] = known.map: machine => Suggestion(machine.name)
       summon[Cli].suggest(argument, names, t"", t"")
 
-  private def uptime(startTime: Long): Text =
-    val seconds: Long = (java.lang.System.currentTimeMillis() - startTime).max(0L)/1000
-    val hours: Long = seconds/3600
-    val minutes: Long = seconds%3600/60
-    t"${hours.show}h ${minutes.show}m ${(seconds%60).show}s"
+  private def uptime(startTime: Long): Text = Timing.show(aviation.now().long - startTime)
 
   private def mebibytes(bytes: Long): Text = t"${(bytes/(1024*1024)).show} MiB"
 
@@ -364,14 +382,8 @@ object Tool:
     // The trimmed contents of the `META-INF/pyrocosm/<name>/<file>` resource its build wrote,
     // read through the thread's context classloader, which is the loader that sees the tool's
     // own jar under Burdock. `Unset` if there is no such resource.
-    private def resource(file: Text): Optional[Text] =
-      val path: String = t"META-INF/pyrocosm/${tool.name}/$file".s
-
-      val loader: ClassLoader =
-        Optional(Thread.currentThread.nn.getContextClassLoader).or(classOf[Tool].getClassLoader.nn)
-
-      Optional(loader.getResourceAsStream(path)).let: stream =>
-        try String(stream.readAllBytes(), "UTF-8").trim.nn.tt finally stream.close()
+    def resource(file: Text): Optional[Text] =
+      Resources.text(t"META-INF/pyrocosm/${tool.name}/$file").let(_.trim)
 
     // The version as a `Semver`, which only a release's (or a snapshot's) version is: `Unset`
     // for a development build, whose version is a tree hash.
@@ -656,10 +668,27 @@ object Tool:
             tool.refresh(force = false)
             snooze(24*Hour)
 
+    // The tool's directories under the XDG homes: `$XDG_CACHE_HOME/<name>` for what can be
+    // made again, `$XDG_STATE_HOME/<name>` for what cannot (records of runs, say), and the
+    // runtime directory for sockets and locks; and, for a project, a cache of its own under
+    // the tool's, named by the digest of the project's root, so that two checkouts of one
+    // project never share one.
+    def cacheDirectory(using Environment): Optional[Path on Linux] =
+      safely(Xdg.cacheHome[Path on Linux] / Name[Linux](tool.name))
+
+    def stateDirectory(using Environment): Optional[Path on Linux] =
+      safely(Xdg.stateHome[Path on Linux] / Name[Linux](tool.name))
+
+    def runtimeDirectory(using Environment): Optional[Path on Linux] =
+      safely(Xdg.runtimeDir[Path on Linux]).or(Unset).let: directory =>
+        safely(directory / Name[Linux](tool.name))
+
+    def projectCache(root: Text)(using Environment): Optional[Path on Linux] =
+      tool.cacheDirectory.let: directory =>
+        safely(directory / Name[Linux](Digests.of(root).keep(12)))
+
     // The cached manifest, `$XDG_CACHE_HOME/<name>/upgrade.tsv`, so that a daemon restarted
     // within a day of the last check does not fetch again.
-    private def cacheDirectory(using Environment): Optional[Path on Linux] =
-      safely(Xdg.cacheHome[Path on Linux] / Name[Linux](tool.name))
 
     private def manifestCache(using Environment): Optional[Path on Linux] =
       tool.cacheDirectory.let: directory => safely(directory / Name[Linux](t"upgrade.tsv"))
@@ -712,6 +741,50 @@ object Tool:
     // otherwise, when the word is still accepted, and answered.
     private def serveCommand: Subcommand =
       if tool.web.present then Tool.ui.Serve else Tool.ui.HiddenServe
+
+    // The project the working directory is in (see `Project`).
+    def project(directory: Text): Project =
+      val file: Optional[Path on Linux] = tool.repoFile(directory)
+
+      val root: Path on Linux =
+        file.let(_.parent).let(_.parent).let(_.parent).or(unsafely(directory.as[Path on Linux]))
+
+      Project(root, file, file.let(Tool.document(_)))
+
+    // The usage a tool prints when its command line is not understood: its own subcommands,
+    // then the standard ones, each with its description, as `--help` would list them.
+    def usage(own: List[Subcommand])(using Stdio): Tool.UsageError.type =
+      val standard: List[Subcommand] =
+        List(Tool.ui.About, Tool.ui.Install, Tool.ui.Quit, Tool.ui.Upgrade, Tool.ui.Swarm) +
+          (if tool.web.present then List(Tool.ui.Serve) else Nil)
+
+      val all: List[Subcommand] = own + standard
+      val width: Int = all.map(_.name.length).fold(0)(_.max(_))
+
+      def description(subcommand: Subcommand): Text = subcommand.description match
+        case text: Text         => text
+        case teletype: Teletype => teletype.plain
+        case _                  => t""
+
+      import textMetrics.uniformMetric
+
+      Out.println(t"Usage: ${tool.name} <subcommand>")
+      Out.println(t"")
+
+      all.each: subcommand =>
+        val line: Text = t"  ${subcommand.name.pad(width + 4)}${description(subcommand)}"
+        Out.println(line)
+
+      Tool.UsageError
+
+    // The width to render at: the terminal's, from `COLUMNS` in the invocation's environment
+    // when it is set, else 100 where nothing says; and never more than 160, past which a line
+    // of prose is hard to read.
+    def columns(using Environment): Int =
+      val declared: Optional[Int] =
+        safely(Environment.columns[Text].as[Int]).let: width => if width > 0 then width else Unset
+
+      declared.or(100).min(160)
 
     // Where the web front-end on `port` is found: under the machine's hub for a port of 0,
     // which the hub holds, and at the port itself otherwise.

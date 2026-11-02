@@ -47,6 +47,10 @@ object Inline:
   // Plain text as a one-element phrase, the commonest case.
   def text(text: Text): List[Inline] = List(Textual(text))
 
+  // A text, and a glyph, in a tone: the mark beside a result, the word of a verdict.
+  def toned(tone: Tone, text: Text): Inline = Toned(tone, List(Textual(text)))
+  def glyph(tone: Tone, glyph: Glyph): Inline = Toned(tone, List(Symbol(glyph)))
+
   object Amount:
     // A quantity's units exist only at the type level, so they are captured as text when the
     // phrase is made; that is what lets an amount travel over the wire and still render with

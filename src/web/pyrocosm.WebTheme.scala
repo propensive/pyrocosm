@@ -31,6 +31,11 @@ import strategies.throwUnsafely
 object WebTheme:
   given default: WebTheme = Ember
 
+  // The colours a chart is drawn in: its ground, its axes and lettering, its grid, and the
+  // series in turn.
+  case class ChartColours
+    ( background: Chroma, foreground: Chroma, grid: Chroma, series: List[Chroma] )
+
   def hex(chroma: Chroma): Text =
     def channel(value: Int): Text =
       val digits = java.lang.Integer.toHexString(value&255).nn
@@ -323,6 +328,19 @@ object WebTheme:
 // one palette for both media. Emitted once as CSS custom properties (`variables`), so every rule
 // in `WebStyles` refers to a role by `var(--pyro-…)` and a second theme is a second `:root` block.
 trait WebTheme:
+  // The theme's colours for a chart: its surface as the ground, its foreground for the axes
+  // and the lettering, its border for the grid, and a ramp of five steps from the info tone to
+  // the success tone for the series, so that a chart sits on the page it is drawn on. Plain
+  // colours, for a tool to make its charting library's palette from.
+  def chartColours: WebTheme.ChartColours =
+    val from: Srgb = tone(Tone.Info).packed.srgb
+    val to: Srgb = tone(Tone.Success).packed.srgb
+
+    val ramp: List[Chroma] =
+      List(from, from.mix(to, 0.25), from.mix(to, 0.5), from.mix(to, 0.75), to).map(_.chroma)
+
+    WebTheme.ChartColours(surface, foreground, border, ramp)
+
   def background: Chroma
   def surface: Chroma       // cards and panels
   def foreground: Chroma

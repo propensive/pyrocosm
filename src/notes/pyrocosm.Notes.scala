@@ -55,6 +55,11 @@ object Notes:
   val refspec: Text = t"refs/notes/pyrocosm/*:refs/notes/pyrocosm/*"
   def ref(kind: Text): Text = t"refs/notes/pyrocosm/$kind"
 
+  // The notes of the repository `directory` is in, or `Unset` when it is in no work tree.
+  def locate(directory: Text): Optional[Notes] =
+    val notes: Notes = Notes(directory)
+    safely(notes.toplevel()).let(Notes(_))
+
   object Error:
     enum Reason:
       case BadRef(refspec: Text)
@@ -97,6 +102,20 @@ class Notes(root: Text):
       val status = job.status()
       (status, output, job.errorText())
 
+  // The same, with bytes in and out: how a note with a binary body is written and read.
+  private def runData(arguments: List[Text], input: Optional[Data])
+  :   (Int, Data, Text) raises Notes.Error =
+
+    mitigate:
+      case Exec.Error(_, _, stderr) => Notes.Error(GitFailed(-1, stderr.utf8))
+
+    . protect:
+      val job = Command((t"git" :: arguments)*).fork[Data]()
+      input.let: data => safely(job.stdin(Stream(data)))
+      val output = job.await()
+      val status = job.status()
+      (status, output, job.errorText())
+
   private def succeed(result: (Int, Text, Text)): Text raises Notes.Error = result match
     case (0, output, _)     => output
     case (status, _, error) => abort(Notes.Error(GitFailed(status, error.trim)))
@@ -124,9 +143,6 @@ class Notes(root: Text):
       case (0, output, _) => output
       case _              => Unset
 
-  // Git appends one newline to a shown note that is not part of the stored body.
-  private def stripped(text: Text): Text = if text.ends(t"\n") then text.skip(1, Rtl) else text
-
   private def nul: Text = 0.toChar.toString.tt
 
   // The lines of some output, trimmed, without blanks.
@@ -153,18 +169,48 @@ class Notes(root: Text):
 
     if excluded.nil
     then Fingerprint.unsafe(git(List(t"rev-parse", t"${commit.text}^{tree}")).trim)
-    else
-      val directory = java.nio.file.Files.createTempDirectory("pyrocosm-notes").nn
-      val index = directory.resolve("index").nn.toString.tt
+    else Filing.temporary(t"pyrocosm-notes"): directory =>
+      val index: Text = t"${directory.encode}/index"
+      indexed(index, Unset)(List(t"read-tree", commit.text))
+      val removal: Text = excluded.map(_ + nul).join
+      indexed(index, removal)(List(t"update-index", t"--force-remove", t"-z", t"--stdin"))
+      Fingerprint.unsafe(indexed(index, Unset)(List(t"write-tree")).trim)
 
-      try
-        indexed(index, Unset)(List(t"read-tree", commit.text))
-        val removal: Text = excluded.map(_ + nul).join
-        indexed(index, removal)(List(t"update-index", t"--force-remove", t"-z", t"--stdin"))
-        Fingerprint.unsafe(indexed(index, Unset)(List(t"write-tree")).trim)
-      finally
-        java.nio.file.Files.deleteIfExists(directory.resolve("index").nn)
-        java.nio.file.Files.deleteIfExists(directory)
+  // The tree of exactly `files`, written under a throwaway index so that the real index and
+  // the work tree are untouched: the fingerprint of a set of working files, dirty or not. The
+  // index sorts its entries, so the hash does not depend on the order the files arrive in.
+  def tree(files: List[Text]): Fingerprint raises Notes.Error =
+    Filing.temporary(t"pyrocosm-notes"): directory =>
+      val index: Text = t"${directory.encode}/index"
+      val listing: Text = files.map(_ + nul).join
+      indexed(index, listing)(List(t"update-index", t"--add", t"-z", t"--stdin"))
+      Fingerprint.unsafe(indexed(index, Unset)(List(t"write-tree")).trim)
+
+  // `data` written into the object store as a blob, and its hash: how a definition's
+  // normalised text becomes its digest, and how a note with a binary body is staged.
+  def blob(data: Data): Fingerprint raises Notes.Error =
+    runData(List(t"hash-object", t"-w", t"--stdin"), data) match
+      case (0, output, _)     => Fingerprint.unsafe(output.utf8.trim)
+      case (status, _, error) => abort(Notes.Error(GitFailed(status, error.trim)))
+
+  // The top-level directory of the work tree, which fails outside one.
+  def toplevel(): Text raises Notes.Error = git(List(t"rev-parse", t"--show-toplevel")).trim
+
+  def head(): Optional[Commit] raises Notes.Error = safely(commit(t"HEAD"))
+
+  // Whether any tracked file differs from HEAD: a measurement of a dirty tree is still a
+  // measurement, but a record of it should say so.
+  def dirty(): Boolean raises Notes.Error =
+    git(List(t"status", t"--porcelain", t"--untracked-files=no")).trim != t""
+
+  // Any object a refspec names — a commit, a tree or a blob — by its hash; `Unset` for none.
+  def resolve(refspec: Text): Optional[Fingerprint] raises Notes.Error =
+    attempt(List(t"rev-parse", t"--verify", t"--quiet", t"--end-of-options", refspec))
+    . let: hash => Fingerprint.parse(hash.trim)
+
+  // The kind of object a hash names — `commit`, `tree`, `blob` — or `Unset` for none.
+  def objectType(hash: Text): Optional[Text] raises Notes.Error =
+    attempt(List(t"cat-file", t"-t", hash)).let(_.trim)
 
   // The fingerprints bound to a commit, newest first.
   def fingerprints(commit: Commit): List[Fingerprint] raises Notes.Error =
@@ -182,18 +228,59 @@ class Notes(root: Text):
   def read[value: Recordable as recordable](fingerprint: Fingerprint)
   :   Optional[value] raises Notes.Error =
 
-    val ref: Text = t"--ref=${Notes.ref(recordable.kind)}"
-
-    attempt(List(t"notes", ref, t"show", fingerprint.text)).let: body =>
-      recordable.decode(stripped(body))
+    note(recordable.kind, fingerprint).let: body =>
+      recordable.decode(body)
       . or(abort(Notes.Error(Undecodable(recordable.kind, fingerprint))))
 
+  // The body is written into the object store first, and the note made from that blob: git's
+  // `-C` reuses the object, so a body of any bytes — BinTEL, say — is never passed through a
+  // message, which would strip it.
   def write[value: Recordable as recordable](fingerprint: Fingerprint, value: value)
   :   Unit raises Notes.Error =
 
-    val ref: Text = t"--ref=${Notes.ref(recordable.kind)}"
-    val arguments: List[Text] = List(t"notes", ref, t"add", t"-f", t"-F", t"-", fingerprint.text)
-    feed(recordable.encode(value))(arguments)
+    write(recordable.kind, fingerprint, recordable.encode(value))
+
+  // The same, for a body that is not a `Recordable`'s: the bytes, under `kind`.
+  def write(kind: Text, target: Fingerprint, body: Data): Unit raises Notes.Error =
+    val ref: Text = t"--ref=${Notes.ref(kind)}"
+    val object0: Fingerprint = blob(body)
+    git(List(t"notes", ref, t"add", t"-f", t"-C", object0.text, target.text))
+
+  // The note of `kind` on an object, as bytes: through `git notes`, or, when the object it
+  // annotated has been pruned, through the notes ref's own tree, where it survives — flat, or
+  // fanned out past a size, so both layouts are tried.
+  def note(kind: Text, target: Fingerprint): Optional[Data] raises Notes.Error =
+    noteAt(Notes.ref(kind), target)
+
+  // The same, at any notes ref: how a tool reads the notes it kept elsewhere before they moved
+  // under `refs/notes/pyrocosm/`.
+  def noteAt(ref: Text, target: Fingerprint): Optional[Data] raises Notes.Error =
+    val hash: Text = target.text
+
+    def shown(arguments: List[Text]): Optional[Data] = runData(arguments, Unset) match
+      case (0, output, _) => output
+      case _              => Unset
+
+    shown(List(t"notes", t"--ref=$ref", t"show", hash))
+    . or(shown(List(t"cat-file", t"-p", t"$ref:$hash")))
+    . or(shown(List(t"cat-file", t"-p", t"$ref:${hash.keep(2)}/${hash.skip(2)}")))
+
+  // Appends a line of text to the note of `kind` on an object, making the note if it has none.
+  def append(kind: Text, target: Fingerprint, text: Text): Unit raises Notes.Error =
+    val ref: Text = t"--ref=${Notes.ref(kind)}"
+    feed(text)(List(t"notes", ref, t"append", t"-F", t"-", target.text))
+
+  // Every object annotated under `kind`; and at any notes ref.
+  def noted(kind: Text): List[Fingerprint] raises Notes.Error = notedAt(Notes.ref(kind))
+
+  def notedAt(ref: Text): List[Fingerprint] raises Notes.Error =
+    attempt(List(t"notes", t"--ref=$ref", t"list")).lay(Nil): listing =>
+      val targets = lines(listing).map: line =>
+        line.cut(t" ") match
+          case _ :: target :: _ => target
+          case _                => t""
+
+      hashes(Fingerprint.parse)(targets)
 
   // The reverse index: every commit whose index note names the fingerprint. A scan of the index
   // ref, so linear in the number of annotated commits.
@@ -210,6 +297,19 @@ class Notes(root: Text):
   // The commits reachable from a refspec, newest first, up to a limit: the axis of a trend.
   def history(refspec: Text, limit: Int): List[Commit] raises Notes.Error =
     hashes(Commit.parse)(lines(git(List(t"log", t"--format=%H", t"-n", limit.show, refspec))))
+
+  // The same, each with its commit time, in seconds since the epoch.
+  def log(refspec: Text, limit: Int): List[(Commit, Long)] raises Notes.Error =
+    lines(git(List(t"log", t"--format=%H:%ct", t"-n", limit.show, refspec))).bind: line =>
+      line.cut(t":") match
+        case hash :: time :: _ =>
+          def entry(commit: Commit): Optional[(Commit, Long)] =
+            safely(time.as[Long]).let((commit, _))
+
+          Commit.parse(hash).let(entry(_)).lay(Nil)(List(_))
+
+        case _ =>
+          Nil
 
   // Brings the remote's notes refs to the local ones. A remote ref that cannot fast-forward the
   // local one is `Diverged`; an absent remote ref is nothing to fetch.

@@ -143,7 +143,41 @@ object Notices:
     case anthology.Importance.Info    => Block.Note.Style.Highlight
 
   // A compiler run with colour writes its escapes into the message; they are not markup.
-  def stripAnsi(text: Text): Text = text.s.replaceAll("\u001b\\[[0-9;]*m", "").nn.tt
+  def stripAnsi(text: Text): Text = text.sub(r"\e\[[0-9;]*m", t"")
+
+  // The compiler's own summary ("3 warnings found") is no diagnostic.
+  def summary(notice: anthology.Notice): Boolean =
+    r"[0-9]+ (warnings?|errors?) found".matches(notice.message.trim)
+
+  // Every notice of a run as a diagnostic, the lines of each file highlighted once for the
+  // excerpts of every notice about it: `sources` answers a file's text, by the name the notice
+  // gives it — the compiler names a file by its path or its name alone, so `sources` should
+  // answer both. The run's summaries and its informational notices are left out, as a tool
+  // reports problems, and a file is named relative to `root` when it is beneath it.
+  def diagnostics
+    ( notices: List[anthology.Notice],
+      sources: Text => Optional[Text],
+      root:    Optional[Text]          = Unset,
+      context: Int                     = 1 )
+  :   List[Block.Diagnostic] =
+
+    val highlighted: scala.collection.mutable.HashMap[Text, List[Block.Line]] =
+      scala.collection.mutable.HashMap()
+
+    def linesOf(file: Text): List[Block.Line] =
+      highlighted.getOrElseUpdate(file, sources(file).lay(Nil)(lines(_)))
+
+    def relative(file: Text): Text = root.lay(file): root =>
+      if file.starts(t"$root/") then file.skip(root.length + 1) else file
+
+    def reported(notice: anthology.Notice): Boolean =
+      notice.importance != anthology.Importance.Info && !summary(notice)
+
+    notices.filter(reported(_)).map: notice =>
+      val diagnostic: Block.Diagnostic = Notices.diagnostic(notice, linesOf(notice.file), context)
+
+      diagnostic.copy(location = diagnostic.location.let: location =>
+        location.copy(path = relative(location.path)))
 
   // The lines of a Scala source, highlighted once for the excerpts of every notice about it.
   def lines(source: Text): List[Block.Line] = Scala.highlight(source).modelLines

@@ -27,21 +27,31 @@ import soundness.*
 import codepages.utf8Codepage
 
 object Recordable:
+  // A kind whose body is the type's TEL text, as the rest of the ecosystem's documents.
   def apply[value](kind0: Text)
     ( using encodable: value is Tel.Encodable, decodable: value is Tel.Decodable )
+  :   value is Recordable =
+
+    of[value](kind0)
+      ( value => value.in[Tel].show.sysData,
+        data => safely(data.utf8.read[Tel].as[value]) )
+
+  // A kind of any wire form, from its codec: a BinTEL body, say, whose derivation site sits in
+  // an unchecked module, as `Recordable.of[Verdict](t"verdict")(_.bintel, Bintel.read(_))`.
+  def of[value](kind0: Text)(encode0: value -> Data, decode0: Data -> Optional[value])
   :   value is Recordable =
 
     new Recordable:
       type Self = value
       def kind: Text = kind0
-      def encode(value: value): Text = value.in[Tel].show
-      def decode(text: Text): Optional[value] = safely(text.read[Tel].as[value])
+      def encode(value: value): Data = encode0(value)
+      def decode(data: Data): Optional[value] = decode0(data)
 
 // What kind of metadata a type is: the name of the notes ref that holds it (`bench` is
-// `refs/notes/pyrocosm/bench`) and its wire form, TEL text, as the rest of the ecosystem's
-// documents. An instance is normally made from the type's TEL codecs with
-// `Recordable[Bench]("bench")`.
+// `refs/notes/pyrocosm/bench`) and its wire form — TEL text, as the rest of the ecosystem's
+// documents, for an instance made from the type's TEL codecs with `Recordable[Bench]("bench")`,
+// or whatever bytes `Recordable.of` is given.
 trait Recordable extends Typeclass:
   def kind: Text
-  def encode(value: Self): Text
-  def decode(text: Text): Optional[Self]
+  def encode(value: Self): Data
+  def decode(data: Data): Optional[Self]
