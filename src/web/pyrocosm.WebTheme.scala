@@ -323,6 +323,27 @@ object WebTheme:
 // one palette for both media. Emitted once as CSS custom properties (`variables`), so every rule
 // in `WebStyles` refers to a role by `var(--pyro-…)` and a second theme is a second `:root` block.
 trait WebTheme:
+  // The theme's colours for a chart: its surface as the ground, its foreground for the axes
+  // and the lettering, its border for the grid, and a ramp of five steps from the info tone to
+  // the success tone for the series, so that a chart sits on the page it is drawn on.
+  def chartPalette: ChartPalette =
+    val ground: Color in Srgb = surface.packed.srgb
+    val ink: Color in Srgb = foreground.packed.srgb
+    val lines: Color in Srgb = border.packed.srgb
+    val from: Srgb = tone(Tone.Info).packed.srgb
+    val to: Srgb = tone(Tone.Success).packed.srgb
+
+    val ramp: Sequence[Color in Srgb] =
+      Sequence(from, from.mix(to, 0.25), from.mix(to, 0.5), from.mix(to, 0.75), to)
+
+    new ChartPalette:
+      val series: Sequence[Color in Srgb] = ramp
+      def background: Color in Srgb = ground
+      def foreground: Color in Srgb = ink
+      def axis: Color in Srgb = ink
+      def grid: Color in Srgb = lines
+      def text: Color in Srgb = ink
+
   def background: Chroma
   def surface: Chroma       // cards and panels
   def foreground: Chroma
