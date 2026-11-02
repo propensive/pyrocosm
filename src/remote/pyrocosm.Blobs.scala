@@ -30,9 +30,9 @@ import filesystemTraversal.preOrderTraversal
 import systems.javaBaseSystem
 
 // Content-addressed shipping of classpath entries between machines. A jar is named by the
-// Blake3 digest of its bytes (`Digests`); a directory of classes is first bundled into a jar deterministically
-// — entries sorted by path, epoch timestamps — so that the same classes give the same digest
-// however they were laid down. A machine keeps every blob it has received under
+// Blake3 digest of its bytes (`Digests`); a directory of classes is first bundled into a jar
+// deterministically — entries sorted by path, epoch timestamps — so that the same classes give
+// the same digest however they were laid down. A machine keeps every blob it has received under
 // `$XDG_CACHE_HOME/pyrocosm/blobs/<digest>.jar`, shared by every tool on it, so a worker asks
 // only for the digests it lacks and a controller sends only those.
 object Blobs:

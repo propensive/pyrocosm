@@ -84,4 +84,5 @@ object Classpaths:
 
   // The predef options: proscenium's, with `packages` imported after it.
   def imports(packages: Text*): List[Text] =
-    List(t"-Yno-predef", t"-Yimports:${(List(t"java.lang", t"proscenium") + List(packages*)).join(t",")}")
+    val all: List[Text] = List(t"java.lang", t"proscenium") + List(packages*)
+    List(t"-Yno-predef", t"-Yimports:${all.join(t",")}")

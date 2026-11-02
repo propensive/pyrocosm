@@ -105,9 +105,10 @@ object Hubs:
     val classpath: Text = Hubs.classpath().join(java.io.File.pathSeparator.nn.tt)
     val command: List[Text] = List(executable, t"-cp", classpath, t"pyrocosm.Hubs", tool, version)
 
-    val variables: List[(Text, Text)] =
-      inherited.bind: name =>
-        environment.variable(name).lay(Nil) { value => List((name, value)) }
+    def pair(name: Text): List[(Text, Text)] =
+      environment.variable(name).lay(Nil): value => List((name, value))
+
+    val variables: List[(Text, Text)] = inherited.bind(pair(_))
 
     Processes.detach(command, variables, logFile.let(_.toString.tt), inherit = false)
 

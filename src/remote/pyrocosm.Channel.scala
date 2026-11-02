@@ -137,7 +137,6 @@ object Channel:
 
   def same(left: Data, right: Data): Boolean = Array.same(left, right)
 
-
 // One end of a connection, speaking `codec`'s messages. Reads block; writes are serialised by
 // a mutex so frames from concurrent senders never interleave. The `Duplex` contract is a
 // single reader, so `receive` must be called from one thread at a time.

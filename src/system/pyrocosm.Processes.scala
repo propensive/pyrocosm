@@ -44,7 +44,7 @@ object Processes:
       val builder = jl.ProcessBuilder(command.map(_.s).stdlib*)
       val variables = builder.environment.nn
       if !inherit then variables.clear()
-      environment.each { (key, value) => variables.put(key.s, value.s) }
+      environment.each: (key, value) => variables.put(key.s, value.s)
       builder.redirectInput(jl.ProcessBuilder.Redirect.from(ji.File("/dev/null")))
 
       log match

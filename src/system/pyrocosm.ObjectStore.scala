@@ -64,5 +64,5 @@ final class ObjectStore(val directory: Path on Linux, val suffix: Text):
   // Deletes every blob whose digest is not in `keep`; how many were deleted.
   def prune(keep: Set[Text]): Int =
     val stale: List[Text] = digests.filter(!keep.has(_))
-    stale.each { digest => Filing.wipe(path(digest)) }
+    stale.each: digest => Filing.wipe(path(digest))
     stale.stdlib.length

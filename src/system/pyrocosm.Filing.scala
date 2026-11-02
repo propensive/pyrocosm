@@ -42,9 +42,9 @@ import textSanitizers.skipSanitizer
 object Filing:
   // Replaces `path` with `data`, creating its parents; `false` if it could not be written.
   def replace(path: Path on Linux, data: Data): Boolean =
-    safely:
-      path.create[File](CreateFlag.Replace, CreateFlag.Parents): handle ?=>
-        handle.write(data)
+    def write(handle: (Handle & Granting[Grant.Read & Grant.Write])^): Unit = handle.write(data)
+
+    safely(path.create[File](CreateFlag.Replace, CreateFlag.Parents) { handle ?=> write(handle) })
     . present
 
   def replace(path: Path on Linux, text: Text): Boolean = replace(path, text.sysData)

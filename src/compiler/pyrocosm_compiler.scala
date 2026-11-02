@@ -170,12 +170,14 @@ object Notices:
     def relative(file: Text): Text = root.lay(file): root =>
       if file.starts(t"$root/") then file.skip(root.length + 1) else file
 
-    notices.filter { notice => notice.importance != anthology.Importance.Info && !summary(notice) }
-    . map: notice =>
-        val diagnostic: Block.Diagnostic = Notices.diagnostic(notice, linesOf(notice.file), context)
+    def reported(notice: anthology.Notice): Boolean =
+      notice.importance != anthology.Importance.Info && !summary(notice)
 
-        diagnostic.copy(location = diagnostic.location.let: location =>
-          location.copy(path = relative(location.path)))
+    notices.filter(reported(_)).map: notice =>
+      val diagnostic: Block.Diagnostic = Notices.diagnostic(notice, linesOf(notice.file), context)
+
+      diagnostic.copy(location = diagnostic.location.let: location =>
+        location.copy(path = relative(location.path)))
 
   // The lines of a Scala source, highlighted once for the excerpts of every notice about it.
   def lines(source: Text): List[Block.Line] = Scala.highlight(source).modelLines

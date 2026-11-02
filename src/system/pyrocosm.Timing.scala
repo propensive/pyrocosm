@@ -42,7 +42,10 @@ object Timing:
     def suffixed(entry: (Text, Double)): Boolean = trimmed.ends(entry(0))
 
     val unit: Optional[(Text, Double)] = units.filter(suffixed(_)).head
-    val number: Text = unit.lay(trimmed) { (suffix, _) => trimmed.keep(trimmed.length - suffix.length) }
+
+    val number: Text = unit.lay(trimmed): (suffix, _) =>
+      trimmed.keep(trimmed.length - suffix.length)
+
     val factor: Double = unit.lay(1.0)(_(1))
 
     safely(number.trim.as[Double]).let: count =>

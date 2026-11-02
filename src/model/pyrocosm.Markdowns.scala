@@ -34,12 +34,16 @@ import soundness.{Language as _, *}
 // a documentation tool that compiles its fences, links its code and anchors its headings —
 // says it through `Hooks`, each of which is given the line the node is on, from one.
 object Markdowns:
+  object Hooks:
+    val none: Hooks = new Hooks {}
+
   trait Hooks:
     // A fenced code block: plain, under its own language name, by default.
     def fence(info: List[Text], content: Text, line: Int): List[Block] =
       List(Markdowns.code(info, content, line))
 
-    def code(code: Text, line: Int): Inline = Inline.Snippet(Language.Plain, List(Token.plain(code)))
+    def code(code: Text, line: Int): Inline =
+      Inline.Snippet(Language.Plain, List(Token.plain(code)))
 
     def link(destination: Text, content: List[Inline], line: Int): Inline =
       Inline.Link(Inline.Destination.External(destination), content)
@@ -53,9 +57,6 @@ object Markdowns:
     def html(html: Text, line: Int): List[Block] =
       if html.trim.starts(t"<!--") && html.trim.ends(t"-->") then Nil
       else List(Block.Code(Language(t"html"), Markdowns.lines(html)))
-
-  object Hooks:
-    val none: Hooks = new Hooks {}
 
   def convert(markdown: Markdown of Layout, hooks: Hooks = Hooks.none): List[Block] =
     all(markdown.children, hooks)
@@ -195,10 +196,12 @@ object Markdowns:
     case Layout.Heading(line, level, prose*) =>
       List(hooks.heading(level, phrasing(List.from(prose), hooks, line.n1), line.n1))
 
-    case Layout.BlockQuote(_, layouts*)       => List(Block.Quotation(all(List.from(layouts), hooks)))
-    case Layout.ThematicBreak(_)              => List(Block.Rule())
-    case Layout.HtmlBlock(line, html)         => hooks.html(html, line.n1)
+    case Layout.ThematicBreak(_)               => List(Block.Rule())
+    case Layout.HtmlBlock(line, html)          => hooks.html(html, line.n1)
     case Layout.CodeBlock(line, info, content) => hooks.fence(info, content, line.n1)
+
+    case Layout.BlockQuote(_, layouts*) =>
+      List(Block.Quotation(all(List.from(layouts), hooks)))
 
     case Layout.BulletList(_, _, items*) =>
       val listed: List[Block.Item] =

@@ -288,7 +288,10 @@ class Notes(root: Text):
     lines(git(List(t"log", t"--format=%H:%ct", t"-n", limit.show, refspec))).bind: line =>
       line.cut(t":") match
         case hash :: time :: _ =>
-          Commit.parse(hash).let { commit => safely(time.as[Long]).let((commit, _)) }.lay(Nil)(List(_))
+          def entry(commit: Commit): Optional[(Commit, Long)] =
+            safely(time.as[Long]).let((commit, _))
+
+          Commit.parse(hash).let(entry(_)).lay(Nil)(List(_))
 
         case _ =>
           Nil

@@ -43,8 +43,8 @@ object Harness:
     val statuses: List[Int] = List(suites*).map: suite =>
       suite.invoke(arguments, event => event match
         case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
-          if outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass" then passes.since(_ + 1)
-          else failures.since(_ + 1)
+          val passed: Boolean = outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass"
+          if passed then passes.since(_ + 1) else failures.since(_ + 1)
 
           Out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}")
 
@@ -66,4 +66,5 @@ object Harness:
   def main(arguments: scala.Array[String], suites: Suite[?]*): Unit =
     val words: Text =
       List.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(arguments).map(_.tt)).join(t" ")
+
     Exit(run(words, suites*)).terminate()

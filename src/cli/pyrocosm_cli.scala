@@ -28,7 +28,7 @@ import soundness.*
 // `operands` the ones which are not flags, and `flagged` whether a flag is present — read,
 // which is what registers it for tab-completion and the manpage.
 extension (arguments: List[Argument])
-  def words: List[Text] = arguments.map { (argument: Argument) => argument() }
+  def words: List[Text] = arguments.map: (argument: Argument) => argument()
   def operands: List[Text] = words.filter(!_.starts(t"-"))
 
 extension (flag: Flag of Unit)

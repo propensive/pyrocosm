@@ -33,7 +33,8 @@ object WebTheme:
 
   // The colours a chart is drawn in: its ground, its axes and lettering, its grid, and the
   // series in turn.
-  case class ChartColours(background: Chroma, foreground: Chroma, grid: Chroma, series: List[Chroma])
+  case class ChartColours
+    ( background: Chroma, foreground: Chroma, grid: Chroma, series: List[Chroma] )
 
   def hex(chroma: Chroma): Text =
     def channel(value: Int): Text =

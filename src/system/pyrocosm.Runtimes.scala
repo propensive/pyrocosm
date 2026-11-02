@@ -50,6 +50,7 @@ object Runtimes:
 
   private def executable: Optional[Text] =
     val property: String | Null = java.lang.System.getProperty("ethereal.script")
+
     if property == null then Unset else
       try ji.File(property).getCanonicalPath.nn.tt catch case _: Throwable => property.tt
 
@@ -86,6 +87,6 @@ object Runtimes:
     def other(entry: Text): Boolean = own != entry && own != canonical(entry)
     val rest: List[Text] = List.from(urls(loader).stdlib ++ property.stdlib).filter(other(_))
     val distinct: List[Text] = List.from(rest.stdlib.distinct)
-    link.lay(distinct) { link => link :: distinct }
+    link.lay(distinct): link => link :: distinct
 
   def isJar(entry: Text): Boolean = entry.ends(t".jar")

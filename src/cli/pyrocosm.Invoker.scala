@@ -24,6 +24,15 @@ package pyrocosm
 
 import soundness.*
 
+object Invoker:
+  // Codex's variable is checked first, so an environment carrying both reads as Codex; the
+  // workflow last, since an agent may run inside one.
+  def detect(using Environment): Invoker =
+    if safely(Environment.codexSandbox[Text]) == t"1" then Codex
+    else if safely(Environment.claudecode[Text]) == t"1" then Claude
+    else if safely(Environment.githubActions[Text]) == t"true" then GithubActions
+    else Human
+
 // Who or what ran the command: an agent, when its environment says so — Codex sets
 // `CODEX_SANDBOX=1` and Claude Code `CLAUDECODE=1` — a GitHub Actions workflow, which sets
 // `GITHUB_ACTIONS=true`, or otherwise a human at a terminal. An agent and a workflow read a
@@ -33,15 +42,6 @@ enum Invoker:
 
   def terse: Boolean = this != Human
   def annotates: Boolean = this == Invoker.GithubActions
-
-object Invoker:
-  // Codex's variable is checked first, so an environment carrying both reads as Codex; the
-  // workflow last, since an agent may run inside one.
-  def detect(using Environment): Invoker =
-    if safely(Environment.codexSandbox[Text]) == t"1" then Codex
-    else if safely(Environment.claudecode[Text]) == t"1" then Claude
-    else if safely(Environment.githubActions[Text]) == t"true" then GithubActions
-    else Human
 
 // GitHub Actions workflow annotations: `::error` lines against a file and line, and log groups
 // around each section, as the workflow's log folds them.

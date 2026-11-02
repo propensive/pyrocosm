@@ -57,7 +57,8 @@ object Digests:
           t"${relative(root, file.encode)}\u0000${Filing.data(file).lay(t"absent")(of(_))}"
 
       of(parts*)
-    else Filing.data(path).lay(of(t"absent", path.encode))(of(_))
+    else
+      Filing.data(path).lay(of(t"absent", path.encode))(of(_))
 
   def classpath(entries: List[Text]): Text =
     of(entries.map { (entry: Text) => tree(unsafely(entry.as[Path on Linux])) }*)

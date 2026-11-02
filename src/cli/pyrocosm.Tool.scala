@@ -745,7 +745,10 @@ object Tool:
     // The project the working directory is in (see `Project`).
     def project(directory: Text)(using Environment): Project =
       val file: Optional[Path on Linux] = tool.repoFile(directory)
-      val root: Path on Linux = file.let(_.parent).let(_.parent).let(_.parent).or(unsafely(directory.as[Path on Linux]))
+
+      val root: Path on Linux =
+        file.let(_.parent).let(_.parent).let(_.parent).or(unsafely(directory.as[Path on Linux]))
+
       Project(root, file, file.let(Tool.document(_)))
 
     // The usage a tool prints when its command line is not understood: its own subcommands,
@@ -779,10 +782,10 @@ object Tool:
     // more than 160, past which a line of prose is hard to read.
     def columns(using resident: Resident, environment: Environment): Int =
       val declared: Optional[Int] =
-        safely(Environment.columns[Text].as[Int]).let { width => if width > 0 then width else Unset }
+        safely(Environment.columns[Text].as[Int]).let: width => if width > 0 then width else Unset
 
       val reported: Optional[Int] =
-        resident.windowSize.let { (width, _) => if width > 0 then width else Unset }
+        resident.windowSize.let: (width, _) => if width > 0 then width else Unset
 
       declared.or(reported).or(100).min(160)
 

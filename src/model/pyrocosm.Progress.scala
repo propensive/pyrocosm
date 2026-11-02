@@ -26,6 +26,13 @@ import scala.collection.mutable as scm
 
 import soundness.*
 
+object Progress:
+  // Progress as one captioned gauge, the activity of a board, which has no destination, as a
+  // board is the run's own view; `state` is whatever the run says beside it ("2 failures").
+  def activity(fraction: Double, caption: Text, state: List[Inline] = Nil): Activity =
+    val status: Status = Status.Fraction(fraction.max(0.0).min(1.0))
+    Activity(t"progress", Inline.text(caption), status, state = state)
+
 // What a run has done against what it has to do, as the gauge of a board and the caption
 // beside it. The work is counted in units of fixed weight — the phases, each weighted by the
 // tool, which also captions them — and the fraction is the weight done over the weight planned;
@@ -72,9 +79,3 @@ final class Progress[phase](weight: phase => Int, caption: phase => Text):
     t"${caption(phase)}, ${now.show} of ${total.show}"
 
   def activity(id: Text = t"progress"): Activity = Progress.activity(fraction, text)
-
-object Progress:
-  // Progress as one captioned gauge, the activity of a board, which has no destination, as a
-  // board is the run's own view; `state` is whatever the run says beside it ("2 failures").
-  def activity(fraction: Double, caption: Text, state: List[Inline] = Nil): Activity =
-    Activity(t"progress", Inline.text(caption), Status.Fraction(fraction.max(0.0).min(1.0)), state = state)
