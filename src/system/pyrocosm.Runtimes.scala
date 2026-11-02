@@ -53,11 +53,15 @@ object Runtimes:
     if property == null then Unset else
       try ji.File(property).getCanonicalPath.nn.tt catch case _: Throwable => property.tt
 
-  // The entries, canonical, without duplicates, the executable's link first.
+  // The entries as the loaders name them, in their order, each once, the executable's link
+  // standing in for the executable itself.
   def classpath(loader: ClassLoader = Thread.currentThread.nn.getContextClassLoader.nn)
   :   List[Text] =
 
     val own: Optional[Text] = executable
+
+    def canonical(path: Text): Text =
+      try ji.File(path.s).getCanonicalPath.nn.tt catch case _: Throwable => path
 
     // The loader's URLs, then its parents', since a launcher may load a tool's libraries
     // through a child of the loader it was given.
@@ -65,9 +69,8 @@ object Runtimes:
       if loader == null then Nil else
         val own: List[Text] = loader match
           case loader: jn.URLClassLoader =>
-            List.from(loader.getURLs.nn.iterator.map(_.nn)).map: url =>
-              try ji.File(url.toURI).getCanonicalPath.nn.tt
-              catch case _: Throwable => url.getPath.nn.tt
+            List.from(loader.getURLs.nn.iterator.map(_.nn)).bind: url =>
+              try List(jnf.Path.of(url.toURI).nn.toString.tt) catch case _: Throwable => Nil
 
           case _ =>
             Nil
@@ -80,7 +83,7 @@ object Runtimes:
       if system == null || system.isEmpty then Nil
       else system.tt.cut(ji.File.pathSeparator.nn.tt).filter(_ != t"")
 
-    def other(entry: Text): Boolean = own != entry
+    def other(entry: Text): Boolean = own != entry && own != canonical(entry)
     val rest: List[Text] = List.from(urls(loader).stdlib ++ property.stdlib).filter(other(_))
     val distinct: List[Text] = List.from(rest.stdlib.distinct)
     link.lay(distinct) { link => link :: distinct }

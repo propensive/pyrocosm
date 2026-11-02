@@ -38,7 +38,6 @@ import formatting.indentedCssFormatting
 import harlequin.Scala
 import logging.silentLogging
 import palettes.solarizedDarkGaugePalette
-import probably.TestEvent
 import strategies.throwUnsafely
 import tableStyles.thickTableStyle
 import termcapDefinitions.xtermTrueColorTermcap
@@ -73,40 +72,8 @@ enum Pong derives CanEqual:
 
 object Tests extends Suite(m"Pyrocosm tests"):
   // The plain-`java` entry point the release script and CI use (`java -cp <test jar>
-  // pyrocosm.Tests`): since Soundness 0.65.0 a `Suite` has no `main` of its own — the host,
-  // normally fume, drives it through `invoke` — so this prints one line per completed test and
-  // exits with the suite's status (0 = every test passed, 1 = failures, 2 = the suite threw).
-  // `fume run -c <test jar>` remains the full experience, with the rendered report.
-  def main(args: Array[String]): Unit =
-    val passed: java.util.concurrent.atomic.AtomicInteger =
-      java.util.concurrent.atomic.AtomicInteger(0)
-
-    val failed: java.util.concurrent.atomic.AtomicInteger =
-      java.util.concurrent.atomic.AtomicInteger(0)
-
-    val out = java.lang.System.out.nn
-
-    def handle(event: TestEvent): Unit = event match
-      case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
-        val pass: Boolean = outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass"
-        (if pass then passed else failed).incrementAndGet()
-        out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}".s)
-
-      case TestEvent.DetailMessage(_, message) =>
-        out.println(t"    $message".s)
-
-      case TestEvent.DetailCompare(_, expected, found, _) =>
-        out.println(t"    expected: $expected".s)
-        out.println(t"    found:    $found".s)
-
-      case TestEvent.RunTerminated(error, _, _) =>
-        out.println(t"suite threw: ${error.components.map(_.message).join(t"; ")}".s)
-
-      case _ => ()
-
-    val status = scala.List(Tests.invoke(t"", handle), SwarmTests.invoke(t"", handle)).max
-    out.println(t"${passed.get} passed, ${failed.get} failed".s)
-    java.lang.System.exit(status)
+  // pyrocosm.Tests`), through the harness every tool's is.
+  def main(args: scala.Array[String]): Unit = Harness.main(args, Tests, SwarmTests, ServicesTests)
 
   def run(): Unit =
     test(m"a live cell's assignment publishes the value"):
@@ -3146,10 +3113,10 @@ credential nameless
 
         def path(relative: Text): Path on Linux = unsafely(t"$root/$relative".as[Path on Linux])
 
-        test(m"digests are 64 hex characters"):
+        test(m"digests are Blake3, as 64 hex characters"):
           Blobs.digest(ascii(t"abc"))
 
-        . assert(_ == t"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        . assert(_ == t"6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85")
 
         test(m"a directory bundles deterministically whatever the order it was written"):
           val (first, _) = unsafely(Blobs.prepare(path(t"classes"), t"classes"))
@@ -3194,8 +3161,8 @@ credential nameless
           val data: Data = Data.fill(3000): i => (i*7).toByte
           val digest = Blobs.digest(data)
           val assembly = Blobs.Assembly(store)
-          val first = assembly.receive(digest, Channel.slice(data, 0, 1000), false)
-          val second = assembly.receive(digest, Channel.slice(data, 1000, 3000), true)
+          val first = assembly.receive(digest, Frames.slice(data, 0, 1000), false)
+          val second = assembly.receive(digest, Frames.slice(data, 1000, 3000), true)
           (first, second, store.has(digest))
 
         . assert(_ == (Unset, true, true))

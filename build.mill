@@ -167,7 +167,7 @@ object settings:
 
   // The plain-`java` runner of a tool's own probably suite (`make test-plain`, CI).
   def harnessDeps(soundness: String) = Seq(
-    "probably-core", "probably-events", "turbulence-stdio", "parasite-core", "exoskeleton-core",
+    "probably-cli", "probably-events", "turbulence-stdio", "parasite-core", "exoskeleton-core",
     "rudiments-core", "gossamer-core")
   . map(component(soundness))
 

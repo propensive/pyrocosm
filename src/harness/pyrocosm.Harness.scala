@@ -22,52 +22,48 @@
                                                                                                   */
 package pyrocosm
 
-import java.io as ji
-import java.lang as jl
-
 import soundness.*
 
-// Capture of the JVM's `System.out` and `System.err` for one thread at a time. Each is a single
-// global, so a daemon running two pieces of user code at once — two scripts, two REPL lines,
-// two test suites — cannot redirect and restore them around each: one would clobber the
-// other's. Instead ONE dispatcher is installed for each, lazily, once for the whole JVM,
-// routing every write to the running thread's current capture, set by `threaded` around the
-// code, and falling back to the real stream for a thread with none. Scala's own `println`
-// is thread-local already (`Console.withOut`); this covers Java prints and anything else that
-// writes to the `System` streams.
-object Capture:
-  private val currentOut: ThreadLocal[ji.OutputStream] = InheritableThreadLocal()
-  private val currentErr: ThreadLocal[ji.OutputStream] = InheritableThreadLocal()
+import probably.TestEvent
+import stdios.fileDescriptorStdio
+import termcapDefinitions.basicTermcap
 
-  private def dispatcher(current: ThreadLocal[ji.OutputStream], real: ji.OutputStream)
-  :   ji.OutputStream =
+// A tool's own suite, run WITHOUT fume: a `Suite` has no `main` (the host — normally fume —
+// drives it through `invoke`), so this is the plain-`java` entry point `make test-plain` and
+// CI use, printing one line per completed test and exiting with the suites' status (0 =
+// passed, 1 = failures, 2 = a suite threw). `fume run -c <test jar>` remains the full
+// experience. A tool's test main is `Harness.main(arguments, Tests)`; a suite's own `main`,
+// which a fume too old to read the jar's event schema falls back to by forking
+// `java -cp <classpath> <tool>.Tests <terms…>`, is `Harness.run(arguments, Tests)`.
+object Harness:
+  def run(arguments: Text, suites: Suite[?]*)(using Stdio): Int =
+    val passes: Atomic[Int] = Atomic(0)
+    val failures: Atomic[Int] = Atomic(0)
 
-    new ji.OutputStream:
-      private def target: ji.OutputStream = Optional(current.get).or(real)
-      def write(byte: Int): Unit = target.write(byte)
+    val statuses: List[Int] = List(suites*).map: suite =>
+      suite.invoke(arguments, event => event match
+        case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
+          if outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass" then passes.since(_ + 1)
+          else failures.since(_ + 1)
 
-      override def write(bytes: scala.Array[Byte] | Null, offset: Int, length: Int): Unit =
-        target.write(bytes, offset, length)
+          Out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}")
 
-      override def flush(): Unit = target.flush()
+        case TestEvent.DetailMessage(_, message) =>
+          Out.println(t"    $message")
 
-  private lazy val installed: Unit =
-    jl.System.setOut(ji.PrintStream(dispatcher(currentOut, jl.System.out.nn), true, "UTF-8"))
-    jl.System.setErr(ji.PrintStream(dispatcher(currentErr, jl.System.err.nn), true, "UTF-8"))
+        case TestEvent.DetailCompare(_, expected, found, _) =>
+          Out.println(t"    expected: $expected")
+          Out.println(t"    found:    $found")
 
-  // Routes this thread's `System.out` and `System.err` to `out` and `err` for the duration of
-  // `block`, then restores whatever they were before, so captures nest.
-  def threaded[result](out: ji.OutputStream, err: ji.OutputStream)(block: => result): result =
-    installed
-    val previousOut: ji.OutputStream | Null = currentOut.get
-    val previousErr: ji.OutputStream | Null = currentErr.get
-    currentOut.set(out)
-    currentErr.set(err)
+        case TestEvent.RunTerminated(error, _, _) =>
+          Out.println(t"suite threw: ${error.components.map(_.message).join(t"; ")}")
 
-    try block finally
-      currentOut.set(previousOut)
-      currentErr.set(previousErr)
+        case _ => ())
 
-  // The same, with the streams of a `Stdio`.
-  def threaded[result](stdio: Stdio)(block: => result): result =
-    threaded(stdio.out, stdio.err)(block)
+    Out.println(t"${passes()} passed, ${failures()} failed")
+    statuses.fold(0)(_.max(_))
+
+  def main(arguments: scala.Array[String], suites: Suite[?]*): Unit =
+    val words: Text =
+      List.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(arguments).map(_.tt)).join(t" ")
+    Exit(run(words, suites*)).terminate()
