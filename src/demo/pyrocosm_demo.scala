@@ -1175,8 +1175,10 @@ object GalleryWeb extends Tool.Web:
 
   def stop(): Unit = frontend.let(_.stop())
 
-// `gallery` or `gallery terminal` runs the interface in the terminal; `gallery serve [port]`
-// serves it as a web page; `gallery static [columns] [section]` prints the overview, or one
+// `gallery` or `gallery terminal` runs the interface in the terminal; `gallery serve` serves it
+// as a web page from the daemon (`Tool`'s, in the background, until `gallery serve stop`), and
+// `gallery serve <port>` interactively; `gallery static [columns] [section]` prints the
+// overview, or one
 // section of the tour, once, for a look without a terminal session. The standard subcommands
 // are handled first, by `Tool`.
 // The gallery's entry point: an object with a plain `main`, rather than a `@main` method, so
@@ -1235,8 +1237,10 @@ object gallery uses surveillance.Watcher:
 
         Exit.Ok
 
-      // `gallery serve [port]` serves the gallery, one interface for every tab; `gallery serve
-      // repl [port]` serves the REPL, a session per tab.
+      // `gallery serve <port>` serves the gallery interactively, one interface for every tab,
+      // until the invocation ends; `gallery serve repl [port]` serves the REPL, a session per
+      // tab. A bare `gallery serve` never reaches here: `Tool.standard` serves it from the
+      // daemon, in the background.
       case t"serve" =>
         val repl: Boolean = words.at(Sec) == t"repl"
         val portWord: Optional[Text] = words.at(if repl then Ter else Sec)

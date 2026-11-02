@@ -322,6 +322,8 @@ through to the tool's `arguments match` otherwise:
 - `<name> install` installs the shell tab-completions and the manpage (`--force` overwrites an
   installed manpage). The manpage is generated from the same help tree the completions
   register, so it lists the standard subcommands too.
+- `<name> serve [--port N]` starts the web front-end in the daemon, in the background, and
+  returns at once with its address; `<name> serve stop` stops it, leaving the daemon running.
 - `<name> quit` stops any web front-end the daemon serves, then the daemon itself.
 - `<name> swarm` shows the other Pyrocosm tools running, here and on other machines, and its
   subcommands — `invite`, `join`, `listen`, `connect`, `disconnect`, `ping`, `identity`,
