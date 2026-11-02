@@ -124,8 +124,7 @@ object settings:
 
   def webDeps(soundness: String) = Seq(
     "honeycomb-core", "cataclysm-core", "graffiti-core", "perihelion-core", "scintillate-server",
-    "jacinta-core", "iridescence-core", "eucalyptus-core",
-    "tasseomancy-core")  // the chart palette a theme supplies
+    "jacinta-core", "iridescence-core", "eucalyptus-core")
   . map(component(soundness))
 
   // The instances that need the compiler: harlequin highlighting, delicious diagnostic markup,

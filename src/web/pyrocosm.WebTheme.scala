@@ -31,6 +31,10 @@ import strategies.throwUnsafely
 object WebTheme:
   given default: WebTheme = Ember
 
+  // The colours a chart is drawn in: its ground, its axes and lettering, its grid, and the
+  // series in turn.
+  case class ChartColours(background: Chroma, foreground: Chroma, grid: Chroma, series: List[Chroma])
+
   def hex(chroma: Chroma): Text =
     def channel(value: Int): Text =
       val digits = java.lang.Integer.toHexString(value&255).nn
@@ -325,24 +329,16 @@ object WebTheme:
 trait WebTheme:
   // The theme's colours for a chart: its surface as the ground, its foreground for the axes
   // and the lettering, its border for the grid, and a ramp of five steps from the info tone to
-  // the success tone for the series, so that a chart sits on the page it is drawn on.
-  def chartPalette: ChartPalette =
-    val ground: Color in Srgb = surface.packed.srgb
-    val ink: Color in Srgb = foreground.packed.srgb
-    val lines: Color in Srgb = border.packed.srgb
+  // the success tone for the series, so that a chart sits on the page it is drawn on. Plain
+  // colours, for a tool to make its charting library's palette from.
+  def chartColours: WebTheme.ChartColours =
     val from: Srgb = tone(Tone.Info).packed.srgb
     val to: Srgb = tone(Tone.Success).packed.srgb
 
-    val ramp: Sequence[Color in Srgb] =
-      Sequence(from, from.mix(to, 0.25), from.mix(to, 0.5), from.mix(to, 0.75), to)
+    val ramp: List[Chroma] =
+      List(from, from.mix(to, 0.25), from.mix(to, 0.5), from.mix(to, 0.75), to).map(_.chroma)
 
-    new ChartPalette:
-      val series: Sequence[Color in Srgb] = ramp
-      def background: Color in Srgb = ground
-      def foreground: Color in Srgb = ink
-      def axis: Color in Srgb = ink
-      def grid: Color in Srgb = lines
-      def text: Color in Srgb = ink
+    WebTheme.ChartColours(surface, foreground, border, ramp)
 
   def background: Chroma
   def surface: Chroma       // cards and panels

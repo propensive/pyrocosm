@@ -44,14 +44,8 @@ object Swarming:
 
   def level(name: Optional[Text]): Level = name.let(levels.at(_)).or(Level.Info)
 
-  // A length of time as `--expires` takes it: a whole number and a unit, `s`, `m`, `h` or `d`.
-  def lifetime(text: Text): Optional[Duration] =
-    val units: Map[Text, Double] = Map(t"s" -> 1.0, t"m" -> 60.0, t"h" -> 3600.0, t"d" -> 86400.0)
-    val unit: Text = text.skip(text.length - 1)
-    val count: Optional[Int] = safely(text.keep(text.length - 1).as[Int])
-
-    units.at(unit).let: seconds =>
-      count.let: count => if count > 0 then (count*seconds)*Second else Unset
+  // A length of time as `--expires` takes it: a number and a unit, `s`, `m`, `h` or `d`.
+  def lifetime(text: Text): Optional[Duration] = Timing.parse(text)
 
   // The machines declared to this invocation: the repository's configuration, then the user's,
   // then the shared `~/.config/pyrocosm/machines.tel`, a name's first declaration winning.
@@ -363,27 +357,8 @@ object Swarming:
     if follow then until(false)(show()) else show()
     Exit.Ok
 
-  // Runs `action` every quarter of a second until Ctrl+C — the signal, or, on a terminal, the
-  // byte the launcher forwards for it (or Ctrl+D) — or until `finished` says so.
   private def until(finished: => Boolean)(action: => Unit)
-    ( using cli: Cli, resident: Resident, stdio: Stdio, monitor: Monitor )
+    ( using Cli, Resident, Stdio, Monitor )
   :   Unit =
 
-    val tty: Boolean = resident.cliInput == ethereal.Terminus.Terminal
-    val aborted: Atomic[Boolean] = Atomic(false)
-
-    trap:
-      case profanity.Signal(Interrupt.Int, _, _, _) =>
-        aborted() = true
-        SignalResponse.Accept
-
-    var running: Boolean = true
-
-    while running do
-      if tty then while stdio.in.available() > 0 do
-        val byte: Int = stdio.in.read()
-        if byte == 3 || byte == 4 then aborted() = true
-
-      action
-
-      if !aborted() && !finished then snooze(0.25*Second) else running = false
+    Attend.until(finished)(action)
