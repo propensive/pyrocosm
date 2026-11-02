@@ -36,36 +36,30 @@ import soundness.*
 // path once per process and the link stands in for it. Outside the launcher, the context
 // loader's URLs and `java.class.path` are what there is.
 object Runtimes:
-  private lazy val link: Optional[Text] =
-    val executable: String | Null = java.lang.System.getProperty("ethereal.script")
+  private def property(name: String): Optional[Text] =
+    val value: String | Null = java.lang.System.getProperty(name)
+    if value == null || value.isEmpty then Unset else value.nn.tt
 
-    if executable == null then Unset else
-      try
-        val real: String = ji.File(executable).getCanonicalPath.nn
-        val directory: jnf.Path = jnf.Files.createTempDirectory("pyrocosm").nn
-        val link: jnf.Path = directory.resolve("pyrocosm.jar").nn
-        jnf.Files.createSymbolicLink(link, jnf.Path.of(real))
-        link.toString.tt
-      catch case _: Throwable => Unset
+  // The executable the launcher ran, canonical, when it set `ethereal.script`.
+  private def executable: Optional[Text] = property("ethereal.script").let: script =>
+    try ji.File(script.s).getCanonicalPath.nn.tt catch case _: Throwable => script
 
-  private def executable: Optional[Text] =
-    val property: String | Null = java.lang.System.getProperty("ethereal.script")
+  // The executable symlinked to a `.jar` path, once per process; `Unset` without a launcher,
+  // or where the link cannot be made.
+  private lazy val link: Optional[Text] = executable.let: real =>
+    try
+      val directory: jnf.Path = jnf.Files.createTempDirectory("pyrocosm").nn
+      val link: jnf.Path = directory.resolve("pyrocosm.jar").nn
+      jnf.Files.createSymbolicLink(link, jnf.Path.of(real.s))
+      link.toString.tt
+    catch case _: Throwable => Unset
 
-    if property == null then Unset else
-      try ji.File(property).getCanonicalPath.nn.tt catch case _: Throwable => property.tt
-
-  // The entries as the loaders name them, in their order, each once, the executable's link
-  // standing in for the executable itself.
+  // The entries as the loaders name them — `loader`'s URLs, then its parents', since a
+  // launcher may load a tool's libraries through a child of the loader it was given — and
+  // then `java.class.path`, in their order, each once.
   def classpath(loader: ClassLoader = Thread.currentThread.nn.getContextClassLoader.nn)
   :   List[Text] =
 
-    val own: Optional[Text] = executable
-
-    def canonical(path: Text): Text =
-      try ji.File(path.s).getCanonicalPath.nn.tt catch case _: Throwable => path
-
-    // The loader's URLs, then its parents', since a launcher may load a tool's libraries
-    // through a child of the loader it was given.
     def urls(loader: ClassLoader | Null): List[Text] =
       if loader == null then Nil else
         val own: List[Text] = loader match
@@ -78,15 +72,28 @@ object Runtimes:
 
         List.from(own.stdlib ++ urls(loader.getParent).stdlib)
 
-    val system: String | Null = java.lang.System.getProperty("java.class.path")
+    val system: List[Text] =
+      property("java.class.path").lay(Nil): path =>
+        path.cut(ji.File.pathSeparator.nn.tt).filter(_ != t"")
 
-    val property: List[Text] =
-      if system == null || system.isEmpty then Nil
-      else system.tt.cut(ji.File.pathSeparator.nn.tt).filter(_ != t"")
+    List.from((urls(loader).stdlib ++ system.stdlib).distinct)
 
-    def other(entry: Text): Boolean = own != entry && own != canonical(entry)
-    val rest: List[Text] = List.from(urls(loader).stdlib ++ property.stdlib).filter(other(_))
-    val distinct: List[Text] = List.from(rest.stdlib.distinct)
-    link.lay(distinct): link => link :: distinct
+  // The same, for a compiler to read: the executable, which a compiler refuses (a
+  // shebang-prefixed file with no `.jar` suffix, though a `ZipFile` reads the archive past the
+  // shebang), stands as its `.jar` link, in its place or first.
+  def compilable(loader: ClassLoader = Thread.currentThread.nn.getContextClassLoader.nn)
+  :   List[Text] =
+
+    val entries: List[Text] = classpath(loader)
+    val own: Optional[Text] = executable
+
+    def canonical(path: Text): Text =
+      try ji.File(path.s).getCanonicalPath.nn.tt catch case _: Throwable => path
+
+    link.lay(entries): link =>
+      def self(entry: Text): Boolean = own == entry || own == canonical(entry)
+      def stand(entry: Text): Text = if self(entry) then link else entry
+      val replaced: List[Text] = entries.map(stand(_))
+      if replaced.has(link) then replaced else link :: replaced
 
   def isJar(entry: Text): Boolean = entry.ends(t".jar")
