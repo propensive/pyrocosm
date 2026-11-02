@@ -736,3 +736,47 @@ candidate can be tried in Fume or Flame before anything is tagged. Both overwrit
   `perihelion.Channel`, `clavichord.Keypress`, whose re-export widens its cases) is imported by
   name, with the reason stated where it is not obvious.
 - `Presentable` / `exhibit`; `portray` is the fallback verb.
+
+## Shared services
+
+Every tool does the same things the same way, because each is done once, in Pyrocosm, and a
+tool calls it rather than writing its own. Two modules carry what the others do not:
+`pyrocosm-system` (checked, beneath `remote`, `notes`, `swarm`, `hub` and `cli`) holds the JVM
+services — `Filing` (a file replaced whole, a scratch directory, a canonical path), `Digests`
+(Blake3, of bytes, parts, trees and classpaths), `ObjectStore` (content-addressed blobs),
+`Frames` (length-prefixed records), `Runtimes` (the process's classpath under Burdock),
+`Processes` (a detached process), `Diversions` (per-thread `System.out`), `Memo` (a value
+kept until its file changes) and `Timing` (durations) — and `pyrocosm-harness` the plain-`java`
+runner of a tool's own suite. The `cli` module holds the rest: `ambient` (the execute wrapper
+every dispatch arm uses), `Tool.usage` (generated from the subcommands), `Tool.columns`,
+`Tool.project` (root, resolution, entries, atoms), `Tool.cacheDirectory`/`stateDirectory`/
+`runtimeDirectory`/`projectCache`, `Resources`, `Attend.until` (the wait for Ctrl+C),
+`Invoker`/`GithubActions`, `WebService` (a web front-end the daemon serves, with its ticker),
+and the `decodables`/`interpretables` givens. The model has `Markdowns` (the one Markdown
+conversion, with hooks), `Progress` and `Tels.headed`; the terminal `standardRendering`,
+`TerminalRenderer.print` and `Boards.reporter`; the compiler `Classpaths` and
+`Notices.diagnostics`; the notes a byte-bodied `Recordable` and the operations a census needs.
+
+The conventions the tools share, decided 2026-11-02:
+
+- **Exit statuses.** `2` and `8`–`31` are Pyrocosm's (`Tool.UsageError`, `InstallFailed`,
+  `NoUpgrade`, `UpgradeFailed`, `NoMachine`, `RemoteFailed`, `NoWeb`, `NotServing`,
+  `Unimplemented`, `NoCredential`); a tool's own are `32`–`99`; `130` is a command the user
+  interrupted.
+- **Width.** `COLUMNS` in the invocation's environment, else the terminal's own report, else
+  100; never more than 160.
+- **Durations.** One grammar, `<number>[ms|s|m|h|d]`, decimals allowed, a bare number being
+  seconds; one rendering, the coarsest unit first down to seconds (`1h 0m 5s`), or `420ms`.
+- **Content addressing.** Blake3, as lower-case hex, everywhere: a tool's caches, `Blobs`'
+  store, a classpath's identity.
+- **Notes.** Every tool's git notes live under `refs/notes/pyrocosm/<kind>`, so one refspec
+  publishes them all; a kind's body is whatever bytes its `Recordable` says.
+- **Rendering.** `import pyrocosm.standardRendering.*` is the one import of the table style,
+  the text metric and the gauge palette; a gauge is in the terminal theme's colours, and a
+  theme says what its ground is.
+
+Each of `Filing.temporary`, `Filing.canonical`, `Digests.tree`, `ObjectStore`, `Frames.split`,
+`Runtimes.classpath`, `Processes.detach`, `Diversions`, `Timing`, `Tool.atoms`,
+`Classpaths.entry`/`path`, `decodables.boolean`, `interpretables.int`/`repeated` and `Harness`
+is the one place a Soundness-shaped operation is awaited; each has an issue in
+propensive/soundness, and goes when the operation lands.
