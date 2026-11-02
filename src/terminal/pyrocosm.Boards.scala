@@ -52,26 +52,47 @@ object Boards:
       val frontend: TerminalFrontend =
         caps.unsafe.unsafeAssumePure(TerminalFrontend(occupancy, theme))
 
-      val finished: juc.atomic.AtomicBoolean = juc.atomic.AtomicBoolean(false)
-      val closed: juc.CountDownLatch = juc.CountDownLatch(1)
+      val finished: Atomic[Boolean] = Atomic(false)
+      val closed: Promise[Unit] = Promise()
 
-      val painter = Thread(new Runnable:
-        def run(): Unit =
-          try
-            Thread.sleep(grace)
+      // The painter is a task of the monitor in scope: it waits out the grace, and opens the
+      // frontend only if the work is still running after it.
+      async:
+        try
+          snooze((grace/1000.0)*Second)
 
-            if !finished.get then
-              frontend.run(board.interface):
-                case Event.Closed => if !finished.get then board.leave()
-                case _            => ()
-          catch case _: Throwable => ()
-          finally closed.countDown())
-
-      painter.setDaemon(true)
-      painter.start()
+          if !finished() then
+            frontend.run(board.interface):
+              case Event.Closed => if !finished() then board.leave()
+              case _            => ()
+        catch case _: Throwable => ()
+        finally closed.offer(())
 
       try work
       finally
-        finished.set(true)
+        finished() = true
         frontend.stop()
-        closed.await(5, juc.TimeUnit.SECONDS)
+        safely(closed.await(5*Second))
+
+  // Where a run's problems go: to the board as each is found, where there is one, or straight
+  // to the terminal, so that it is seen at once either way; and every problem is kept, for the
+  // report once the board has closed, unless it was already printed as it came.
+  def reporter(board: Optional[Board], width: Int, theme: TerminalTheme = TerminalTheme.default)
+    ( using Stdio, Text is Measurable, Hyphenation, TableStyle, Gauging, Gaugeable.Glyphs )
+  :   Reporter =
+
+    Reporter(board, width, TerminalRenderer(theme))
+
+  final class Reporter(board: Optional[Board], width: Int, renderer: TerminalRenderer)(using Stdio):
+    private val found: juc.ConcurrentLinkedQueue[Block] = juc.ConcurrentLinkedQueue()
+
+    def report(block: Block): Unit =
+      found.add(block)
+      def print(): Unit = renderer.print(List(block), width)
+      board.lay(print()): (board: Board) => board.append(block)
+
+    def reports(blocks: List[Block]): Unit = blocks.each(report(_))
+
+    // Every problem found, in order; and whether they were already printed as they came.
+    def problems: List[Block] = List.from(found.iterator.nn.asScala)
+    def streamed: Boolean = board.absent
