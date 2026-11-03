@@ -130,9 +130,11 @@ object settings:
   // The instances that need the compiler: harlequin highlighting, delicious diagnostic markup,
   // and the compiler's notices (anthology) as diagnostics; kaleidoscope reads the lines of a
   // missing-given search.
-  def compilerDeps(soundness: String) =
-    Seq("harlequin-core", "delicious-core", "anthology-core", "kaleidoscope-core", "hellenism-core")
-    . map(component(soundness))
+  def compilerDeps(soundness: String) = Seq(
+    "harlequin-core", "delicious-core", "anthology-core", "kaleidoscope-core", "hellenism-core",
+    "mandible-core",       // a method's Bytecode -> Block.Table
+    "hyperbole-tasty")     // a Tasty.Tree -> Block.Tree
+  . map(component(soundness))
 
   // The instances for rich media: raster images (hallucination, every format it implements) and
   // SVG drawings (savagery), carried as data: URIs and markup; monotonous encodes the Base64.
@@ -304,7 +306,8 @@ object pyrocosm extends Project:
   object model extends Component(), Publishing:
     def mvnDeps = Task(settings.modelDeps(deps.soundness()))
 
-  // Exhibitions of compiler-facing types (highlighted source, semantic diagnostics), JVM-only
+  // Exhibitions of compiler-facing types (highlighted source, semantic diagnostics, and the
+  // JVM's artefacts: a method's bytecode as a table, an expression's TASTy as a tree), JVM-only
   // because harlequin drives the compiler. `dev.propensive:pyrocosm-compiler`.
   object compiler extends Component(model), Publishing:
     def mvnDeps = Task(settings.compilerDeps(deps.soundness()))
