@@ -2084,6 +2084,49 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == captured)
 
+    val styled: Block =
+      Block.Output
+        ( t"red plain\n",
+          runs = List(Block.Run(3, foreground = Block.Rgb(222, 56, 43), bold = true), Block.Run(7)))
+
+    test(m"a styled run is a span with its colour inline and its weight as a class"):
+      html.block(styled).show
+
+    . assert: page =>
+        page.contains(t"""<span class="pyro-ansi-bold" style="color:#de382b">red</span> plain""")
+
+    test(m"a run without a colour sets none, and the theme's shows through"):
+      html.block(Block.Output(t"plain\n", runs = List(Block.Run(6, italic = true)))).show
+
+    . assert: page =>
+        page.contains(t"""<span class="pyro-ansi-italic">plain</span>""")
+        && !page.contains(t"style=")
+
+    test(m"styled output round-trips as TEL"):
+      styled.in[Tel].show.read[Tel].as[Block]
+
+    . assert(_ == styled)
+
+    test(m"the terminal shows styled output as its text behind the gutter"):
+      renderer.plain(List(styled), 80)
+
+    . assert(_ == t"░ red plain")
+
+    test(m"a run which holds newlines is cut at them, and a trailing newline ends the lines"):
+      Block.Run.lines(t"a\nb\n", List(Block.Run(4, bold = true)))
+
+    . assert: (lines: List[List[(Text, Block.Run)]]) =>
+        lines == List(List((t"a", Block.Run(4, bold = true))), List((t"b", Block.Run(4, bold = true))))
+
+    test(m"a minor column marks its cells"):
+      val table = Block.Table
+        ( List(Block.Column(Inline.text(t""), minor = true)),
+          List(Block.Row(List(Block.Cell(Inline.text(t"def"))))) )
+
+      html.block(table).show
+
+    . assert(_.contains(t"""<td class="pyro-minor">def</td>"""))
+
     // ── Stack traces ──────────────────────────────────────────────────────────────────────
 
     test(m"a stack trace exhibits as a trace with its cause chain"):

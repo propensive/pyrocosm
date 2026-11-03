@@ -479,16 +479,45 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     case Block.Trace(stacks)          => trace(stacks)
     case Block.Group(content)         => Div(`class` = cls(t"pyro-group"))(blocks(content))
 
-    // Captured output, verbatim, each line behind a gutter naming its stream.
-    case Block.Output(text, error) =>
+    // Captured output, verbatim, each line behind a gutter naming its stream, and each run of
+    // it in its style: a colour is set inline, since the output chose it and no theme can name
+    // it, and the attributes are classes; a run with neither is bare text.
+    case Block.Output(text, error, runs) =>
       val gutter = cls(t"pyro-gutter")
-      val lines: List[Text] = text.cut(t"\n")
-      val trimmed: List[Text] = if lines.last == t"" then lines.keep(lines.size - 1) else lines
-      val count = trimmed.size
+      val lines: List[List[(Text, Block.Run)]] = Block.Run.lines(text, runs)
+      val count = lines.size
 
-      val rows: List[Html of Phrasing] = trimmed.indexed.map: (line: Text, index: Ordinal) =>
-        val text: Text = if index.n0 == count - 1 then line else t"$line\n"
-        Html.Fragment[Phrasing](Span(`class` = gutter)(t"░ "), text)
+      def hex(rgb: Block.Rgb): Text = f"#${rgb.red}%02x${rgb.green}%02x${rgb.blue}%02x".tt
+
+      def piece(slice: Text, run: Block.Run): Html of Phrasing =
+        val flags: List[(Boolean, Text)] =
+          List
+            ( (run.bold, t"bold"), (run.faint, t"faint"), (run.italic, t"italic"),
+              (run.underline, t"underline"), (run.strike, t"strike"), (run.reverse, t"reverse") )
+
+        val classes: List[Name[CssClass]] =
+          flags.filter(_(0)).map: (flag: (Boolean, Text)) => cls(t"pyro-ansi-${flag(1)}")
+
+        val foreground: List[Text] = run.foreground.let(c => List(t"color:${hex(c)}")).or(Nil)
+        val background: List[Text] =
+          run.background.let(c => List(t"background-color:${hex(c)}")).or(Nil)
+
+        val style: Text = (foreground + background).join(t";")
+
+        if classes.nil && style == t"" then Html.Fragment[Phrasing](slice)
+        else if style == t"" then Span(`class` = classes)(slice)
+        else Span(`class` = classes, style = style)(slice)
+
+      def pieces(line: List[(Text, Block.Run)]): Html of Phrasing =
+        val styled: List[Html of Phrasing] = line.map: (pair: (Text, Block.Run)) =>
+          piece(pair(0), pair(1))
+
+        Html.Fragment[Phrasing](styled*)
+
+      val rows: List[Html of Phrasing] =
+        lines.indexed.map: (line: List[(Text, Block.Run)], index: Ordinal) =>
+          val end: Text = if index.n0 == count - 1 then t"" else t"\n"
+          Html.Fragment[Phrasing](Span(`class` = gutter)(t"░ "), pieces(line), end)
 
       val stream = if error then cls(t"pyro-output-stderr") else cls(t"pyro-output-stdout")
       Pre(`class` = List(cls(t"pyro-output"), stream))(rows*)
@@ -893,6 +922,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         else List(cls(t"pyro-align-${column.alignment.toString.tt.lower}"))
 
       val numeric: List[Name[CssClass]] = if column.numeric then List(cls(t"pyro-numeric")) else Nil
+      val minor: List[Name[CssClass]] = if column.minor then List(cls(t"pyro-minor")) else Nil
 
       val sizing: List[Name[CssClass]] = column.sizing match
         case Block.Sizing.Stretch        => List(cls(t"pyro-stretch"))
@@ -903,7 +933,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         case Block.Sizing.Fixed(percent) =>
           List(cls(t"pyro-share-${HtmlRenderer.share(percent).toString.tt}"))
 
-      alignment + numeric + sizing
+      alignment + numeric + sizing + minor
 
     // A table with a fixed column is laid out by its columns' shares rather than its content.
     val fixed: Boolean =

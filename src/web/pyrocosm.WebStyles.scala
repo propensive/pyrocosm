@@ -760,6 +760,10 @@ object WebStyles:
           }
         """ +
         css".pyro-align-end, .pyro-numeric { text-align: right }" +
+        css"""
+          .pyro-table td.pyro-minor { font-size: var(--pyro-text-small) }
+          .pyro-table td.pyro-minor code.pyro-code { font-size: calc(var(--pyro-text-inline) * 0.85) }
+        """ +
         css".pyro-numeric { font-variant-numeric: tabular-nums }" +
         css".pyro-rigid { white-space: nowrap; width: 1% }" +
         css".pyro-stretch { width: 100% }" +
@@ -1265,6 +1269,15 @@ object WebStyles:
         css"""
           .pyro-output-stdout .pyro-gutter { color: var(--pyro-tone-info) }
           .pyro-output-stderr .pyro-gutter { color: var(--pyro-tone-failure) }
+        """ +
+        css"""
+          .pyro-ansi-bold { font-weight: bold }
+          .pyro-ansi-faint { opacity: 0.6 }
+          .pyro-ansi-italic { font-style: italic }
+          .pyro-ansi-underline { text-decoration: underline }
+          .pyro-ansi-strike { text-decoration: line-through }
+          .pyro-ansi-underline.pyro-ansi-strike { text-decoration: underline line-through }
+          .pyro-ansi-reverse { color: var(--pyro-bg); background-color: var(--pyro-fg) }
         """ +
         css"""
           .pyro-completions {

@@ -421,14 +421,31 @@ class TerminalRenderer
       // Captured output, verbatim: every visual row of every line behind a gutter naming the
       // stream (blue for standard output, red for standard error), and wrapped hard at the
       // width less the gutter, spaces and all, since a program's output is not prose.
-      case Block.Output(text, error) =>
+      // Each run of a line is styled as the output styled it, a colour it left to the terminal
+      // staying the terminal's; the rows are measured by the text alone.
+      case Block.Output(text, error, runs) =>
         val gutter: Teletype = e"${Fg(theme.tone(if error then Tone.Failure else Tone.Info))}(░) "
         val inner = (width - 2).max(1)
-        val lines: List[Text] = text.cut(t"\n")
-        val trimmed: List[Text] = if lines.last == t"" then lines.keep(lines.size - 1) else lines
 
-        trimmed.bind: (line: Text) =>
-          hardWrap(Teletype(line), inner).map: (row: Teletype) => gutter.append(row)
+        def chroma(rgb: Block.Rgb): Chroma = Chroma(rgb.red, rgb.green, rgb.blue)
+
+        def transform(run: Block.Run): Ansi.Transform = (style: TextStyle) =>
+          style.copy
+            ( fg        = run.foreground.let(chroma(_)),
+              bg        = run.background.let(chroma(_)),
+              bold      = run.bold,
+              faint     = run.faint,
+              italic    = run.italic,
+              underline = run.underline,
+              strike    = run.strike,
+              reverse   = run.reverse )
+
+        def styled(line: List[(Text, Block.Run)]): Teletype =
+          line.fold(e""): (joined: Teletype, pair: (Text, Block.Run)) =>
+            joined.append(Teletype.styled(pair(0))(transform(pair(1))))
+
+        Block.Run.lines(text, runs).bind: (line: List[(Text, Block.Run)]) =>
+          hardWrap(styled(line), inner).map: (row: Teletype) => gutter.append(row)
 
   private def treeLabel(selected: Optional[Action])(node: Block.TreeNode): Teletype =
     val label = node.tone.lay(phrase(node.label))(toned(_)(phrase(node.label)))

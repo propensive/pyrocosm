@@ -95,8 +95,8 @@ object Codecs:
 
   val inlineEncodable: Inline is Tel.Encodable = Tel.EncodableDerivation.derived[Inline]
   val inlineDecodable: Inline is Tel.Decodable = Tel.DecodableDerivation.derived[Inline]
-  val blockEncodable: Block is Tel.Encodable = Tel.EncodableDerivation.derived[Block]
-  val blockDecodable: Block is Tel.Decodable = Tel.DecodableDerivation.derived[Block]
+  val blockEncodable: Block is Tel.Encodable = BlockEncoder.derived
+  val blockDecodable: Block is Tel.Decodable = BlockDecoder.derived
 
   // A figure's serial form (see `figureTelEncodable`), derived here where the list codecs
   // resolve, as the model types' are.
@@ -108,6 +108,16 @@ object Codecs:
 
   val snapshotSchematic: Figure.Snapshot is TelSchematic over Tels.Type =
     stratiform.TelsDerivation.derived[Figure.Snapshot]
+
+// The block codecs, each in an object of its own, as the schemas are: a derivation inlines the
+// whole of its type, and the two beside the inline codecs exceed what one class may hold.
+private[pyrocosm] object BlockEncoder:
+  import contingency.strategies.throwUnsafely
+  lazy val derived: Block is Tel.Encodable = Tel.EncodableDerivation.derived[Block]
+
+private[pyrocosm] object BlockDecoder:
+  import contingency.strategies.throwUnsafely
+  lazy val derived: Block is Tel.Decodable = Tel.DecodableDerivation.derived[Block]
 
 // A figure serialises as its snapshot — id, alt and the whole current drawing — and reads back
 // as a figure with the same id, so a round trip compares equal.
