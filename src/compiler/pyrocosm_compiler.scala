@@ -31,9 +31,10 @@ import dysasymptotics.linearSize
 
 // The exhibitions which need the compiler, and so exist only on the JVM: highlighted source from
 // harlequin, the semantic markup the compiler embeds in its diagnostics, parsed by delicious,
-// and the compiler's notices (anthology) as the model's diagnostics. The model carries the
-// *results* of highlighting as its own `Token's, so these instances are the bridge from
-// harlequin's vocabulary to the model's.
+// the compiler's notices (anthology) as the model's diagnostics, and the JVM's artefacts — a
+// method's bytecode (mandible) as a table, an expression's TASTy (hyperbole) as a tree. The
+// model carries the *results* of highlighting as its own `Token's, so these instances are the
+// bridge from harlequin's vocabulary to the model's.
 //
 // Their subjects and the typeclass both live elsewhere, so the givens cannot sit in a
 // companion; they are named, at package level, for import by name.
@@ -295,3 +296,7 @@ object Notices:
     case _ => List(Inline.Textual(line))
 
 given noticePresentable: anthology.Notice is Presentable in Block = Notices.diagnostic(_)
+
+given bytecodePresentable: mandible.Bytecode is Presentable in Block = Bytecodes.table(_)
+given tastyTreePresentable: hyperbole.Tasty.Tree is Presentable in Block =
+  Tasties.tree(_)
