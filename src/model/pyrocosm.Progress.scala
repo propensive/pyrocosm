@@ -22,8 +22,6 @@
                                                                                                   */
 package pyrocosm
 
-import scala.collection.mutable as scm
-
 import soundness.*
 
 object Progress:
@@ -39,36 +37,36 @@ object Progress:
 // a count not known until a phase begins is guessed until it is, and said again when known.
 // The counts are read and written under the lock, from the run's thread and the board's.
 final class Progress[phase](weight: phase => Int, caption: phase => Text):
-  private val totals: scm.HashMap[phase, Int] = scm.HashMap()
-  private val done: scm.HashMap[phase, Int] = scm.HashMap()
+  private var totals: Map[phase, Int] = Map()
+  private var done: Map[phase, Int] = Map()
 
   @scala.caps.unsafe.untrackedCaptures
   @volatile
   private var current: Optional[(phase, Int, Int)] = Unset
 
   // How much of a phase there is; said again when a guess gives way to a count.
-  def plan(phase: phase, total: Int): Unit = synchronized { totals(phase) = total.max(0) }
+  def plan(phase: phase, total: Int): Unit = synchronized { totals = totals.define(phase, total.max(0)) }
 
   // One more unit of a phase done.
   def step(phase: phase, count: Int = 1): Unit = synchronized:
-    val now: Int = done.getOrElse(phase, 0) + count
-    done(phase) = now
-    current = (phase, now, totals.getOrElse(phase, now))
+    val now: Int = done(phase).or(0) + count
+    done = done.define(phase, now)
+    current = (phase, now, totals(phase).or(now))
 
   // A phase done whole, whatever was planned for it.
   def finish(phase: phase): Unit =
-    synchronized { done(phase) = totals.getOrElse(phase, 1) }
+    synchronized { done = done.define(phase, totals(phase).or(1)) }
     step(phase, 0)
 
   // The weight done over the weight planned.
   def fraction: Double = synchronized:
-    val planned: Double =
-      totals.iterator.map { (phase, total) => (total*weight(phase)).toDouble }.sum
+    // The weight of each phase's count, as `count` takes it from the phase and its total.
+    def weighed(count: (phase, Int) => Int): Double =
+      totals.to[List].fold(0.0): (sum, entry) =>
+        sum + (count(entry(0), entry(1))*weight(entry(0))).toDouble
 
-    val completed: Double =
-      totals.iterator
-      . map: (phase, total) => (done.getOrElse(phase, 0).min(total)*weight(phase)).toDouble
-      . sum
+    val planned: Double = weighed((_, total) => total)
+    val completed: Double = weighed((phase, total) => done(phase).or(0).min(total))
 
     if planned == 0.0 then 0.0 else (completed/planned).min(1.0)
 

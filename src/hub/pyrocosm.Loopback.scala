@@ -60,7 +60,12 @@ object Loopback:
 
     Http.Request(request.method, 1.1, request.host, request.target, headers, request.body)
 
-  // A request's body, read to its `Content-Length` and no further; empty without one.
+  // A body of fixed bytes, as a request is sent with one: each pull streams them afresh.
+  def spring(data: Data): Spring[Data] = new Spring[Data]:
+    def apply()(using Tactic[Truncation.Error]): Stream[Data] over Credit = Stream(data)
+
+  // A request's body, read to its `Content-Length` and no further; empty without one, or if it
+  // was cut short.
   def bounded(request: Http.Request): Data =
     val length: Int =
       request.textHeaders.seek(_.key.lower == t"content-length").let: header =>
@@ -69,23 +74,26 @@ object Loopback:
       . or(Unset).or(0)
 
     if length <= 0 then Data() else
-      val input = request.body()
-      var remaining: Int = length
-      var result: Data = Data()
-      var reading: Boolean = true
+      safely:
+        val input = request.body()
+        var remaining: Int = length
+        var result: Data = Data()
+        var reading: Boolean = true
 
-      while reading && remaining > 0 do input.refill(Credit(remaining.toLong)) match
-        case count: Int if count > 0 =>
-          val take: Int = count.min(remaining)
-          val data: Data = input.lend: region => range => region.materialize(range.capped(take))
-          input.skip(take)
-          result = result + data
-          remaining -= take
+        while reading && remaining > 0 do input.refill(Credit(remaining.toLong)) match
+          case count: Int if count > 0 =>
+            val take: Int = count.min(remaining)
+            val data: Data = input.lend: region => range => region.materialize(range.capped(take))
+            input.skip(take)
+            result = result + data
+            remaining -= take
 
-        case _ =>
-          reading = false
+          case _ =>
+            reading = false
 
-      result
+        result
+
+      . or(Data())
 
   // The whole of an answer's body.
-  def text(response: Http.Response): Text = response.body.stream.memoize.utf8
+  def text(response: Http.Response): Text = safely(response.body.stream.memoize.utf8).or(t"")

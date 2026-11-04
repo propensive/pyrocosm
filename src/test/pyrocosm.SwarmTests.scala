@@ -444,7 +444,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
       val registry: Registry = Registry(Registry.directory)
       val own: Long = java.lang.ProcessHandle.current.nn.pid
-      val begun: Long = java.lang.System.currentTimeMillis - 1000L
+      val begun: Long = (now() - 1.0*Second).long
 
       test(m"a live hub's record is read back whole, gateway port included"):
         registry.registerHub
@@ -740,10 +740,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           val atDelta = java.util.concurrent.ConcurrentLinkedQueue[Int]()
 
           def hopsOf(queue: java.util.concurrent.ConcurrentLinkedQueue[Int]): List[Int] =
-            var found: scala.List[Int] = scala.Nil
-            val iterator = queue.iterator.nn
-            while iterator.hasNext do found = iterator.next.nn :: found
-            List(found.reverse*)
+            queue.to[List]
 
           val fromA: Swarm.Filter = Swarm.Filter(kinds = Set[Text](t"from-a"))
           val fromB: Swarm.Filter = Swarm.Filter(kinds = Set[Text](t"from-b"))
@@ -1034,7 +1031,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
             val data: Data = body.in[Data]
 
             val request =
-              Http.Request(method, 1.1, Loopback.loopback, t"/mcp", headers, () => Stream(data))
+              Http.Request(method, 1.1, Loopback.loopback, t"/mcp", headers, Loopback.spring(data))
 
             Loopback.exchange(origin, request).or(panic(m"the origin did not answer"))
 

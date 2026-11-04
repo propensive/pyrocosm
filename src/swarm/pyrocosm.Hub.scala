@@ -136,10 +136,10 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
   private def housekeep()(using Monitor, Probate): Unit =
     while !stopping() do
       safely:
-        val moment: Long = java.lang.System.currentTimeMillis
+        val moment: Instant over Unix = now()
 
         heard.toList.foreach: (key, last) =>
-          if moment - last > (Swarm.forgetting.value*1000.0).toLong then known(key).let(forget(_))
+          if moment - last > Swarm.forgetting then known(key).let(forget(_))
 
         elect()
 

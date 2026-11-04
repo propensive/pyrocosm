@@ -379,57 +379,57 @@ extends Frontend:
       // The form's events, with Tab given to a focused fixture that claims it (as Ctrl+Tab, which
       // the form passes on), Shift+Tab moving focus in its place, and the commit sentinel ending
       // the iteration, so the form returns.
-      def events(): scala.collection.Iterator[Terminal.Event] =
-        val underlying = terminal.eventIterator()
+      def events(): murmuration.Iterator[Terminal.Event] =
+        val underlying: murmuration.Iterator[Terminal.Event]^ = terminal.eventIterator()
 
         // The iterator holds the monitor (a resize schedules a replay), which outlives the form
         // that drains it; vouched pure so the form can take it.
-        caps.unsafe.unsafeAssumePure(new scala.collection.Iterator[Terminal.Event]:
-          private var peeked: Optional[Terminal.Event] = Unset
+        caps.unsafe.unsafeAssumePure(new murmuration.Iterator[Terminal.Event]:
+          private var event: Terminal.Event = Terminal.Info.Redraw
           private var ended: Boolean = false
 
-          def hasNext: Boolean =
-            if ended || stopped.get then false else
-              if peeked.absent then
-                if underlying.hasNext then peeked = underlying.next() else ended = true
+          def current: Terminal.Event = event
+
+          update def advance(): Boolean =
+            if ended || stopped.get then false else underlying.next() match
+              case next: Terminal.Event =>
                 // The redraw is being taken: the next assignment may queue another.
-                peeked.let: event => if event == Terminal.Info.Redraw then pending.set(false)
+                if next == Terminal.Info.Redraw then pending.set(false)
 
-              // An inline session's resize is handled here, not by the form.
-              peeked match
-                case _: Terminal.Info.WindowSize if inlined && !ended =>
-                  resized()
-                  peeked = Unset
-                  hasNext
+                next match
+                  // An inline session's resize is handled here, not by the form.
+                  case _: Terminal.Info.WindowSize if inlined =>
+                    resized()
+                    advance()
 
-                case _ =>
-                  if ended then false
-                  else if peeked == sentinel then
+                  case _ if next == sentinel =>
                     ended = true
                     false
-                  else
+
+                  case _ =>
+                    event = translate(next)
                     true
 
-          def next(): Terminal.Event =
-            val event = peeked.or(underlying.next())
-            peeked = Unset
+              case _ =>
+                ended = true
+                false
 
-            event match
-              case Keypress.Tab =>
-                val focused = session.focused
+          private def translate(event: Terminal.Event): Terminal.Event = event match
+            case Keypress.Tab =>
+              val focused = session.focused
 
-                if focused != null && focused.claimsTab then Keypress.Ctrl(Keypress.Tab)
-                else Keypress.Tab
+              if focused != null && focused.claimsTab then Keypress.Ctrl(Keypress.Tab)
+              else Keypress.Tab
 
-              case Keypress.Shift(Keypress.Tab) => Keypress.Tab
+            case Keypress.Shift(Keypress.Tab) => Keypress.Tab
 
-              case Keypress.Escape =>
-                val focused = session.focused
+            case Keypress.Escape =>
+              val focused = session.focused
 
-                if focused != null && focused.claimsEscape then Keypress.Ctrl(Keypress.Escape)
-                else Keypress.Escape
+              if focused != null && focused.claimsEscape then Keypress.Ctrl(Keypress.Escape)
+              else Keypress.Escape
 
-              case other                        => other)
+            case other                        => other)
 
       val formWake: () => Unit = () => terminal.events.put(Terminal.Info.Redraw)
 

@@ -72,11 +72,10 @@ object Hubs:
   // Whether a live hub is registered.
   def running(using Environment): Boolean = registry.hub().present
 
-  // When this JVM last started a hub, in milliseconds; none is started again until `patience`
-  // has passed, since one started will register itself within it, and one which could not start
+  // When this JVM last started a hub, if it has; none is started again until `patience` has
+  // passed, since one started will register itself within it, and one which could not start
   // would only fail again.
-  private val spawned: java.util.concurrent.atomic.AtomicLong =
-    java.util.concurrent.atomic.AtomicLong(0L)
+  private var spawned: Optional[Instant over Unix] = Unset
 
   // Starts a hub for this machine, if none is registered and this JVM has not just started one,
   // and returns at once: a tool's node links to the hub whenever it has registered itself, so
@@ -84,10 +83,13 @@ object Hubs:
   // daemon's, which the hub records as its own version, having no release of its own.
   def ensure(tool: Text, version: Text)(using environment: Environment): Boolean =
     if running then true else
-      val moment: Long = java.lang.System.currentTimeMillis
-      val last: Long = spawned.get
-      val due: Boolean = moment - last > (patience.value*1000.0).toLong
-      if due && spawned.compareAndSet(last, moment) then spawn(tool, version)
+      val due: Boolean = synchronized:
+        val moment: Instant over Unix = now()
+        val due: Boolean = spawned.lay(true)(moment - _ > patience)
+        if due then spawned = moment
+        due
+
+      if due then spawn(tool, version)
       false
 
   // The classpath this JVM loaded Pyrocosm from, for the hub to be loaded from too: every jar
@@ -152,15 +154,15 @@ object Hubs:
 
   // Waits while any leaf is linked, and for `grace` after the last has gone.
   private def linger(hub: Hub)(using Monitor): Unit =
-    var quiet: Long = java.lang.System.currentTimeMillis
+    var quiet: Instant over Unix = now()
     var lingering: Boolean = true
 
     while lingering do
       snooze(1.0*Second)
-      val moment: Long = java.lang.System.currentTimeMillis
+      val moment: Instant over Unix = now()
 
       if !hub.leaves.nil then quiet = moment
-      else if moment - quiet > (grace.value*1000.0).toLong then lingering = false
+      else if moment - quiet > grace then lingering = false
 
   // Copies the journal to standard output, which is the log file, as it grows; the fine
   // detail — a beat each second each way — is left out, as `swarm log` leaves it out.

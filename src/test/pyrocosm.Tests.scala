@@ -3489,9 +3489,9 @@ machine mac-mini
           serving(worker(idle)): port =>
             val hosts = List(t"10.255.255.1", t"127.0.0.1")
             val machine = Machine(t"worker", hosts, port, identity.fingerprint, token, Nil)
-            val started = java.lang.System.currentTimeMillis
+            val started: Instant over Unix = now()
             val address = unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1)(_.address))
-            (address, java.lang.System.currentTimeMillis - started < 5000L)
+            (address, now() - started < 5.0*Second)
 
         . assert(_ == (t"127.0.0.1", true))
 

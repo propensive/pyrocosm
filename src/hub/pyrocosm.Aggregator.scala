@@ -285,7 +285,7 @@ class Aggregator(hub: Hub, version: Text):
     val data: Data = body.let(_.in[Data]).or(Data())
 
     val request: Http.Request =
-      Http.Request(method, 1.1, Loopback.loopback, t"/mcp", headers, () => Stream(data))
+      Http.Request(method, 1.1, Loopback.loopback, t"/mcp", headers, Loopback.spring(data))
 
     Loopback.exchange(port, request)
 

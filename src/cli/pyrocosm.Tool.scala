@@ -22,6 +22,7 @@
                                                                                                   */
 package pyrocosm
 
+import java.util as ju
 import java.util.concurrent as juc
 
 import soundness.*
@@ -199,15 +200,7 @@ object Tool:
   private val serving: juc.ConcurrentHashMap[Text, Service] = juc.ConcurrentHashMap()
 
   // The services this daemon runs, as `<tool>/<keyword>` and the port of each.
-  def services: List[(Text, Int)] =
-    val iterator = ports.entrySet.nn.iterator.nn
-    var found: List[(Text, Int)] = Nil
-
-    while iterator.hasNext do
-      val entry = iterator.next.nn
-      found = (entry.getKey.nn, entry.getValue.nn) :: found
-
-    found.reverse
+  def services: List[(Text, Int)] = (ports: ju.Map[Text, Int]).to[List]
 
   // The newest release each tool in this daemon knows of, by tool name, from the last check
   // (`refresh`); and the tools whose daily check has been started in this daemon.
@@ -215,7 +208,7 @@ object Tool:
   private val checking: juc.ConcurrentHashMap[Text, Boolean] = juc.ConcurrentHashMap()
 
   // How old a cached manifest may be before it is fetched again: the check is daily.
-  private val checkInterval: Long = 24*60*60*1000L
+  private val checkInterval: Duration = 24.0*60.0*60.0*Second
 
   // A configuration source for the `Setting` cascade over one document: keyed by the setting's
   // canonical camelCase name, translated to its kebab-case TEL keyword, and applying the three
@@ -255,17 +248,9 @@ object Tool:
   // What this daemon serves, as the swarm advertises it.
   private def offered(tool: Tool): List[pyrocosm.Service] =
     val prefix: Text = t"${tool.name}/"
-    val iterator = ports.entrySet.nn.iterator.nn
-    var found: scala.List[pyrocosm.Service] = scala.Nil
 
-    while iterator.hasNext do
-      val entry = iterator.next.nn
-      val key: Text = entry.getKey.nn
-
-      if key.starts(prefix)
-      then found = pyrocosm.Service(key.skip(prefix.length), entry.getValue.nn) :: found
-
-    List(found.reverse*)
+    (ports: ju.Map[Text, Int]).to[List].bind: (key, port) =>
+      if key.starts(prefix) then List(pyrocosm.Service(key.skip(prefix.length), port)) else Nil
 
   // The two services every tool's daemon asks of the machine's hub through its node: being the
   // machine's gateway (`swarm` in a config, on `swarm-port`, with `swarm-token` as the secret
@@ -702,7 +687,7 @@ object Tool:
       val cached: Optional[Release] =
         if force then Unset else cache.let: file =>
           safely(summon[FilesystemBackend on Linux].stat(file, true)).let: stat =>
-            val age: Long = java.lang.System.currentTimeMillis() - stat.modified
+            val age: Duration = now() - Instant.of[Unix](stat.modified)
 
             if age < Tool.checkInterval then safely(file.read[Text]).let(Release.parse(_))
             else Unset
