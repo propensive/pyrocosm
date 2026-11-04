@@ -51,17 +51,67 @@ object Block:
   enum Alignment:
     case Start, End, Center, Justify
 
+  // A `minor` column holds secondary detail — a keyword beside a name — and is set smaller.
   case class Column
     ( title:     List[Inline],
       alignment: Alignment = Alignment.Start,
       sizing:    Sizing    = Sizing.Paragraph,
-      numeric:   Boolean   = false )
+      numeric:   Boolean   = false,
+      minor:     Boolean   = false )
 
   // A row with an `Action` is selectable: a click on the web, focus and Enter in the terminal.
   // This is how master/detail interfaces are built, with no layout-level machinery.
   // A cell and a line are records of their own, not nested lists: a repeated TEL field cannot
   // nest, so `List[List[_]]` would flatten on the wire.
   case class Cell(content: List[Inline])
+
+  // A colour as captured output names one: the model has no colour of its own, since its
+  // renderings are themed, and this is the one place a colour comes from outside.
+  case class Rgb(red: Int, green: Int, blue: Int)
+
+  object Run:
+    // Captured output as lines of its runs: the text cut at its newlines, each piece paired
+    // with the run it falls in (a run which holds newlines is cut too). Text beyond the runs —
+    // all of it, where there are none — is unstyled; a trailing newline ends the last line and
+    // begins no other, and empty output has no lines.
+    def lines(text: Text, runs: List[Run]): List[List[(Text, Run)]] =
+      if text == t"" then Nil else
+        val covered: Int = runs.fold(0): (total: Int, run: Run) => total + run.length
+
+        val whole: List[Run] =
+          if covered < text.length then runs + List(Run(text.length - covered)) else runs
+
+        var done: List[List[(Text, Run)]] = Nil
+        var current: List[(Text, Run)] = Nil
+        var position: Int = 0
+
+        whole.each: (run: Run) =>
+          val end: Int = (position + run.length).min(text.length)
+          val slice: Text = text.s.substring(position, end).nn.tt
+          position = end
+
+          slice.cut(t"\n").indexed.each: (part: Text, index: Ordinal) =>
+            if index.n0 > 0 then
+              done = current.reverse :: done
+              current = Nil
+
+            if part != t"" then current = (part, run) :: current
+
+        val all: List[List[(Text, Run)]] = (current.reverse :: done).reverse
+        if text.s.endsWith("\n") then all.keep(all.size - 1) else all
+
+  // A run of captured output in one style: its `length` in characters of the text, which the
+  // runs cover in order, newlines included; a colour absent is the reader's own default.
+  case class Run
+    ( length:     Int,
+      foreground: Optional[Rgb] = Unset,
+      background: Optional[Rgb] = Unset,
+      bold:       Boolean       = false,
+      faint:      Boolean       = false,
+      italic:     Boolean       = false,
+      underline:  Boolean       = false,
+      strike:     Boolean       = false,
+      reverse:    Boolean       = false )
   object Line:
     // Tokens as lines: a token's text may hold newlines, each of which ends a line; the parts
     // between keep the token's accent and role. An empty part adds no token, so an empty line
@@ -592,4 +642,5 @@ enum Block:
       detail:   List[Block] = Nil )
 
   case Group(content: List[Block])                 // a run of blocks which belong together
-  case Output(text: Text, error: Boolean = false)  // captured standard output or error, verbatim
+  // captured standard output or error, verbatim; styled by its `runs`, where it has any
+  case Output(text: Text, error: Boolean = false, runs: List[Block.Run] = Nil)
