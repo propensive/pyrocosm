@@ -91,8 +91,9 @@ enum Inline:
   case Reference(id: Text)                  // an identifier or hash, e.g. a test id
   case Amount(value: Double, units: Text)   // a quantity in base units; the renderer scales it
   case Numeral(value: Double, precision: Optional[Int] = Unset)
-  // A small image set in the line with the text, by URL; `alt` is what a medium without images
-  // shows, and what a plain rendering says.
+  // A small image set in the line with the text: by URL, or as SVG markup (`<svg …>`), which is
+  // drawn in the text's own colour and at its size, so a glyph beside a name follows the theme;
+  // `alt` is what a medium without images shows, and what a plain rendering says.
   case Icon(source: Text, alt: Text)
   // A phrase with a note shown beside it on demand — a gloss, an abbreviation's expansion, a
   // term's definition — as a tooltip where the medium has one; a plain rendering is the

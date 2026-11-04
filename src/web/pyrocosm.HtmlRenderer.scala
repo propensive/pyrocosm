@@ -289,8 +289,15 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     case Inline.Math(math) =>
       Span(`class` = cls(t"pyro-math"))(safely(Ergo.serialize(math)).or(t"…"))
 
+    // An icon which is markup is drawn inline, as a figure is, in a holder which sizes it to the
+    // text and colours it with it; markup that does not parse shows its description.
     case Inline.Icon(source, alt) =>
-      Img(src = source, alt = alt, title = alt, `class` = cls(t"pyro-icon"))
+      if !source.starts(t"<svg") then Img(src = source, alt = alt, title = alt, `class` = cls(t"pyro-icon"))
+      else
+        val holder = cls(t"pyro-glyph")
+
+        safely(source.read[Html of "svg"]).lay(Span(`class` = holder, title = alt)(alt)): svg =>
+          if alt == t"" then Span(`class` = holder)(svg) else Span(`class` = holder, title = alt)(svg)
 
     case Inline.Link(destination, content) => lead(destination, phrase(content))
     case Inline.Import(path, label)        => importButton(path, label)
