@@ -522,7 +522,13 @@ object WebStyles:
           .pyro-glyph-pending { color: var(--pyro-muted) }
         """ +
         css".pyro-math { font-family: math, serif; font-size: var(--pyro-text-math) }" +
-        css".pyro-icon { height: 1em; width: auto; vertical-align: -0.125em }"
+        css".pyro-icon { height: 1em; width: auto; vertical-align: -0.125em }" +
+        css"""
+          .pyro-glyph > svg {
+            height: 1em; width: auto; vertical-align: -0.125em; fill: currentColor;
+            margin-right: 0.3em
+          }
+        """
 
     // The small, tracked capitals that label things: table headers, record keys, the labels
     // of toggles, the connection pill and the buttons.
