@@ -133,7 +133,7 @@ object Channel:
   // exception, which `safely` around `decode` absorbs.
   object derivation:
     given throwing: [error <: Hazard] => Tactic[error] =
-      scala.caps.unsafe.unsafeAssumePure[Tactic[error]](ThrowTactic[error, Any]())
+      scala.caps.unsafe.unsafeAssumePure[Tactic[error]](ThrowTactic[error]())
 
   def same(left: Data, right: Data): Boolean = Array.same(left, right)
 

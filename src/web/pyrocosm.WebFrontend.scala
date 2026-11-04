@@ -115,7 +115,7 @@ object WebFrontend:
   // How many patches a tab may fall behind before it is given up on, and how long a tab may be
   // silent (the script pings every twenty seconds) before it is presumed gone.
   private val backlog: Int = 256
-  private val silence: Long = 60000L
+  private val silence: Duration = 60.0*Second
 
 // The web as a `Frontend`, in two modes. `run` shows one interface to every tab, which is how
 // a Fume run is watched. `serve` opens an interface per page: each tab gets a session of its
@@ -279,7 +279,7 @@ extends pyrocosm.Frontend:
 
       @caps.unsafe.untrackedCaptures
       @volatile
-      var seen: Long = java.lang.System.currentTimeMillis()
+      var seen: Instant over Unix = now()
 
       @caps.unsafe.untrackedCaptures
       @volatile
@@ -305,11 +305,11 @@ extends pyrocosm.Frontend:
     // refuses it, or which has been silent too long, has gone.
     def broadcast(patch: Patch, except: Optional[Int] = Unset): Unit =
       val text = patch.in[Json].show
-      val now = java.lang.System.currentTimeMillis()
+      val moment: Instant over Unix = now()
 
       tabs.forEach: (connection, tab) =>
         if !except.lay(false)(_ == connection.nn) then
-          if now - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text)
+          if moment - tab.nn.seen > WebFrontend.silence || !tab.nn.offer(text)
           then detach(connection.nn)
 
     // A patch to one tab alone: the answer to something it asked.
@@ -404,7 +404,7 @@ extends pyrocosm.Frontend:
     // shows the tab it came from is alive.
     def receive(connection: Int, payload: Text): Unit =
       val tab = tabs.get(connection)
-      if tab != null then tab.nn.seen = java.lang.System.currentTimeMillis()
+      if tab != null then tab.nn.seen = now()
 
       safely(payload.read[Json].as[Incoming]).let: incoming =>
         incoming.kind match
@@ -557,13 +557,12 @@ extends pyrocosm.Frontend:
   // action its internal destination names: what `/open?activity=<id>` presses. Only an
   // activity in view, and only its own action, is reachable this way.
   private def locate(id: Text): Optional[(Session, Action)] =
-    val candidates: scala.List[Session] =
-      shared.lay(sessions.values.nn.iterator.nn.asScala.toList)(scala.List(_))
+    val candidates: List[Session] = shared.lay(sessions.values.nn.to[List])(List(_))
 
-    candidates.iterator.map: session =>
+    val located: List[Optional[(Session, Action)]] = candidates.map: session =>
       WebFrontend.locate(session.interface.activities(), id).let((session, _))
 
-    . collectFirst { case found: (Session, Action) @unchecked => found }.getOrElse(Unset)
+    located.seek(_.present).or(Unset)
 
   private def navigating(request: Http.Request): Boolean =
     request.textHeaders.exists: header =>

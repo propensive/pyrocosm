@@ -22,12 +22,11 @@
                                                                                                   */
 package pyrocosm
 
-import soundness.{Language as _, Token as _, *}
+import soundness.{Token as _, *}
 
 import dysasymptotics.{linearAccess, linearSize}
 
 import hyperbole.Tasty
-import mandible.*
 
 // A class the bytecode tests read back from the test's own classpath.
 class Sample:

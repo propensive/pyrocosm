@@ -414,7 +414,7 @@ extends Tether.Host, scala.caps.Pure:
 
   // When each node was last heard from, by key, and the newest sequence heard from each
   // origin, by which an event heard twice is acted on once.
-  protected val heard: TrieMap[Text, Long] = TrieMap()
+  protected val heard: TrieMap[Text, Instant over Unix] = TrieMap()
   private val seen: TrieMap[Text, Long] = TrieMap()
   protected val sequence: juc.atomic.AtomicLong = juc.atomic.AtomicLong(0L)
 
@@ -449,14 +449,19 @@ extends Tether.Host, scala.caps.Pure:
       emit(Bus.Event.Tool(tool, kind, payload))
       true
 
-  // The second's budget of events.
-  private val window: juc.atomic.AtomicLong = juc.atomic.AtomicLong(0L)
-  private val spent: juc.atomic.AtomicInteger = juc.atomic.AtomicInteger(0)
+  // The budget of events for the second beginning at `window`.
+  private var window: Instant over Unix = now()
+  private var spent: Int = 0
 
-  private def spend(): Boolean =
-    val second: Long = java.lang.System.currentTimeMillis/1000L
-    if window.getAndSet(second) != second then spent.set(0)
-    spent.incrementAndGet() <= Swarm.budget
+  private def spend(): Boolean = synchronized:
+    val moment: Instant over Unix = now()
+
+    if moment - window >= 1.0*Second then
+      window = moment
+      spent = 0
+
+    spent += 1
+    spent <= Swarm.budget
 
   // Numbers an event of this node's own, acts on it here, and sends it down every link.
   protected def emit(event: Bus.Event): Unit =
@@ -484,7 +489,7 @@ extends Tether.Host, scala.caps.Pure:
       envelope.sequence > before
 
     if fresh then
-      heard(envelope.origin) = java.lang.System.currentTimeMillis
+      heard(envelope.origin) = now()
       val origin: Optional[Node] = apply(envelope.event)
       notify(origin, envelope)
 
@@ -496,12 +501,12 @@ extends Tether.Host, scala.caps.Pure:
   // this side, so this node says what it is again, as an event, for the nodes beyond the other
   // end which the snapshot did not reach.
   def snapshotted(tether: Tether, advert: Advert, known: List[Advert]): Unit =
-    heard(advert.node.key) = java.lang.System.currentTimeMillis
+    heard(advert.node.key) = now()
     apply(Bus.Event.Advertised(advert))
 
     known.each: other =>
       if other.node.key != node.key && this.known(other.node.key).absent then
-        heard(other.node.key) = java.lang.System.currentTimeMillis
+        heard(other.node.key) = now()
         apply(Bus.Event.Advertised(other))
 
     advertise()

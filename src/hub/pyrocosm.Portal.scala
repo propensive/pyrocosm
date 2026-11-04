@@ -135,7 +135,7 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
     val headers: List[Http.Header] = request.textHeaders.filter(endToEnd(_))
 
     val upstream: Http.Request =
-      Http.Request(request.method, 1.1, request.host, request.target, headers, () => Stream(body))
+      Http.Request(request.method, 1.1, request.host, request.target, headers, Loopback.spring(body))
 
     val failure: Text = t"The $tool front-end did not answer"
 

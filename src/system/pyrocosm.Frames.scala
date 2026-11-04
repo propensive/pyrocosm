@@ -33,7 +33,7 @@ object Frames:
 
   // The whole frames in `chunks`, in order.
   def split(chunks: List[Data]): List[Data] =
-    safely(List.from(chunks.stdlib.iterator.frames[LengthPrefix])).or(Nil)
+    safely(chunks.to[Chain].frames[LengthPrefix].to[List]).or(Nil)
 
   def split(data: Data): List[Data] = split(List(data))
 

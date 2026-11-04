@@ -94,5 +94,5 @@ object Boards:
     def reports(blocks: List[Block]): Unit = blocks.each(report(_))
 
     // Every problem found, in order; and whether they were already printed as they came.
-    def problems: List[Block] = List.from(found.iterator.nn.asScala)
+    def problems: List[Block] = found.to[List]
     def streamed: Boolean = board.absent

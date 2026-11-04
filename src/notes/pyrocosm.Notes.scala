@@ -93,6 +93,7 @@ class Notes(root: Text):
 
     mitigate:
       case Exec.Error(_, _, stderr) => Notes.Error(GitFailed(-1, stderr.utf8))
+      case _: Truncation.Error      => Notes.Error(GitFailed(-1, t"its output was cut short"))
 
     . protect:
       val job = Command((program :: arguments)*).fork[Text]()
@@ -108,6 +109,7 @@ class Notes(root: Text):
 
     mitigate:
       case Exec.Error(_, _, stderr) => Notes.Error(GitFailed(-1, stderr.utf8))
+      case _: Truncation.Error      => Notes.Error(GitFailed(-1, t"its output was cut short"))
 
     . protect:
       val job = Command((t"git" :: arguments)*).fork[Data]()

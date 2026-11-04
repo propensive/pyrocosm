@@ -64,8 +64,8 @@ object Runtimes:
       if loader == null then Nil else
         val own: List[Text] = loader match
           case loader: jn.URLClassLoader =>
-            List.from(loader.getURLs.nn.iterator.map(_.nn)).bind: url =>
-              try List(jnf.Path.of(url.toURI).nn.toString.tt) catch case _: Throwable => Nil
+            Iterator.array(loader.getURLs.nn).to[List].bind: url =>
+              try List(jnf.Path.of(url.nn.toURI).nn.toString.tt) catch case _: Throwable => Nil
 
           case _ =>
             Nil
