@@ -2118,6 +2118,18 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert: (lines: List[List[(Text, Block.Run)]]) =>
         lines == List(List((t"a", Block.Run(4, bold = true))), List((t"b", Block.Run(4, bold = true))))
 
+    test(m"an icon which is markup is drawn inline, in a glyph holder"):
+      val markup: Text = t"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5"/></svg>"""
+      html.block(Block.Paragraph(List(Inline.Icon(markup, t""), Inline.Textual(t"name")))).show
+
+    . assert: (page: Text) =>
+        page.contains(t"""<span class="pyro-glyph"><svg""") && page.contains(t"<circle") && !page.contains(t"<img")
+
+    test(m"an icon by URL is still an image"):
+      html.block(Block.Paragraph(List(Inline.Icon(t"/icon.svg", t"an icon")))).show
+
+    . assert(_.contains(t"""<img"""))
+
     test(m"a minor column marks its cells"):
       val table = Block.Table
         ( List(Block.Column(Inline.text(t""), minor = true)),
