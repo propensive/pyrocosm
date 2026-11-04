@@ -279,7 +279,7 @@ extends pyrocosm.Frontend:
 
       @caps.unsafe.untrackedCaptures
       @volatile
-      var seen: Long = System.currentTimeMillis()
+      var seen: Long = java.lang.System.currentTimeMillis()
 
       @caps.unsafe.untrackedCaptures
       @volatile
@@ -305,7 +305,7 @@ extends pyrocosm.Frontend:
     // refuses it, or which has been silent too long, has gone.
     def broadcast(patch: Patch, except: Optional[Int] = Unset): Unit =
       val text = patch.in[Json].show
-      val now = System.currentTimeMillis()
+      val now = java.lang.System.currentTimeMillis()
 
       tabs.forEach: (connection, tab) =>
         if !except.lay(false)(_ == connection.nn) then
@@ -404,7 +404,7 @@ extends pyrocosm.Frontend:
     // shows the tab it came from is alive.
     def receive(connection: Int, payload: Text): Unit =
       val tab = tabs.get(connection)
-      if tab != null then tab.nn.seen = System.currentTimeMillis()
+      if tab != null then tab.nn.seen = java.lang.System.currentTimeMillis()
 
       safely(payload.read[Json].as[Incoming]).let: incoming =>
         incoming.kind match
