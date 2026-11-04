@@ -907,6 +907,8 @@ object WebStyles:
 
     // A meter drawn as a flat bar in every engine: `appearance: none` leaves it to the
     // background rules, and each engine's own part for the filled length takes the accent.
+    // An indeterminate bar is instead a thin line a quarter of the width, which bounces from
+    // side to side, overshooting each edge a little, and stretches mid-travel.
     val meter: Css =
       List
         ( t".pyro-meter { appearance: none; -webkit-appearance: none; display: block; width: 100%;",
@@ -928,14 +930,19 @@ object WebStyles:
           t"background-color: var(--pyro-tone-accent); border-radius: 0 }",
           t".pyro-progress::-moz-progress-bar, .pyro-reckoning progress::-moz-progress-bar {",
           t"background-color: var(--pyro-tone-accent); border-radius: 0 }",
-          t".pyro-progress:indeterminate {",
-          t"background-image: repeating-linear-gradient(90deg, var(--pyro-tone-accent) 0 0.75rem,",
-          t"transparent 0.75rem 1.5rem); background-size: 200% 100%;",
-          t"animation: pyro-sweep 1.2s linear infinite }",
+          t".pyro-progress:indeterminate { height: 2px; background-color: transparent;",
+          t"background-image: linear-gradient(var(--pyro-tone-accent), var(--pyro-tone-accent));",
+          t"background-repeat: no-repeat; background-size: 25% 100%; background-position: 0 0;",
+          t"animation: pyro-busy-bounce 1.4s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite",
+          t"alternate, pyro-busy-stretch 0.7s ease-in-out infinite alternate }",
           t".pyro-progress:indeterminate::-webkit-progress-bar { background-color: transparent }",
           t".pyro-progress:indeterminate::-moz-progress-bar { background-color: transparent }",
-          t"@keyframes pyro-sweep { from { background-position: 0 0 } to {",
-          t"background-position: 1.5rem 0 } }" )
+          t"@keyframes pyro-busy-bounce { from { background-position: 0% 0 } to {",
+          t"background-position: 100% 0 } }",
+          t"@keyframes pyro-busy-stretch { from { background-size: 16% 100% } to {",
+          t"background-size: 34% 100% } }",
+          t"@media (prefers-reduced-motion: reduce) { .pyro-progress:indeterminate {",
+          t"animation: none; background-position: 50% 0 } }" )
 
       . join(t" ")
       . read[Css]
