@@ -1144,6 +1144,12 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == List(t"val x = y", t"       ╱╲ not found"))
 
+    test(m"an icon says its description, as it cannot be drawn"):
+      val icon: Inline = Inline.Icon(t"<svg/>", t"final class")
+      renderer.block(Block.Paragraph(List(icon, Inline.Textual(t" name"))), 80).map(_.plain)
+
+    . assert(_ == List(t"final class name"))
+
     test(m"a captioned segment is underscored beneath its line, within the margin"):
       val note = Block.Note(0, 4, 5, Block.Note.Style.Caution, Inline.text(t"unused"))
       val line: Block.Line = Block.Line(List(Token.plain(t"val x = 1")))
@@ -1439,21 +1445,56 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
         html == anchor + space
 
-    val importButton: Text =
-      t"""<button type="button" class="pyro-import pyro-active" data-path="/api/com.example" """ +
-        t"""title="Remove the import of com.example.*">com.example</button>"""
-
-    val bookmarkButton: Text =
-      t"""<button type="button" class="pyro-bookmark" data-path="/api/com.example.Foo" """ +
-        t"""title="Bookmark Foo">Foo</button>"""
-
-    test(m"an import toggle is a button carrying its path, active when the page is imported"):
+    test(m"an import toggle is a button carrying its path and label, active when imported"):
       val toggle: Inline = Inline.Import(t"/api/com.example", t"com.example")
+      HtmlRenderer(imported).phrase(List(toggle)).show
 
-      ( HtmlRenderer(imported).phrase(List(toggle)).show,
-        html.phrase(List(Inline.Bookmark(t"/api/com.example.Foo", t"Foo"))).show )
+    . assert: html =>
+        List
+          ( t"""class="pyro-import pyro-active"""",
+            t"""data-path="/api/com.example"""",
+            t"""data-label="com.example"""",
+            t"""title="Remove the import of com.example.*"""",
+            t"""></button>""" )
 
-    . assert(_ == (importButton, bookmarkButton))
+        . all(html.contains(_))
+
+    test(m"a bookmark button shows its mark alone, not the label it carries"):
+      html.phrase(List(Inline.Bookmark(t"/api/com.example.Foo", t"Foo"))).show
+
+    . assert: html =>
+        List
+          ( t"""class="pyro-bookmark"""",
+            t"""data-label="Foo"""",
+            t"""title="Bookmark Foo"""",
+            t"""M6 3h12v18l-6-5-6 5z""" )
+
+        . all(html.contains(_)) && !html.contains(t">Foo<")
+
+    test(m"a fixed table's note stands in its last column, the others empty"):
+      val columns: List[Block.Column] =
+        List
+          ( Block.Column(Inline.text(t"a"), sizing = Block.Sizing.Fixed(40)),
+            Block.Column(Inline.text(t"b"), sizing = Block.Sizing.Fixed(60)) )
+
+      val cells: List[Block.Cell] = List(Block.Cell(Inline.text(t"x")))
+      val row: Block.Row = Block.Row(cells, note = Inline.text(t"one"))
+      html.block(Block.Table(columns, List(row), Unset)).show
+
+    . assert: html =>
+        html.contains(t"""<td class="pyro-share-40"></td><td class="pyro-share-60">one</td>""")
+
+    test(m"a drawing keeps the parts its purview says to, without their groups"):
+      val svg: Text =
+        t"""<svg><g data-not-imported="/a"><text>a.B</text></g><g data-imported="/a">""" +
+          t"""<text>B</text></g><g><path/></g></svg>"""
+
+      val entry: Purview.Entry = Purview.Entry(t"/a", t"a")
+      (Purview().drawing(svg), Purview(List(entry)).drawing(svg))
+
+    . assert: (outside, within) =>
+        outside == t"<svg><text>a.B</text><g><path/></g></svg>" &&
+          within == t"<svg><text>B</text><g><path/></g></svg>"
 
     test(m"the purview cookie round-trips, among other cookies, and garbage reads as none"):
       val purview: Purview = imported.toggleBookmark(Purview.Entry(t"/api/com.example.Foo", t"Foo"))
@@ -1573,7 +1614,25 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val line: Block.Line = Block.Line(List(Token.plain(t"abcd")))
       html.block(Block.Code(Language.Plain, List(line), List(note))).show
 
-    . assert(_.contains(t"""<span class="pyro-marks">╱╲</span> here"""))
+    . assert: html =>
+        html.contains(t"""<span class="pyro-marks">╱╲</span>""") &&
+          html.contains(t"""<span class="pyro-marker-caption">here</span>""")
+
+    test(m"a diagnostic's span has its caption at the line's indentation, with no marks"):
+      val note = Block.Note(0, 6, 7, Block.Note.Style.Erroneous, Inline.text(t"here"))
+      val line: Block.Line = Block.Line(List(Token.plain(t"  abc def")))
+      html.block(Block.Code(Language.Plain, List(line), List(note))).show
+
+    . assert: html =>
+        html.contains(t"""pyro-marker-erroneous">  <span class="pyro-marker-caption">here""") &&
+          !html.contains(t"pyro-marks")
+
+    test(m"a highlight keeps its marks and its caption beneath its span"):
+      val note = Block.Note(0, 2, 3, Block.Note.Style.Highlight, Inline.text(t"here"))
+      val line: Block.Line = Block.Line(List(Token.plain(t"abcd")))
+      html.block(Block.Code(Language.Plain, List(line), List(note))).show
+
+    . assert(_.contains(t"""  <span class="pyro-marks">‾</span> here"""))
 
     test(m"a diagnostic renders as an article in its tone"):
       val location = Block.Location(t"Foo.scala", 2)

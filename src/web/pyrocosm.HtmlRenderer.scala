@@ -83,6 +83,10 @@ object HtmlRenderer:
   // which the script sends with the click.
   given dataPath: ("data-path" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
+  given dataLabel: ("data-label" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
+
+
   // A text as a JSON string literal, for the animation the renderer embeds.
   def jsonText(text: Text): Text =
     val builder = StringBuilder()
@@ -191,16 +195,29 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     val pairs = purview.elide(tokens).map: (token: Token) => (token, this.token(token))
     Html.Fragment(qualified(pairs)*)
 
-  // An import toggle or a bookmark button: a button carrying its page's path, active when the
-  // page is in the purview, so that the script sends the click and the frontend answers with
-  // the panels re-rendered under the new purview.
-  private def purviewButton(kind: Text, path: Text, label: Text, active: Boolean, title: Text)
+  // An import toggle or a bookmark button: a button carrying its page's path and what to list
+  // it by, active when the page is in the purview, so that the script sends the click and the
+  // frontend answers with the panels re-rendered under the new purview. It shows a mark alone;
+  // its title says what it does, and to what.
+  private def purviewButton
+    ( kind:   Text,
+      path:   Text,
+      label:  Text,
+      active: Boolean,
+      title:  Text,
+      mark:   Html of Phrasing = Html.Fragment[Phrasing]() )
   :   Html of Phrasing =
 
     val classes: List[Name[CssClass]] =
       List(cls(t"pyro-$kind")) + (if active then List(cls(t"pyro-active")) else Nil)
 
-    Button(`type` = t"button", `class` = classes, `data-path` = path, title = title)(label)
+    Button
+      ( `type`       = t"button",
+        `class`      = classes,
+        `data-path`  = path,
+        `data-label` = label,
+        title        = title )
+      ( mark )
 
   private def importButton(path: Text, label: Text): Html of Phrasing =
     val active: Boolean = purview.imported(path)
@@ -210,7 +227,11 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   private def bookmarkButton(path: Text, label: Text): Html of Phrasing =
     val active: Boolean = purview.bookmarked(path)
     val title: Text = if active then t"Remove the bookmark of $label" else t"Bookmark $label"
-    purviewButton(t"bookmark", path, label, active, title)
+    val mark: Text =
+      t"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">""" +
+        t"""<path d="M6 3h12v18l-6-5-6 5z"/></svg>"""
+
+    purviewButton(t"bookmark", path, label, active, title, phrase(List(Inline.Icon(mark, t""))))
 
   // The reader's purview as a side panel: the imports, then the bookmarks, each entry a link
   // to its page with the button which removes it; replaced as one when the purview changes.
@@ -436,7 +457,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     // is read as foreign (SVG) content into a holder, `<figure id>-svg`, which a redraw replaces
     // whole and a part revision patches inside. Markup that does not parse shows its description.
     case Block.Figure(figure) =>
-      val markup: Text = pyrocosm.Figure.namespace(figure.id, figure.svg)
+      val markup: Text = pyrocosm.Figure.namespace(figure.id, purview.drawing(figure.svg))
       val drawing: Optional[Html of "svg"] = safely(markup.read[Html of "svg"])
 
       val holderId: Text = t"${figure.id}-svg"
@@ -597,9 +618,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
   // The rows of a code block, each ended by a newline but the last: every line, behind its
   // number when `start` says which line of its source the first is; and beneath a line, a row
-  // for each caret or captioned note ending on it — the caret `╱╲` beneath its position, or `‾`
-  // under each marked column, then the caption — spaced into place with the line's own
-  // columns, as the terminal draws it, since a `pre` keeps them.
+  // for each caret or captioned note ending on it, as `marker` draws them.
   private def codeRows(lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int])
   :   List[Html of Phrasing] =
 
@@ -620,9 +639,11 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
           Html.Fragment[Phrasing]
             ( number(start.let(_ + index.n0)), codeLine(line, notes, true, index.n0) )
 
+        val text: Text = line.tokens.map { (token: Token) => token.text }.join
+
         val beneath: List[Html of Phrasing] =
-          markers(notes, index.n0, length).map: (note: Block.Note) =>
-            marker(note, index.n0, length, number(Unset))
+          markers(notes, index.n0, length).bind: (note: Block.Note) =>
+            marker(note, index.n0, length, indentation(text), number(Unset))
 
         first :: beneath
 
@@ -635,26 +656,49 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   private def markers(notes: List[Block.Note], index: Int, length: Int): List[Block.Note] =
     notes.filter: (note: Block.Note) => note.lastLine == index && (note.caret || !note.caption.nil)
 
-  // The row beneath a line for one of its notes: the caret `╱╲` beneath its position, or `‾`
-  // under each marked column, then the caption, spaced into place with the line's own columns;
-  // `margin` is what stands where the line's number does, so the columns align.
+  // The space which leads a line's text, which a diagnostic's caption is set after.
+  private def indentation(text: Text): Text = text.s.takeWhile(_.isWhitespace).tt
+
+  // The rows beneath a line for one of its notes, spaced with the line's own columns, since a
+  // `pre` keeps them; `margin` is what stands where the line's number does, so they align. A
+  // diagnostic's span is already marked by its own style, so only a caret, which has no width to
+  // style, has a mark, `╱╲` beneath its position; its caption has a row of its own, smaller, at
+  // the line's indentation wherever on the line the span is. Any other note has `╱╲` or `‾`
+  // under each marked column, then its caption, on one row.
   private def marker
     ( note:   Block.Note,
       index:  Int,
       length: Int,
+      indent: Text,
       margin: Html of Phrasing = Html.Fragment[Phrasing]() )
-  :   Html of Phrasing =
+  :   List[Html of Phrasing] =
 
     val range: (Int, Int) = note.range(index, length).or((0, 0))
     val pad: Int = if note.caret then (range(0) - 1).max(0) else range(0)
     val marks: Text = if note.caret then t"╱╲" else t"‾"*(range(1) - range(0)).max(1)
+    val style = List(cls(t"pyro-marker"), cls(t"pyro-marker-${note.style.toString.tt.lower}"))
+    val marked: Html of Phrasing = Span(`class` = cls(t"pyro-marks"))(marks)
 
-    val caption: Html of Phrasing =
-      if note.caption.nil then Html.Fragment[Phrasing]()
-      else Html.Fragment[Phrasing](t" ", phrase(note.caption))
+    note.style match
+      case Block.Note.Style.Erroneous | Block.Note.Style.Caution =>
+        val caret: List[Html of Phrasing] =
+          if note.caret then List(Span(`class` = style)(margin, t" "*pad, marked)) else Nil
 
-    Span(`class` = List(cls(t"pyro-marker"), cls(t"pyro-marker-${note.style.toString.tt.lower}")))
-      ( margin, t" "*pad, Span(`class` = cls(t"pyro-marks"))(marks), caption )
+        val caption: List[Html of Phrasing] =
+          if note.caption.nil then Nil else
+            val text: Html of Phrasing =
+              Span(`class` = cls(t"pyro-marker-caption"))(phrase(note.caption))
+
+            List(Span(`class` = style)(margin, indent, text))
+
+        caret + caption
+
+      case _ =>
+        val caption: Html of Phrasing =
+          if note.caption.nil then Html.Fragment[Phrasing]()
+          else Html.Fragment[Phrasing](t" ", phrase(note.caption))
+
+        List(Span(`class` = style)(margin, t" "*pad, marked, caption))
 
   def plainCode
     ( language: pyrocosm.Language,
@@ -759,8 +803,11 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
       val row: Html of Phrasing = Span(`class` = cls(t"pyro-line"))(spans*)
 
+      val text: Text = atoms.map { (atom: Block.Atom) => atom.text }.join
+
       val beneath: List[Html of Phrasing] =
-        markers(notes, index.n0, length).map: (note: Block.Note) => marker(note, index.n0, length)
+        markers(notes, index.n0, length).bind: (note: Block.Note) =>
+          marker(note, index.n0, length, indentation(text))
 
       row :: beneath
 
@@ -957,8 +1004,9 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
     val head = Thead(Tr(headings*))
 
-    // A row's note is a row of its own beneath it, one cell across every column, and the row
-    // above it loses its rule so that the two read as one.
+    // A row's note is a row of its own beneath it, whose rule the row above loses so that the
+    // two read as one: one cell across every column, or in a table of fixed columns, the last
+    // column's, so that the columns before it stand clear.
     val bodyRows = rows.bind: (row: Block.Row) =>
       val cells = columns.indexed.map: (column, index) =>
         val style: List[Name[CssClass]] = columnClasses(column)
@@ -980,8 +1028,19 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
       if row.note.nil then List(main) else
         val note: Html of "tr" =
-          Tr(`class` = cls(t"pyro-note-row") :: toned)
-            ( Td(colspan = columns.size)(phrase(row.note)) )
+          if !fixed then
+            Tr(`class` = cls(t"pyro-note-row") :: toned)
+              ( Td(colspan = columns.size)(phrase(row.note)) )
+
+          else
+            val noteCells = columns.indexed.map: (column, index) =>
+              val content: Html of Phrasing =
+                if index.n0 == columns.size - 1 then phrase(row.note)
+                else Html.Fragment[Phrasing]()
+
+              Td(`class` = columnClasses(column))(content)
+
+            Tr(`class` = cls(t"pyro-note-row") :: toned)(noteCells*)
 
         List(main, note)
 

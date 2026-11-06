@@ -25,6 +25,9 @@ package pyrocosm
 import soundness.*
 
 object Purview:
+  private val conditional: java.util.regex.Pattern =
+    java.util.regex.Pattern.compile("""(?s)<g data-(not-)?imported="([^"]*)">(.*?)</g>""").nn
+
   case class Entry(path: Text, label: Text)
 
   private def toggle(entries: List[Entry], entry: Entry): List[Entry] =
@@ -49,6 +52,24 @@ case class Purview(imports: List[Purview.Entry] = Nil, bookmarks: List[Purview.E
 
   def toggleBookmark(entry: Purview.Entry): Purview =
     copy(bookmarks = Purview.toggle(bookmarks, entry))
+
+  // A drawing as this purview reads it: a part marked `<g data-imported="path">` is kept, and its
+  // group dropped, where the path is imported, and one marked `<g data-not-imported="path">` where
+  // it is not, so that a drawing elides what is imported as a qualified name does. Such a group
+  // holds no group of its own.
+  def drawing(svg: Text): Text =
+    val matcher = Purview.conditional.matcher(svg.s).nn
+    val result: java.lang.StringBuilder = java.lang.StringBuilder()
+    var from: Int = 0
+
+    while matcher.find() do
+      val keep: Boolean = imported(matcher.group(2).nn.tt) == (matcher.group(1) == null)
+      result.append(svg.s, from, matcher.start())
+      if keep then result.append(matcher.group(3).nn)
+      from = matcher.end()
+
+    result.append(svg.s, from, svg.s.length)
+    result.toString.nn.tt
 
   // The tokens with every imported prefix elided: in each run of chained tokens, the last
   // linked segment before the final one whose page is imported, and everything before it and

@@ -112,7 +112,7 @@ object WebTheme:
 
   // The default: a light page with flame accents. Text is smoke-charcoal on the faintest grey,
   // cards are white, an action is a flame, `Info` is a cosmic violet so it reads apart from
-  // the warning amber and the failure crimson, and code sits on a near-black ground with a
+  // the warning saffron and the failure crimson, and code sits on a near-black ground with a
   // hint of violet, its tokens in brighter accents.
   object Ember extends WebTheme:
     private val mist = Chroma(0xf5f5f7)
@@ -169,7 +169,7 @@ object WebTheme:
     def tone(tone: Tone): Chroma = tone match
       case Tone.Success => leaf
       case Tone.Failure => crimson
-      case Tone.Warning => amber
+      case Tone.Warning => saffron
       case Tone.Muted   => ash
       case Tone.Accent  => flame
       case Tone.Info    => violet
@@ -253,7 +253,7 @@ object WebTheme:
     def tone(tone: Tone): Chroma = tone match
       case Tone.Success => leaf
       case Tone.Failure => crimson
-      case Tone.Warning => amber
+      case Tone.Warning => saffron
       case Tone.Muted   => haze
       case Tone.Accent  => flame
       case Tone.Info    => violet
