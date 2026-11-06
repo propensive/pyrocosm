@@ -1122,32 +1122,48 @@
     }
 
     // The rows beneath line `line` of a frame for its caret and captioned notes, as the
-    // server renders them: the caret beneath its position, or a mark under each column, then
-    // the caption.
-    function markersOf(index, line, length) {
+    // server renders them: a diagnostic's caret beneath its position, and its caption on a row
+    // of its own at the line's indentation; any other note's caret, or a mark under each
+    // column, then its caption.
+    function markersOf(index, line, length, indent) {
       var notes = (data.slides[index] && data.slides[index].notes) || [];
       var rows = [];
+      function row(note, text) {
+        var element = document.createElement("span");
+        element.className = "pyro-marker pyro-marker-" + note.style;
+        element.appendChild(document.createTextNode(text));
+        rows.push(element);
+        return element;
+      }
+      function marks(text) {
+        var span = document.createElement("span");
+        span.className = "pyro-marks";
+        span.textContent = text;
+        return span;
+      }
       notes.forEach(function (note) {
         var last = note.last === null ? note.line : note.last;
         var caret = note.last === null && note.start === note.end;
         if (last !== line || !(caret || note.caption)) return;
         var range = rangeOf(note, line, length) || [0, 0];
         var pad = caret ? Math.max(range[0] - 1, 0) : range[0];
-        var marks = caret ? "╱╲" : "‾".repeat(Math.max(range[1] - range[0], 1));
-        var row = document.createElement("span");
-        row.className = "pyro-marker pyro-marker-" + note.style;
-        row.appendChild(document.createTextNode(" ".repeat(pad)));
-        var span = document.createElement("span");
-        span.className = "pyro-marks";
-        span.textContent = marks;
-        row.appendChild(span);
-        if (note.caption) {
-          row.appendChild(document.createTextNode(" "));
-          var caption = document.createElement("span");
-          caption.innerHTML = note.caption;
-          row.appendChild(caption);
+        var mark = caret ? "╱╲" : "‾".repeat(Math.max(range[1] - range[0], 1));
+        var caption = document.createElement("span");
+        if (note.caption) caption.innerHTML = note.caption;
+        if (note.style === "erroneous" || note.style === "caution") {
+          if (caret) row(note, " ".repeat(pad)).appendChild(marks("╱╲"));
+          if (note.caption) {
+            caption.className = "pyro-marker-caption";
+            row(note, indent).appendChild(caption);
+          }
+        } else {
+          var element = row(note, " ".repeat(pad));
+          element.appendChild(marks(mark));
+          if (note.caption) {
+            element.appendChild(document.createTextNode(" "));
+            element.appendChild(caption);
+          }
         }
-        rows.push(row);
       });
       return rows;
     }
@@ -1214,9 +1230,10 @@
           var line = document.createElement("span");
           line.className = "pyro-line";
           var length = 0;
-          ids.forEach(function (id) { line.appendChild(spanFor(id)); length += atoms[id].text.length; });
+          var text = "";
+          ids.forEach(function (id) { line.appendChild(spanFor(id)); length += atoms[id].text.length; text += atoms[id].text; });
           fragment.appendChild(line);
-          markersOf(target, index, length).forEach(function (row) {
+          markersOf(target, index, length, text.match(/^\s*/)[0]).forEach(function (row) {
             if (moving) { row.style.transition = "none"; row.style.opacity = "0"; }
             fragment.appendChild(row);
           });
@@ -1557,7 +1574,7 @@
       button.addEventListener("click", function (event) {
         event.preventDefault();
         var kind = button.classList.contains("pyro-import") ? "import" : "bookmark";
-        var label = button.closest(".pyro-purview") ? (button.previousElementSibling ? button.previousElementSibling.textContent : "") : button.textContent;
+        var label = button.closest(".pyro-purview") ? (button.previousElementSibling ? button.previousElementSibling.textContent : "") : button.dataset.label;
         send({ kind: kind, id: "", text: button.dataset.path, caret: 0, index: 0, label: label });
       });
     });

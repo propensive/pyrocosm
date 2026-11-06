@@ -157,7 +157,7 @@ class TerminalRenderer
     case Inline.Reference(id)         => tint(theme.reference)(Teletype(id))
     case Inline.Break()               => Teletype(t"\n")
     case Inline.Math(math)            => Teletype(safely(Ergo.serialize(math)).or(t"…"))
-    case Inline.Icon(_, _)            => blank   // a terminal has no images; `plain` says the alt
+    case Inline.Icon(_, alt)          => faint(Teletype(alt)) // a terminal has no images
     case Inline.Import(_, _)          => blank   // nothing to click, and no purview to keep
     case Inline.Bookmark(_, _)        => blank
     // A terminal has no hover; the note is for the page.

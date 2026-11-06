@@ -556,7 +556,12 @@ object WebStyles:
           overflow-x: auto; line-height: 1.5
         }
       """ +
-        css".pyro-note-erroneous { text-decoration: underline wavy var(--pyro-tone-failure) }" +
+        css"""
+          .pyro-note-erroneous {
+            text-decoration: underline wavy var(--pyro-tone-failure);
+            background-color: color-mix(in srgb, var(--pyro-tone-failure) 15%, transparent)
+          }
+        """ +
         css".pyro-note-caution { text-decoration: underline wavy var(--pyro-tone-warning) }" +
         css".pyro-note-highlight { background-color: var(--pyro-selection); border-radius: 2px }" +
         css"""
@@ -566,7 +571,8 @@ object WebStyles:
         """ +
         css"""
           .pyro-codeblock .pyro-note-erroneous {
-            text-decoration-color: var(--pyro-code-accent-error)
+            text-decoration-color: var(--pyro-code-accent-error);
+            background-color: color-mix(in srgb, var(--pyro-code-accent-error) 15%, transparent)
           }
         """ +
         css".pyro-note-param { font-style: italic }" +
@@ -587,7 +593,12 @@ object WebStyles:
         // A frame's marks, on whole atoms: they fade out before a step and the target's fade
         // in after it, by the same transition; a marker row beneath a line is a block, as the
         // lines are, and fades likewise.
-        css".pyro-marked-erroneous { text-decoration-color: var(--pyro-code-accent-error) }" +
+        css"""
+          .pyro-marked-erroneous {
+            text-decoration-color: var(--pyro-code-accent-error);
+            background-color: color-mix(in srgb, var(--pyro-code-accent-error) 15%, transparent)
+          }
+        """ +
         css".pyro-marked-caution { text-decoration-color: var(--pyro-tone-warning) }" +
         css"""
           .pyro-marked-highlight {
@@ -675,7 +686,7 @@ object WebStyles:
         css".pyro-animation-controls button:disabled { opacity: 0.4; cursor: default }" +
         // A numbered block's margin: the numbers are not part of the code, so a selection
         // leaves them out; a marker row beneath a line keeps the line's columns and wraps
-        // its caption.
+        // its caption, a diagnostic's at the size of the numbers.
         css"""
           .pyro-lineno {
             display: inline-block; user-select: none; color: var(--pyro-muted);
@@ -685,6 +696,7 @@ object WebStyles:
           }
         """ +
         css".pyro-marker { white-space: pre-wrap } .pyro-marker .pyro-marks { letter-spacing: 0 }" +
+        css".pyro-marker-caption { font-size: 0.75em }" +
         css"""
           .pyro-marker-erroneous { color: var(--pyro-code-accent-error) }
           .pyro-marker-caution { color: var(--pyro-tone-warning) }
@@ -1355,9 +1367,9 @@ object WebStyles:
           }
         """
 
-    // An import toggle and a bookmark button are small labels set in the line, marked by a
-    // glyph and filled when the page is in the purview; the purview panel lists each entry
-    // with its link and the button which removes it.
+    // An import toggle and a bookmark button are small buttons bearing a mark alone, filled when
+    // the page is in the purview, and in a heading they stand at its top right; the purview
+    // panel lists each entry with its link and the button which removes it.
     val purview: Css =
       css"""
         .pyro-import, .pyro-bookmark {
@@ -1369,7 +1381,20 @@ object WebStyles:
           text-transform: uppercase; line-height: 1.4; cursor: pointer
         }
       """ +
-        css".pyro-import::before { content: '+' } .pyro-bookmark::before { content: '☆' }" +
+        css".pyro-import::before { content: '+' }" +
+        css"""
+          h1 > .pyro-import, h1 > .pyro-bookmark, h2 > .pyro-import, h2 > .pyro-bookmark {
+            float: right; margin: 0 0 0 var(--pyro-space-1); width: 1.75rem; height: 1.5rem;
+            padding: 0; justify-content: center
+          }
+        """ +
+        css"""
+          .pyro-bookmark .pyro-glyph > svg {
+            display: block; margin: 0; fill: none; stroke: currentColor; stroke-width: 2;
+            stroke-linejoin: round
+          }
+        """ +
+        css".pyro-bookmark.pyro-active .pyro-glyph > svg { fill: currentColor }" +
         css"""
           .pyro-import.pyro-active, .pyro-bookmark.pyro-active {
             color: var(--pyro-on-button); background-color: var(--pyro-button);
@@ -1378,7 +1403,6 @@ object WebStyles:
         """ +
         css"""
           .pyro-import.pyro-active::before { content: '✓' }
-          .pyro-bookmark.pyro-active::before { content: '★' }
         """ +
         css".pyro-import:hover, .pyro-bookmark:hover { border-color: var(--pyro-button) }" +
         css"""
