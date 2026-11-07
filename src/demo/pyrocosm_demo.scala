@@ -1118,7 +1118,7 @@ object Repl:
           val marks = Samples.decorate(text, text.length).marks
 
           val code = Samples.code(text) match
-            case Block.Code(language, lines, _, _, _, _) => Block.Code(language, lines, marks)
+            case Block.Code(language, lines, _, _, _, _, _, _) => Block.Code(language, lines, marks)
             case other                                   => other
 
           val evaluating: Block = Block.Gauge(Status.Indeterminate(), Inline.text(t"evaluating"))

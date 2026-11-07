@@ -566,6 +566,57 @@ object WebStyles:
           overflow-x: auto; line-height: 1.5
         }
       """ +
+        // A code block with a header — its path, and the tabs of its alternatives — in a strip
+        // above it, of the block's own colours, the block flush beneath it. The tabs are set
+        // as a table's headings are, the current one in the code's colour and underlined.
+        css"""
+          .pyro-code-group {
+            margin: 0 calc(-1 * var(--pyro-space-4)) var(--pyro-space-4) calc(-1 * var(--pyro-space-4))
+          }
+        """ +
+        css"""
+          .pyro-code-group .pyro-codeblock {
+            margin: 0; border-top-left-radius: 0; border-top-right-radius: 0
+          }
+        """ +
+        css"""
+          .pyro-code-header {
+            display: flex; align-items: baseline; gap: var(--pyro-space-4);
+            background-color: var(--pyro-code-bg); color: var(--pyro-code-fg);
+            border-radius: var(--pyro-radius) var(--pyro-radius) 0 0;
+            padding: var(--pyro-space-2) var(--pyro-space-4) 0 var(--pyro-space-4);
+            border-bottom: 1px solid color-mix(in srgb, var(--pyro-code-fg) 18%, transparent)
+          }
+        """ +
+        css"""
+          .pyro-code-path {
+            font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 600;
+            letter-spacing: 0.03em; padding-bottom: var(--pyro-space-2); margin-right: auto
+          }
+        """ +
+        css"""
+          .pyro-code-tabs {
+            list-style: none; margin: 0; padding: 0; display: flex; gap: var(--pyro-space-4)
+          }
+        """ +
+        css"""
+          .pyro-code-tab button {
+            font-family: var(--pyro-font-label); font-size: var(--pyro-text-small); font-weight: 600;
+            letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.25;
+            color: color-mix(in srgb, var(--pyro-code-fg) 55%, transparent);
+            background-color: transparent; border: 0; border-bottom: 2px solid transparent;
+            padding: 0 0 calc(var(--pyro-space-2) - 2px) 0; cursor: pointer;
+            transition: color 0.3s ease, border-color 0.3s ease
+          }
+        """ +
+        css".pyro-code-tab button:hover { color: var(--pyro-code-fg) }" +
+        css"""
+          .pyro-code-tab.pyro-current button {
+            color: var(--pyro-code-fg); border-bottom-color: var(--pyro-code-fg); cursor: default
+          }
+        """ +
+        css".pyro-alternative { display: none }" +
+        css".pyro-alternative.pyro-current { display: block }" +
         css"""
           .pyro-note-erroneous {
             text-decoration: underline wavy var(--pyro-tone-failure);
