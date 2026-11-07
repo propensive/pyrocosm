@@ -615,6 +615,14 @@ object WebStyles:
             color: var(--pyro-code-fg); border-bottom-color: var(--pyro-code-fg); cursor: default
           }
         """ +
+        // An animated alternative's steps sit beneath the block as they do elsewhere, which the
+        // group's bleed would otherwise put at the page's edge, and the block's lost margin
+        // under the block.
+        css"""
+          .pyro-code-group .pyro-animation-steps {
+            margin: var(--pyro-space-2) 0 0 0; padding: 0 var(--pyro-space-4)
+          }
+        """ +
         css".pyro-alternative { display: none }" +
         css".pyro-alternative.pyro-current { display: block }" +
         css"""
