@@ -524,6 +524,32 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == (3, scala.List(true, false, false), true, true, true, false))
 
+    test(m"a block with a focus note is marked as focusing, plain or animated"):
+      val focus: Block.Note = Block.Note(0, 0, 3, Block.Note.Style.Focus)
+      val plain: Block = Block.Code(Language.Plain, animatedFrames.head.or(Nil), List(focus))
+      val detail: Block.Slide.Detail = Block.Slide.Detail(notes = List(focus))
+      val animation: Block.Animation = Block.Animation.of(animatedFrames, List(detail))
+      val animated: Block = Block.Code(Language.Plain, animatedFrames.head.or(Nil), Nil, Unset, animation)
+      val none: Block = Block.Code(Language.Plain, animatedFrames.head.or(Nil))
+
+      ( HtmlRenderer().block(plain).show.contains(t"pyro-focusing"),
+        HtmlRenderer().block(animated).show.contains(t"pyro-focusing"),
+        HtmlRenderer().block(animated).show.contains(t"\"style\":\"focus\""),
+        HtmlRenderer().block(none).show.contains(t"pyro-focusing") )
+
+    . assert(_ == (true, true, true, false))
+
+    test(m"a comment and a substitute are accents of their own, by name, set in italics"):
+      val comment: Token = Token(t"// a comment", Token.Accent.Comment)
+      val html: Text = HtmlRenderer().token(comment).show
+
+      ( Token.Accent.parse(t"comment"), Token.Accent.parse(t"substitute"),
+        html.contains(t"pyro-accent-comment"),
+        WebStyles.css(WebTheme.default).show.contains(t".pyro-accent-comment, .pyro-accent-substitute {"),
+        WebStyles.css(WebTheme.default).show.contains(t"h1 code.pyro-code") )
+
+    . assert(_ == (Token.Accent.Comment, Token.Accent.Substitute, true, true, true))
+
     val emptyToken: Block =
       Block.Code
         ( Language.Plain,

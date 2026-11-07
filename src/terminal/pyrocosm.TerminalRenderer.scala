@@ -485,6 +485,7 @@ class TerminalRenderer
     case Block.Note.Style.Caution   => Tone.Warning
     case Block.Note.Style.Highlight => Tone.Accent
     case Block.Note.Style.Param     => Tone.Info
+    case Block.Note.Style.Focus     => Tone.Accent
 
   // A code block's rows. Each line is wrapped hard to the width, as captured output is: code
   // is not prose, so a line is broken exactly at the width rather than clipped or reflowed.
@@ -592,6 +593,8 @@ class TerminalRenderer
           case Block.Note.Style.Caution   => e"$Underline(${toned(Tone.Warning)(base)})"
           case Block.Note.Style.Highlight => e"${Bg(theme.selection)}($base)"
           case Block.Note.Style.Param     => e"$Italic($base)"
+          // The terminal cannot fade the rest of the block, so what is focused is bold instead.
+          case Block.Note.Style.Focus     => e"$Bold($base)"
           case _                          => base
 
         pieces = styled :: pieces

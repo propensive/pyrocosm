@@ -180,6 +180,16 @@ object WebStyles:
         css"""
           code.pyro-code, code.pyro-reference, .pyro-figure { font-size: var(--pyro-text-inline) }
         """ +
+        // Code in a heading is part of the title: the heading's size and colour, in the
+        // monospace face at a weight to match the title face, with no box of its own.
+        css"""
+          h1 code.pyro-code, h2 code.pyro-code, h3 code.pyro-code, h4 code.pyro-code {
+            display: inline; font-size: 1em; font-weight: 500; line-height: inherit;
+            color: inherit; background-color: transparent; border: none; padding: 0
+          }
+          h1 code.pyro-code span, h2 code.pyro-code span, h3 code.pyro-code span,
+          h4 code.pyro-code span { color: inherit }
+        """ +
         css"""
           a {
             color: var(--pyro-link); text-decoration-thickness: 1px; text-underline-offset: 0.15em
@@ -606,6 +616,17 @@ object WebStyles:
           }
         """ +
         css".pyro-marked-param { font-style: italic }" +
+        // A comment is set apart from the code, as is text standing in for code.
+        css".pyro-accent-comment, .pyro-accent-substitute { font-style: italic }" +
+        // A block with a focus mark fades every token but the focused ones towards the
+        // background: a plain block's pieces, which a note wraps, and an animated block's
+        // atoms, which carry their mark and already transition their opacity, so the fading
+        // comes and goes with the frame's marks.
+        css"""
+          .pyro-focusing code span[class*="pyro-accent-"]:not(.pyro-note-focus *):not(.pyro-marked-focus) {
+            opacity: 0.3; transition: opacity 0.75s ease
+          }
+        """ +
         css".pyro-animated .pyro-marker { display: block; transition: opacity 0.75s ease }" +
         // The page's timeline, which the script makes when any frame has a time: a bar at the
         // foot of the page with play, the clock and a scrubber.

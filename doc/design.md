@@ -672,7 +672,9 @@ tool on one machine.
   its marker rows, unseen) from the same nodes keyed by atom, and animates each from where it
   was, so an inserted line, a reflowed line and a move across lines all follow from geometry
   measured rather than predicted — while a fade only lets the block reach its new height;
-  arrivals fade in; and the target's annotations fade in, in its language. The step of the
+  arrivals fade in; and the target's annotations fade in, in its language. A `Focus` note
+  fades everything in the block but what it marks (the atoms' opacity transition, so a frame
+  focuses and unfocuses as its marks come and go). The step of the
   slide moved to is marked current as the move begins; a click on another step jumps to its
   slide, and one made mid-move is gone to once the move settles, the latest click winning.
   Arrow keys when focused, space plays, `prefers-reduced-motion` jumps. The page has one clock: a

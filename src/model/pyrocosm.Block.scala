@@ -160,8 +160,10 @@ object Block:
   // position rather than marking a segment, which is how a compiler reports an error at a
   // point. A note of width is underlined; a caret is drawn beneath its position.
   object Note:
+    // `Focus` marks what the reader's eye is drawn to: everything else in the block is faded
+    // towards the background, which, in an animation, is a transition like a mark's.
     enum Style:
-      case Erroneous, Caution, Highlight, Param
+      case Erroneous, Caution, Highlight, Param, Focus
 
     // The note for a source `Span`, in whichever of denominative's modes it was recorded: a
     // `Line` span is one line's segment, `Lines` and `Area` spans reach across lines. An

@@ -707,6 +707,10 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
         List(Span(`class` = style)(margin, t" "*pad, marked, caption))
 
+  // The class of a block any of whose notes focuses: the stylesheet fades the rest of it.
+  private def focusing(notes: List[Block.Note]): List[Name[CssClass]] =
+    if notes.exists(_.style == Block.Note.Style.Focus) then List(cls(t"pyro-focusing")) else Nil
+
   def plainCode
     ( language: pyrocosm.Language,
       lines:    List[Block.Line],
@@ -718,7 +722,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     val numbered: List[Name[CssClass]] = if start.present then List(cls(t"pyro-numbered")) else Nil
 
     val classes: List[Name[CssClass]] =
-      cls(t"pyro-codeblock") :: cls(t"pyro-language-${language.name}") :: numbered
+      cls(t"pyro-codeblock") :: cls(t"pyro-language-${language.name}") :: (numbered + focusing(notes))
 
     val code: Html of Phrasing = Code(codeRows(lines, notes, start)*)
 
@@ -754,7 +758,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     val shown: pyrocosm.Language = first.let(_.language).or(language)
 
     val classes: List[Name[CssClass]] =
-      List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}"))
+      List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}")) + focusing(first.lay(Nil)(_.notes))
 
     val rows: List[Html of Phrasing] = animatedRows(animation.lines(0), first.lay(Nil)(_.notes))
 
