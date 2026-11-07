@@ -86,6 +86,13 @@ object HtmlRenderer:
   given dataLabel: ("data-label" is Attribute of Whatwg.Textual in Whatwg) =
     Whatwg.globalAttribute()
 
+  // `data-step="2"` on a step of an animated block, the index of the slide it shows; and
+  // `aria-current="step"` on the step showing now.
+  given dataStep: ("data-step" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
+
+  given ariaCurrent: ("aria-current" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
+
 
   // A text as a JSON string literal, for the animation the renderer embeds.
   def jsonText(text: Text): Text =
@@ -750,20 +757,36 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       List(cls(t"pyro-codeblock"), cls(t"pyro-language-${shown.name}"))
 
     val rows: List[Html of Phrasing] = animatedRows(animation.lines(0), first.lay(Nil)(_.notes))
-    val frames: Int = animation.slides.size
 
-    val controls: Html of Flow =
-      Div(`class` = cls(t"pyro-animation-controls"))
-        ( Button(`class` = cls(t"pyro-animation-prev"), `type` = t"button")(t"‹"),
-          Span(`class` = cls(t"pyro-animation-counter"))(t"1 / ${frames.toString.tt}"),
-          Button(`class` = cls(t"pyro-animation-next"), `type` = t"button")(t"›"),
-          Button(`class` = cls(t"pyro-animation-play"), `type` = t"button")(t"▶"),
-          Span(`class` = cls(t"pyro-animation-label"))(phrase(first.lay(Nil)(_.label))) )
+    // The steps: every slide in order, its number circled beside its label, the first
+    // current. Read down, they say what the animation does; the script makes a click on a step
+    // other than the current one animate the block straight to its slide.
+    val steps: List[Html of Ol.Transport] = animation.slides.map: (slide: Block.Slide) =>
+      val index: Text = slide.index.toString.tt
+      val number: Text = (slide.index + 1).toString.tt
+      val description: Html of Phrasing =
+        Span(`class` = cls(t"pyro-animation-description"))(phrase(slide.label))
+
+      if slide.index == 0 then
+        val circle: Html of Phrasing =
+          Button
+            ( `class` = cls(t"pyro-animation-number"),
+              `type` = t"button",
+              `aria-current` = t"step" )
+            ( number )
+
+        Li(`class` = List(cls(t"pyro-animation-step"), cls(t"pyro-current")), `data-step` = index)
+          ( circle, description )
+      else
+        val circle: Html of Phrasing =
+          Button(`class` = cls(t"pyro-animation-number"), `type` = t"button")(number)
+
+        Li(`class` = cls(t"pyro-animation-step"), `data-step` = index)(circle, description)
 
     val parts: List[Html of Flow] =
       List
         ( Pre(`class` = classes)(Code(rows*)),
-          controls,
+          Ol(`class` = cls(t"pyro-animation-steps"))(steps*),
           Pre(`class` = cls(t"pyro-animation-data"))(animationJson(language, animation)) )
 
     id.lay(Div(`class` = cls(t"pyro-animated"), tabindex = t"0")(parts*)): (id: Text) =>

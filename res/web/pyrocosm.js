@@ -991,17 +991,15 @@
   // so an inserted line, a reflowed line or a move across lines all follow; an arriving atom
   // fades in, a departing one leaves as a ghost over its old place. A fade lets the whole
   // slide go before the next appears; an edit is not yet played, and is shown as a morph. The
-  // slide's annotations fade out before the step and the target's fade in after it, with its
-  // label and in its language. The result is the block's player, which the timeline drives.
+  // slide's annotations fade out before the step and the target's fade in after it, in its
+  // language. Beneath the block, its steps: each slide's number and label, the current one
+  // marked; a click on another animates the block straight to it. The result is the block's
+  // player, which the timeline drives.
   function animate(block) {
     var data;
     try { data = JSON.parse(block.querySelector(".pyro-animation-data").textContent); } catch (error) { console.error(error); return; }
     var code = block.querySelector("pre.pyro-codeblock > code");
-    var counter = block.querySelector(".pyro-animation-counter");
-    var prev = block.querySelector(".pyro-animation-prev");
-    var next = block.querySelector(".pyro-animation-next");
-    var play = block.querySelector(".pyro-animation-play");
-    var label = block.querySelector(".pyro-animation-label");
+    var steps = Array.prototype.slice.call(block.querySelectorAll(".pyro-animation-steps > .pyro-animation-step"));
     var pre = code.parentElement;
     var atoms = {};
     data.atoms.forEach(function (atom) { atoms[atom.id] = atom; });
@@ -1011,11 +1009,16 @@
     var timer = null;
     var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    // When any frame has a label, the label keeps its line in every frame (a space where the
-    // frame has none), so that the block's height does not jump as labels come and go.
-    var labelled = data.slides.some(function (slide) { return !!slide.label; });
-    function labelOf(index) { return (data.slides[index] && data.slides[index].label) || (labelled ? "&nbsp;" : ""); }
-    function hasLabel(index) { return !!(data.slides[index] && data.slides[index].label); }
+    // The step of the slide shown, or being moved to, marked as current; the others not.
+    function mark(index) {
+      steps.forEach(function (step) {
+        var current = parseInt(step.dataset.step, 10) === index;
+        step.classList.toggle("pyro-current", current);
+        var number = step.querySelector(".pyro-animation-number");
+        if (!number) return;
+        if (current) number.setAttribute("aria-current", "step"); else number.removeAttribute("aria-current");
+      });
+    }
 
     // Where a token is within the block: positions measured so are unaffected by the block
     // itself moving, as it does when its height changes in a container which centres it.
@@ -1168,18 +1171,17 @@
       return rows;
     }
 
-    // The target frame's marks, label and language, applied: classes on the atoms its notes
-    // cover, the marker rows and the label shown, the block's language class its own.
+    // The target frame's marks and language, applied: classes on the atoms its notes cover,
+    // the marker rows shown, the block's language class its own.
     function dress(index) {
       var covered = coverage(index);
       Object.keys(covered).forEach(function (id) {
         nodes[id].classList.add("pyro-marked", "pyro-marked-" + covered[id].style);
       });
       code.querySelectorAll(".pyro-marker").forEach(function (row) { row.style.transition = ""; row.style.opacity = ""; });
-      if (label) { label.innerHTML = labelOf(index); label.style.opacity = ""; }
       var language = (data.slides[index] && data.slides[index].language) || data.language;
       pre.className = pre.className.replace(/\bpyro-language-\S+/, "pyro-language-" + language);
-      return Object.keys(covered).length > 0 || code.querySelector(".pyro-marker") !== null || (!!label && hasLabel(index));
+      return Object.keys(covered).length > 0 || code.querySelector(".pyro-marker") !== null;
     }
 
     // Timings, in milliseconds; the stylesheet's fades match. A step is a fade out, then a
@@ -1192,6 +1194,7 @@
     // nothing in it takes no time, and one with no horizontal part has no stagger.
     var FADE = 750, MOVE_DEFAULT = 1000, STAGGER = 300;
     var busy = false;
+    var pending = null;   // the step chosen while the block moved, gone to once it settles
 
     function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
     function nextFrame() { return new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); }); }
@@ -1241,13 +1244,17 @@
         code.replaceChildren(fragment);
       }
 
+      // Settled on the target: a step chosen while the block moved is gone to now, the
+      // latest chosen, so that clicks made mid-move are neither queued nor lost.
       function settle() {
         frame = target;
         busy = false;
-        if (counter) counter.textContent = (frame + 1) + " / " + data.slides.length;
-        if (prev) prev.disabled = frame === 0;
-        if (next) next.disabled = frame === data.slides.length - 1;
+        var chosen = pending;
+        pending = null;
+        if (chosen !== null && chosen !== frame) show(chosen, true); else mark(frame);
       }
+
+      mark(target);
 
       if (!moving) {
         Object.keys(current).forEach(function (id) { current[id].className = current[id].className.replace(/ ?pyro-marked\S*/g, ""); });
@@ -1260,16 +1267,14 @@
 
       busy = true;
 
-      // Phase 0: the frame's marks, marker rows and label fade out. The rows stay in place,
+      // Phase 0: the frame's marks and marker rows fade out. The rows stay in place,
       // unseen, until the rebuild, so that their going is part of the measured move.
       var marked = code.querySelectorAll(".pyro-marked");
       var rows = code.querySelectorAll(".pyro-marker");
-      var named = !!label && hasLabel(frame);
       var undress = Promise.resolve();
-      if (marked.length || rows.length || named) {
+      if (marked.length || rows.length) {
         marked.forEach(function (span) { span.className = span.className.replace(/ ?pyro-marked\S*/g, ""); });
         rows.forEach(function (row) { row.style.opacity = "0"; });
-        if (named) label.style.opacity = "0";
         undress = after(FADE);
       }
 
@@ -1405,7 +1410,7 @@
           return after(FADE);
         });
       }).then(function () {
-        // Phase 4: the target's marks, marker rows and label fade in.
+        // Phase 4: the target's marks and marker rows fade in.
         return nextFrame().then(function () { return dress(target) ? after(FADE) : Promise.resolve(); });
       }).then(settle);
     }
@@ -1420,7 +1425,7 @@
       return true;
     }
 
-    function stop() { if (timer) { clearTimeout(timer); timer = null; } if (play) play.textContent = "▶"; }
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } }
 
     function playing() {
       var hold = (data.slides[frame] && data.slides[frame].hold) || 1.5;
@@ -1429,16 +1434,27 @@
         var wait = function () { if (busy) setTimeout(wait, 50); else if (timer) playing(); };
         wait();
       }, hold * 1000);
-      if (play) play.textContent = "⏸";
     }
 
     function toggle() { if (timer) stop(); else { if (frame === data.slides.length - 1 && !data.loop) show(0, true); playing(); } }
 
     function manual(delta) { timeline.pause(); stop(); step(delta); }
 
-    if (prev) prev.addEventListener("click", function () { manual(-1); });
-    if (next) next.addEventListener("click", function () { manual(1); });
-    if (play) play.addEventListener("click", function () { timeline.pause(); toggle(); });
+    // A step chosen: the block animates straight to its slide, or, if it is moving, goes there
+    // once it settles. A click on a link in a step's label follows the link instead.
+    function choose(index) {
+      timeline.pause();
+      stop();
+      if (busy) { pending = index; mark(index); return; }
+      if (index !== frame) show(index, true);
+    }
+
+    steps.forEach(function (step) {
+      step.addEventListener("click", function (event) {
+        if (event.target.closest && event.target.closest("a")) return;
+        choose(parseInt(step.dataset.step, 10));
+      });
+    });
     block.addEventListener("keydown", function (event) {
       if (block.closest(".pyro-deck")) return;   // a deck steps its blocks itself
       if (event.key === "ArrowRight") { manual(1); event.preventDefault(); }
