@@ -550,6 +550,30 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == (Token.Accent.Comment, Token.Accent.Substitute, true, true, true))
 
+    test(m"a code block's path and alternatives round-trip as TEL text, and render as a header"):
+      val first: List[Block.Line] = animatedFrames.head.or(Nil)
+      val animation: Block.Animation = Block.Animation.of(animatedFrames)
+
+      val alternatives: List[Block.Alternative] =
+        List
+          ( Block.Alternative(Inline.text(t"Bash"), Language.Plain, first, Nil, animation),
+            Block.Alternative(Inline.text(t"Fish"), Language.Plain, first) )
+
+      val code: Block =
+        Block.Code(Language.Plain, first, Nil, Unset, animation, Unset, t"config.json", alternatives)
+
+      val html: Text = HtmlRenderer().block(code).show
+      val pieces = scala.collection.immutable.ArraySeq.unsafeWrapArray(html.s.split("class=\"pyro-alternative").nn)
+
+      ( code.in[Tel].show.read[Tel].as[Block] == code,
+        html.contains(t"pyro-code-path\">config.json"),
+        html.contains(t"<li class=\"pyro-code-tab pyro-current\" data-alternative=\"0\"><button type=\"button\">Bash</button></li>"),
+        html.contains(t"data-alternative=\"1\"><button type=\"button\">Fish</button>"),
+        pieces.length,
+        TerminalRenderer().block(code, 60).map(_.plain).head.let(_.contains(t"config.json")).or(false) )
+
+    . assert(_ == (true, true, true, true, 3, true))
+
     val emptyToken: Block =
       Block.Code
         ( Language.Plain,
@@ -792,7 +816,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val exhibit: Block = Scala.highlight(t"val x = 1").exhibit
 
       exhibit match
-        case Block.Code(Language.Scala, lines, _, _, _, _) =>
+        case Block.Code(Language.Scala, lines, _, _, _, _, _, _) =>
           lines.at(Prim).let(_.tokens.at(Prim)).let(_.accent) == Token.Accent.Keyword
 
         case _ =>
@@ -816,7 +840,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       diagnostic match
         case Block.Diagnostic(Tone.Failure, location, _, List(excerpt), _) =>
           excerpt match
-            case Block.Code(_, lines, List(note), start, _, _) =>
+            case Block.Code(_, lines, List(note), start, _, _, _, _) =>
               (location.let(_.text), lines.size, note.line, note.start, note.end, start)
 
             case _ =>
@@ -847,7 +871,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       Block.Diagnostic.of(error, t"contacts.tel", source) match
         case Block.Diagnostic(Tone.Failure, location, _, List(excerpt), _) =>
           excerpt match
-            case Block.Code(Language.Tel, lines, List(note), start, _, _) =>
+            case Block.Code(Language.Tel, lines, List(note), start, _, _, _, _) =>
               (location.let(_.text), lines.size, note.line, note.start, note.end, start)
 
             case _ =>
