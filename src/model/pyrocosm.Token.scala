@@ -32,6 +32,9 @@ object Token:
   // An accent is a colour category and nothing more; one palette maps each to one colour.
   enum Accent:
     case Error, Number, String, Term, Typal, Keyword, Symbol, Parens, Modifier, Unparsed, Command
+    // A comment, set apart from the code; and text put in place of code, which is not code
+    // (an elision, `...`), set in italics.
+    case Comment, Substitute
 
   object Accent:
     // The accent spelled by its lower-case name, as harlequin's accents are named on a wire;
@@ -47,6 +50,8 @@ object Token:
       case "error"    => Error
       case "unparsed" => Unparsed
       case "command"  => Command
+      case "comment"  => Comment
+      case "substitute" => Substitute
       case _          => Term
 
   // Whether a term or type token is a definition or a use of one; a styling policy may set

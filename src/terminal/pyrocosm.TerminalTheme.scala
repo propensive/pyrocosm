@@ -83,6 +83,8 @@ object TerminalTheme:
       case Token.Accent.Error    => red
       case Token.Accent.Unparsed => base0
       case Token.Accent.Command  => orange
+      case Token.Accent.Comment  => green
+      case Token.Accent.Substitute => base0
 
 // The terminal's colours, by role. A theme answers for every tone, every syntax accent and the
 // handful of other roles the renderer distinguishes, so that no colour literal appears in the

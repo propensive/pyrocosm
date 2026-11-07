@@ -1178,6 +1178,9 @@
       Object.keys(covered).forEach(function (id) {
         nodes[id].classList.add("pyro-marked", "pyro-marked-" + covered[id].style);
       });
+      // A frame with a focus mark fades everything but what is marked.
+      var focusing = Object.keys(covered).some(function (id) { return covered[id].style === "focus"; });
+      pre.classList.toggle("pyro-focusing", focusing);
       code.querySelectorAll(".pyro-marker").forEach(function (row) { row.style.transition = ""; row.style.opacity = ""; });
       var language = (data.slides[index] && data.slides[index].language) || data.language;
       pre.className = pre.className.replace(/\bpyro-language-\S+/, "pyro-language-" + language);
@@ -1271,10 +1274,12 @@
       // unseen, until the rebuild, so that their going is part of the measured move.
       var marked = code.querySelectorAll(".pyro-marked");
       var rows = code.querySelectorAll(".pyro-marker");
+      var focusing = pre.classList.contains("pyro-focusing");
       var undress = Promise.resolve();
-      if (marked.length || rows.length) {
+      if (marked.length || rows.length || focusing) {
         marked.forEach(function (span) { span.className = span.className.replace(/ ?pyro-marked\S*/g, ""); });
         rows.forEach(function (row) { row.style.opacity = "0"; });
+        pre.classList.remove("pyro-focusing");
         undress = after(FADE);
       }
 

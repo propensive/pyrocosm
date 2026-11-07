@@ -131,6 +131,7 @@ object WebTheme:
     private val magenta = Chroma(0xa21caf)
     private val violet = Chroma(0x6d4c9f)
     private val leaf = Chroma(0x3f7d3a)
+    private val olive = Chroma(0x6b7d16)
 
     // Code on its dark ground takes the Zed colours Flame's terminal highlights with, so code
     // reads the same in a browser as in a Flame session; in the light mode it sits on a pale
@@ -144,6 +145,7 @@ object WebTheme:
     private val codeNumber = Chroma(0xcc3366)
     private val codeTerm = Chroma(0xffcc99)
     private val codeType = Chroma(0x00cc99)
+    private val codeComment = Chroma(0x9fb83a)
     private val codeSymbol = Chroma(0xcc6699)
     private val codeParens = Chroma(0xf28534)
     private val codeError = Chroma(0xea6962)
@@ -186,6 +188,8 @@ object WebTheme:
       case Token.Accent.Error    => crimson
       case Token.Accent.Unparsed => smoke
       case Token.Accent.Command  => rust
+      case Token.Accent.Comment    => olive
+      case Token.Accent.Substitute => smoke
 
     override def codeBackground: Chroma = plum
     override def codeForeground: Chroma = codeText
@@ -204,6 +208,8 @@ object WebTheme:
       case Token.Accent.Keyword  => codeKeyword
       case Token.Accent.Modifier => codeKeyword
       case Token.Accent.Command  => codeKeyword
+      case Token.Accent.Comment    => codeComment
+      case Token.Accent.Substitute => codeText
       case Token.Accent.String   => codeString
       case Token.Accent.Number   => codeNumber
       case Token.Accent.Term     => codeTerm
@@ -231,6 +237,7 @@ object WebTheme:
     private val magenta = Chroma(0xe07be8)
     private val violet = Chroma(0xb39ddb)
     private val leaf = Chroma(0x6fbf6a)
+    private val olive = Chroma(0xb4c651)
 
     def background: Chroma = abyss
     def surface: Chroma = deep
@@ -270,6 +277,8 @@ object WebTheme:
       case Token.Accent.Error    => crimson
       case Token.Accent.Unparsed => pale
       case Token.Accent.Command  => rust
+      case Token.Accent.Comment    => olive
+      case Token.Accent.Substitute => pale
 
     override def codeBackground: Chroma = Chroma(0x000000)   // full black on the dark page
     override def inlineCodeBackground: Chroma = codeBackground
@@ -323,6 +332,8 @@ object WebTheme:
       case Token.Accent.Error    => red
       case Token.Accent.Unparsed => base0
       case Token.Accent.Command  => orange
+      case Token.Accent.Comment    => green
+      case Token.Accent.Substitute => base0
 
 // The web's colours by role: the same solarized values the terminal theme uses, as the seed of
 // one palette for both media. Emitted once as CSS custom properties (`variables`), so every rule
