@@ -1538,7 +1538,28 @@
     });
   }
 
+  // A code block with alternatives shows one at a time: a tab chosen shows its alternative.
+  function wireCodeGroup(group) {
+    var tabs = Array.prototype.slice.call(group.querySelectorAll(":scope > .pyro-code-header .pyro-code-tab"));
+    var alternatives = Array.prototype.slice.call(group.querySelectorAll(":scope > .pyro-alternative"));
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        var chosen = tab.dataset.alternative;
+        tabs.forEach(function (other) { other.classList.toggle("pyro-current", other === tab); });
+        alternatives.forEach(function (alternative) {
+          alternative.classList.toggle("pyro-current", alternative.dataset.alternative === chosen);
+        });
+      });
+    });
+  }
+
   function wire(root) {
+    root.querySelectorAll(".pyro-code-group").forEach(function (group) {
+      if (group.dataset.pyroWired) return;
+      group.dataset.pyroWired = "1";
+      wireCodeGroup(group);
+    });
+
     root.querySelectorAll(".pyro-drawing-holder").forEach(function (holder) {
       if (holder.dataset.pyroPanning) return;
       holder.dataset.pyroPanning = "1";

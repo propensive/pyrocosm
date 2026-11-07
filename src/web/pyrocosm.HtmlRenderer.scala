@@ -93,6 +93,11 @@ object HtmlRenderer:
   given ariaCurrent: ("aria-current" is Attribute of Whatwg.Textual in Whatwg) =
     Whatwg.globalAttribute()
 
+  // `data-alternative="1"` on a tab of a code block with alternatives, and on the alternative
+  // it shows.
+  given dataAlternative: ("data-alternative" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
+
 
   // A text as a JSON string literal, for the animation the renderer embeds.
   def jsonText(text: Text): Text =
@@ -396,9 +401,15 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
     case Block.Quotation(content) => Blockquote(`class` = cls(t"pyro-quotation"))(blocks(content))
     case Block.Rule(side)         => Hr(`class` = cls(t"pyro-rule-${side.toString.tt.lower}"))
 
-    case Block.Code(language, lines, notes, start, animation, id) =>
-      animation.lay(plainCode(language, lines, notes, start, id)): (animation: Block.Animation) =>
-        animatedCode(language, animation, id)
+    case Block.Code(language, lines, notes, start, animation, id, path, alternatives) =>
+      def single(language: pyrocosm.Language, lines: List[Block.Line], notes: List[Block.Note],
+                 animation: Optional[Block.Animation], id: Optional[Text]): Html of Flow =
+        animation.lay(plainCode(language, lines, notes, start, id)): (animation: Block.Animation) =>
+          animatedCode(language, animation, id)
+
+      if path.absent && alternatives.nil then single(language, lines, notes, animation, id)
+      else codeGroup(path, alternatives, single(language, lines, notes, animation, id)): alternative =>
+        single(alternative.language, alternative.lines, alternative.notes, alternative.animation, Unset)
 
     case Block.Table(columns, rows, caption) => table(columns, rows, caption)
 
@@ -710,6 +721,51 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   // The class of a block any of whose notes focuses: the stylesheet fades the rest of it.
   private def focusing(notes: List[Block.Note]): List[Name[CssClass]] =
     if notes.exists(_.style == Block.Note.Style.Focus) then List(cls(t"pyro-focusing")) else Nil
+
+  // A code block with a header: its path, and the tabs of its alternatives, in a strip above
+  // the code; each alternative is rendered whole (an animated one with its steps), the first
+  // shown and the others hidden until their tab is chosen, by the script. Without
+  // alternatives, the block's own rendering sits beneath the header.
+  private def codeGroup
+    ( path:         Optional[Text],
+      alternatives: List[Block.Alternative],
+      own:          Html of Flow )
+    ( render: Block.Alternative => Html of Flow )
+  :   Html of Flow =
+
+    val named: List[Html of Flow] =
+      path.lay(Nil): (path: Text) => List(Span(`class` = cls(t"pyro-code-path"))(path))
+
+    val tabs: List[Html of Flow] =
+      if alternatives.nil then Nil
+      else
+        val items: List[Html of Ol.Transport] =
+          alternatives.indexed.map: (alternative: Block.Alternative, index: Ordinal) =>
+            val current: List[Name[CssClass]] =
+              if index.n0 == 0 then List(cls(t"pyro-current")) else Nil
+
+            Li
+              ( `class` = cls(t"pyro-code-tab") :: current,
+                `data-alternative` = index.n0.toString.tt )
+              ( Button(`type` = t"button")(phrase(alternative.label)) )
+
+        List(Ol(`class` = cls(t"pyro-code-tabs"))(items*))
+
+    val header: Html of Flow = Div(`class` = cls(t"pyro-code-header"))((named + tabs)*)
+
+    val body: List[Html of Flow] =
+      if alternatives.nil then List(own)
+      else
+        alternatives.indexed.map: (alternative: Block.Alternative, index: Ordinal) =>
+          val current: List[Name[CssClass]] =
+            if index.n0 == 0 then List(cls(t"pyro-current")) else Nil
+
+          Div
+            ( `class` = cls(t"pyro-alternative") :: current,
+              `data-alternative` = index.n0.toString.tt )
+            ( render(alternative) )
+
+    Div(`class` = cls(t"pyro-code-group"))((header :: body)*)
 
   def plainCode
     ( language: pyrocosm.Language,
