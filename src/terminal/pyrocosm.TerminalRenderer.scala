@@ -300,8 +300,15 @@ class TerminalRenderer
 
       // An animated block is its slides in sequence, since a terminal cannot step them: each
       // under a marker of its place and its label, with its own notes.
-      case Block.Code(_, lines, notes, start, animation, _) =>
-        animation.lay(code(lines, notes, start, width)): (animation: Block.Animation) =>
+      // A block's path is a line above it; its alternatives are not shown, since its lines are
+      // the first's, beyond a note of the others' labels.
+      case Block.Code(_, lines, notes, start, animation, _, path, alternatives) =>
+        val heading: List[Teletype] = path.lay(Nil: List[Teletype]): (path: Text) =>
+          val others: List[Teletype] = alternatives.skip(1).map { (a: Block.Alternative) => phrase(a.label) }
+          val note: Teletype = if others.nil then Teletype(t"") else e"  (also: ${others.join(e", ")})"
+          List(e"${bold(Teletype(path))}$note")
+
+        heading + animation.lay(code(lines, notes, start, width)): (animation: Block.Animation) =>
           val count: Int = animation.slides.size
 
           animation.slides.indexed.bind: (slide: Block.Slide, index: Ordinal) =>

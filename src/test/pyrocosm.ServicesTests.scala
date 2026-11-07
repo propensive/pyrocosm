@@ -77,7 +77,7 @@ object ServicesTests extends Suite(m"Pyrocosm services tests"):
 
       test(m"a fence loses its closing newline"):
         Markdowns.convert(document).stdlib.collectFirst:
-          case Block.Code(_, lines, _, _, _, _) => lines.stdlib.length
+          case Block.Code(_, lines, _, _, _, _, _, _) => lines.stdlib.length
 
       . assert(_ == Some(1))
 

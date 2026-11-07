@@ -454,6 +454,15 @@ object Block:
   // One slide of a deck: the blocks it shows at once.
   case class Leaf(content: List[Block])
 
+  // One version of a code block, by its label: its language, its lines, their notes and, when
+  // it animates, its animation, of which its lines are the first slide, as a block's are.
+  case class Alternative
+    ( label:     List[Inline],
+      language:  Language,
+      lines:     List[Block.Line],
+      notes:     List[Block.Note]          = Nil,
+      animation: Optional[Block.Animation] = Unset )
+
   // `open`, when present, makes a node with children collapsible, and says whether it starts
   // open or closed; a frontend with no way to toggle (the terminal) shows every node.
   case class TreeNode
@@ -601,14 +610,20 @@ enum Block:
   // are then numbered in the margin, as an excerpt of a file is and a sample is not.
   // `animation`, when present, is the block as a sequence of slides, of which `lines` is the
   // first, so a renderer that cannot animate shows a correct block. `id` is an anchor, as a
-  // heading's: what a local destination's fragment names to lead to the block.
+  // heading's: what a local destination's fragment names to lead to the block. `path`, when
+  // present, is the file the block is the content of, shown above it. `alternatives`, when
+  // there are any, are the block's versions (the same code in several shells, or two styles of
+  // one language), each labelled, of which the block's own lines and animation are the first's,
+  // so a renderer that cannot switch shows a correct block; one that can shows tabs.
   case Code
-    ( language:  Language,
-      lines:     List[Block.Line],
-      notes:     List[Block.Note]          = Nil,
-      start:     Optional[Int]             = Unset,
-      animation: Optional[Block.Animation] = Unset,
-      id:        Optional[Text]            = Unset )
+    ( language:     Language,
+      lines:        List[Block.Line],
+      notes:        List[Block.Note]          = Nil,
+      start:        Optional[Int]             = Unset,
+      animation:    Optional[Block.Animation] = Unset,
+      id:           Optional[Text]            = Unset,
+      path:         Optional[Text]            = Unset,
+      alternatives: List[Block.Alternative]   = Nil )
 
   case Table
     ( columns: List[Block.Column], rows: List[Block.Row], caption: Optional[List[Inline]] = Unset )

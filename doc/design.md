@@ -640,7 +640,11 @@ tool on one machine.
   which needs punctuation to say where a fence begins.
 - **M6e Animation** (done): a code block as a sequence of slides, animated in the browser,
   through an intermediate form between what an author writes and what a renderer shows.
-  `Block.Code.animation` is an `Animation(atoms, slides, placements, transitions)`: an `Atom`
+  `Block.Code.path` names the file a block is the content of, shown in a header strip above
+  it; `Block.Code.alternatives` are the block's labelled versions (`Alternative(label,
+  language, lines, notes, animation)`), of which the block's own lines are the first's, shown
+  as tabs in that strip on the web (the script switches them) and as the first in the
+  terminal. `Block.Code.animation` is an `Animation(atoms, slides, placements, transitions)`: an `Atom`
   is a token with an identity that holds across slides; a `Placement` puts an atom on a line
   of a slide; a `Slide` is one complete state of the block — its lines (named by an identity
   that holds across slides), its annotations (`Note`s, which add to the tokens or change how
