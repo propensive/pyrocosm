@@ -662,17 +662,20 @@ tool on one machine.
   a slide before alignment (label, hold, at, language, notes, and the kind and duration of
   the transition into it); `of` adds the index and the line names. The web renderer emits
   slide 0 with `data-atom` on each token, its annotations on whole atoms (an atom is never
-  split) with marker rows beneath their lines as a plain block draws them, its label beside
-  the counter, its language on the block, and the animation as JSON (labels and captions as
+  split) with marker rows beneath their lines as a plain block draws them, its language on
+  the block, beneath it every slide as a step — its number circled beside its label, the
+  first current — and the animation as JSON (labels and captions as
   rendered phrasing) in a hidden `pyro-animation-data` element. `pyrocosm.js` plays a
   transition — the server's between neighbours, or a morph it derives for a jump — in
-  phases: the slide's annotations and label fade out; departures fade; a morph moves the
+  phases: the slide's annotations fade out; departures fade; a morph moves the
   survivors by FLIP — it measures every atom's place, rebuilds the target slide's lines (with
   its marker rows, unseen) from the same nodes keyed by atom, and animates each from where it
   was, so an inserted line, a reflowed line and a move across lines all follow from geometry
   measured rather than predicted — while a fade only lets the block reach its new height;
-  arrivals fade in; and the target's annotations and label fade in, in its language. Arrow
-  keys when focused, space plays, `prefers-reduced-motion` jumps. The page has one clock: a
+  arrivals fade in; and the target's annotations fade in, in its language. The step of the
+  slide moved to is marked current as the move begins; a click on another step jumps to its
+  slide, and one made mid-move is gone to once the move settles, the latest click winning.
+  Arrow keys when focused, space plays, `prefers-reduced-motion` jumps. The page has one clock: a
   block any slide of which has an `at` is timed (a slide without one follows its predecessor
   by that slide's `hold`, 1.5 s unless said), the script makes a bar at the foot of the page
   — play, the clock, a scrubber — when a timed block is wired, space outside any block

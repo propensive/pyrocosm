@@ -581,7 +581,7 @@ object WebStyles:
         // the data the script reads is not shown.
         css".pyro-animated { position: relative; outline: none }" +
         css"""
-          .pyro-animated:focus-visible .pyro-codeblock { box-shadow: 0 0 0 2px var(--pyro-accent) }
+          .pyro-animated:focus-visible .pyro-codeblock { box-shadow: 0 0 0 2px var(--pyro-tone-accent) }
         """ +
         css"""
           .pyro-atom {
@@ -607,13 +607,6 @@ object WebStyles:
         """ +
         css".pyro-marked-param { font-style: italic }" +
         css".pyro-animated .pyro-marker { display: block; transition: opacity 0.75s ease }" +
-        css"""
-          .pyro-animation-label {
-            margin-left: var(--pyro-space-2); color: var(--pyro-muted);
-            transition: opacity 0.75s ease
-          }
-        """ +
-        css".pyro-animation-label:empty { display: none }" +
         // The page's timeline, which the script makes when any frame has a time: a bar at the
         // foot of the page with play, the clock and a scrubber.
         css"""
@@ -640,7 +633,7 @@ object WebStyles:
         css".pyro-animated .pyro-codeblock { will-change: height }" +
         css".pyro-animation-data { display: none }" +
         // A deck: one slide at a time, large, with its controls beneath; an animated block on a
-        // slide steps with the deck, so its own controls give way to its label.
+        // slide steps with the deck, and its steps show where it is.
         css".pyro-deck { outline: none }" +
         css"""
           .pyro-leaf {
@@ -650,11 +643,6 @@ object WebStyles:
         css".pyro-leaf.pyro-current { display: block }" +
         css".pyro-leaf h1 { font-size: 3rem } .pyro-leaf h2 { font-size: 2.2rem }" +
         css".pyro-leaf .pyro-codeblock { font-size: 1.1rem }" +
-        css"""
-          .pyro-deck .pyro-animation-controls button, .pyro-deck .pyro-animation-counter {
-            display: none
-          }
-        """ +
         css"""
           .pyro-deck-controls {
             display: flex; gap: var(--pyro-space-2); align-items: center; justify-content: center;
@@ -669,21 +657,50 @@ object WebStyles:
             background-color: transparent; color: inherit; cursor: pointer
           }
         """ +
+        // An animated block's steps, beneath it, read down in order: each slide's number in a
+        // circle beside its label. The current step's circle is filled with the accent and its
+        // label is at full strength; the others are muted, and lift on hover, since a click on
+        // one animates the block to it.
         css"""
-          .pyro-animation-controls {
-            display: flex; gap: var(--pyro-space-2); align-items: center;
-            margin: calc(-1 * var(--pyro-space-3)) 0 var(--pyro-space-4) 0;
-            font-family: var(--pyro-font-label); font-size: var(--pyro-text-small)
+          .pyro-animation-steps {
+            list-style: none; padding: 0; display: flex; flex-direction: column;
+            gap: var(--pyro-space-1); margin: calc(-1 * var(--pyro-space-3)) 0 var(--pyro-space-4) 0
           }
         """ +
         css"""
-          .pyro-animation-controls button {
-            font: inherit; line-height: 1; padding: 0 var(--pyro-space-2);
-            border: 1px solid var(--pyro-rule); border-radius: var(--pyro-radius);
-            background-color: transparent; color: inherit; cursor: pointer
+          .pyro-animation-step {
+            display: flex; align-items: baseline; gap: var(--pyro-space-2);
+            color: var(--pyro-muted); cursor: pointer; transition: color 0.3s ease
           }
         """ +
-        css".pyro-animation-controls button:disabled { opacity: 0.4; cursor: default }" +
+        css".pyro-animation-step.pyro-current { color: var(--pyro-fg); cursor: default }" +
+        css".pyro-animation-step:not(.pyro-current):hover { color: var(--pyro-fg) }" +
+        css"""
+          .pyro-animation-number {
+            flex: none; display: inline-flex; align-items: center; justify-content: center;
+            width: 1.7em; height: 1.7em; padding: 0; border-radius: 50%;
+            border: 1.5px solid currentColor; background-color: transparent; color: inherit;
+            font-family: var(--pyro-font-label); font-size: var(--pyro-text-small);
+            line-height: 1; cursor: inherit;
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease
+          }
+        """ +
+        css"""
+          .pyro-animation-step:not(.pyro-current):hover .pyro-animation-number {
+            border-color: var(--pyro-tone-accent); color: var(--pyro-tone-accent)
+          }
+        """ +
+        css"""
+          .pyro-animation-step.pyro-current .pyro-animation-number {
+            background-color: var(--pyro-tone-accent); border-color: var(--pyro-tone-accent);
+            color: var(--pyro-on-accent); font-weight: 700
+          }
+        """ +
+        css"""
+          .pyro-animation-number:focus-visible {
+            outline: 2px solid var(--pyro-tone-accent); outline-offset: 2px
+          }
+        """ +
         // A numbered block's margin: the numbers are not part of the code, so a selection
         // leaves them out; a marker row beneath a line keeps the line's columns and wraps
         // its caption, a diagnostic's at the size of the numbers.

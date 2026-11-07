@@ -480,7 +480,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == detailedBlock)
 
-    test(m"an animated block renders its first slide's marks, label and language, and its data"):
+    test(m"an animated block renders its first slide's marks, steps and language, and its data"):
       val detail =
         Block.Slide.Detail
           ( Inline.text(t"the start"),
@@ -495,7 +495,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
       ( html.contains(t"pyro-marked-highlight"),
         html.contains(t"pyro-marker-highlight"),
-        html.contains(t"pyro-animation-label"),
+        html.contains(t"pyro-animation-steps"),
         html.contains(t"the start"),
         html.contains(t"\"at\":3.0"),
         html.contains(t"\"notes\":[{"),
@@ -503,6 +503,26 @@ object Tests extends Suite(m"Pyrocosm tests"):
         html.contains(t"\"transitions\":[{\"from\":0,\"to\":1,\"kind\":\"morph\"") )
 
     . assert(_ == (true, true, true, true, true, true, true, true))
+
+    test(m"an animated block lists every slide as a numbered step, its label beside it"):
+      val details: List[Block.Slide.Detail] =
+        List(Block.Slide.Detail(Inline.text(t"the start")), Block.Slide.Detail(Inline.text(t"then")))
+
+      val animation: Block.Animation = Block.Animation.of(animatedFrames, details)
+      val code: Block = Block.Code(Language.Plain, animatedFrames.head.or(Nil), Nil, Unset, animation)
+      val html: Text = HtmlRenderer().block(code).show
+      val pieces = scala.collection.immutable.ArraySeq.unsafeWrapArray(html.s.split("<li ").nn)
+      val steps: scala.List[String] = pieces.toList.drop(1).map(_.nn)
+
+      ( steps.size,
+        steps.map(_.contains("pyro-current")),
+        steps.zipWithIndex.forall: (step, index) =>
+          step.contains(s"data-step=\"$index\"") && step.contains(s">${index + 1}</button>"),
+        html.contains(t"aria-current=\"step\""),
+        steps.headOption.exists(_.contains("the start")),
+        html.contains(t"pyro-animation-prev") || html.contains(t"pyro-animation-label") )
+
+    . assert(_ == (3, scala.List(true, false, false), true, true, true, false))
 
     val emptyToken: Block =
       Block.Code
