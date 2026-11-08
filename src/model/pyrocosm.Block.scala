@@ -639,8 +639,12 @@ enum Block:
 
   // Slides, shown one at a time and stepped through: on the web, by the arrow keys, space and
   // the page keys, an animated block on a slide stepping through its frames before the deck
-  // moves on; in the terminal, one after another.
-  case Deck(leaves: List[Block.Leaf])
+  // moves on; in the terminal, one after another. A `schedule` plays the deck by itself: the
+  // nth time, in seconds from the page's opening, is the instant the nth step lands — the
+  // frame an animated block steps to fully arrived, or the next slide fully in — each step
+  // starting as long before its time as it takes; a step beyond the schedule's end waits for
+  // the keys, and a time beyond the deck's last step is spare.
+  case Deck(leaves: List[Block.Leaf], schedule: List[Double] = Nil)
   case Graph(vertices: List[Block.Vertex], edges: List[Block.Edge])
   case Chart(kind: Block.Chart.Kind, series: List[Block.Series])
   case Gauge(status: Status, caption: Optional[List[Inline]] = Unset)

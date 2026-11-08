@@ -391,7 +391,7 @@ class TerminalRenderer
         List(faint(e"$Italic([${Inline.plain(figure.alt)}])"))
 
       // A terminal cannot step, so a deck is its slides in sequence, each under a marker.
-      case Block.Deck(leaves) =>
+      case Block.Deck(leaves, _) =>
         val count: Int = leaves.size
 
         leaves.indexed.bind: (leaf: Block.Leaf, index: Ordinal) =>
