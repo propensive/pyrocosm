@@ -873,6 +873,8 @@
   // scrubber — is made when a timed block is first wired, and hidden when none remains;
   // space on the page toggles it, and stepping a block by hand pauses it. A block still
   // mid-step when its frame falls due is caught up on a later tick.
+  function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+
   var timeline = (function () {
     var players = [];
     var bar = null, playButton = null, clock = null, scrub = null;
@@ -1187,6 +1189,152 @@
       return Object.keys(covered).length > 0 || code.querySelector(".pyro-marker") !== null;
     }
 
+    // A slide's lines, block-level, each atom's span made by `make`, each line followed by
+    // its marker rows, unseen when `hidden`.
+    function layout(index, make, hidden) {
+      var fragment = document.createDocumentFragment();
+      linesOf(index).forEach(function (ids, line) {
+        var element = document.createElement("span");
+        element.className = "pyro-line";
+        var length = 0;
+        var text = "";
+        ids.forEach(function (id) { element.appendChild(make(id)); length += atoms[id].text.length; text += atoms[id].text; });
+        fragment.appendChild(element);
+        markersOf(index, line, length, text.match(/^\s*/)[0]).forEach(function (row) {
+          if (hidden) { row.style.transition = "none"; row.style.opacity = "0"; }
+          fragment.appendChild(row);
+        });
+      });
+      return fragment;
+    }
+
+    // Where each atom of a slide would be, and how tall the block would be, were it shown:
+    // laid out in an unseen copy of the block, as wide as the block is, and measured.
+    function measure(index) {
+      var copy = pre.cloneNode(false);
+      var inner = code.cloneNode(false);
+      var fresh = {};
+      function make(id) {
+        var atom = atoms[id];
+        var span = document.createElement("span");
+        span.className = "pyro-atom pyro-accent-" + atom.accent + (atom.binding ? " pyro-binding" : "");
+        span.textContent = atom.text;
+        fresh[id] = span;
+        return span;
+      }
+      inner.appendChild(layout(index, make, false));
+      copy.appendChild(inner);
+      copy.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;height:auto;" +
+        "overflow:visible;transition:none;box-sizing:border-box;width:" + pre.getBoundingClientRect().width + "px";
+      pre.parentElement.insertBefore(copy, pre);
+      var outer = copy.getBoundingClientRect();
+      var last = {};
+      Object.keys(fresh).forEach(function (id) {
+        var box = fresh[id].getBoundingClientRect();
+        last[id] = { left: box.left - outer.left, top: box.top - outer.top };
+      });
+      var height = outer.height;
+      copy.remove();
+      return { last: last, height: height };
+    }
+
+    // The move of a step from slide `from` to slide `to`, given each surviving atom's
+    // displacement and whether the block changes height: which part each movement belongs
+    // to, when each part starts, and how long the whole takes. Which line each surviving
+    // atom leaves and reaches, by line identity; a line is occupied when some atom stays on
+    // it from one slide to the next. A token joining an occupied line slides along its old
+    // row to its column first (H1) and then drops into its slot (V); one reaching a new or
+    // emptied line drops first (V) and slides along the empty row after (H2), with the
+    // tokens shifting within their own lines. A token shifting within its own line moves
+    // with the tokens that line exchanges: in H1 when the line receives joiners, so that it
+    // makes room before they drop in, and otherwise in H2, closing the gap once the leavers
+    // have gone. `dy` is the token's displacement back to where it was: positive means it
+    // moves up. The contracting vertical part starts STAGGER after H1 when both exist; the
+    // expanding vertical part halfway through the contracting one (or after H1, where
+    // there is no contraction); H2 STAGGER after that. The move ends with its last part.
+    function planMoves(moves, resized, before, after0, from, to, MOVE) {
+      var wasOn = lineOfAtoms(from), nowOn = lineOfAtoms(to);
+      var occupied = {};
+      Object.keys(nowOn).forEach(function (id) { if (wasOn[id] === nowOn[id]) occupied[nowOn[id]] = true; });
+      var receiving = {};
+      moves.forEach(function (move) {
+        if (wasOn[move.id] !== nowOn[move.id] && occupied[nowOn[move.id]]) receiving[nowOn[move.id]] = true;
+      });
+      var h1 = [], v1 = [], v2 = [], h2 = [];
+      moves.forEach(function (move) {
+        var changesLine = wasOn[move.id] !== nowOn[move.id];
+        var joining = changesLine && occupied[nowOn[move.id]];
+        var early = changesLine ? joining : receiving[nowOn[move.id]];
+        if (Math.abs(move.dx) > 0.5) (early ? h1 : h2).push(move);
+        if (Math.abs(move.dy) > 0.5) {
+          var contracting = changesLine ? joining : move.dy > 0;
+          (contracting ? v1 : v2).push(move);
+        }
+      });
+      var shrinking = resized && after0 < before, growing = resized && after0 > before;
+      var firstV = v1.length > 0 || shrinking, secondV = v2.length > 0 || growing;
+      var s1 = (h1.length && firstV) ? STAGGER : 0;
+      var v2Start = firstV ? s1 + MOVE / 2 : (h1.length ? MOVE : 0);
+      var s2 = (secondV && h2.length) ? STAGGER : 0;
+      var h2Start = v2Start + s2;
+      var T = 0;
+      if (h1.length) T = Math.max(T, MOVE);
+      if (firstV) T = Math.max(T, s1 + MOVE);
+      if (secondV) T = Math.max(T, v2Start + MOVE);
+      if (h2.length) T = Math.max(T, h2Start + MOVE);
+      return { h1: h1, v1: v1, v2: v2, h2: h2, s1: s1, v2Start: v2Start, h2Start: h2Start, T: T,
+               shrinking: shrinking, growing: growing };
+    }
+
+    // What a step from the slide shown to `target` departs and arrives: what the transition
+    // says, and whatever the block holds beyond its say (after a jump); a fade takes
+    // everything out and brings everything in.
+    function exchange(target, current) {
+      var present = {};
+      linesOf(target).forEach(function (ids) { ids.forEach(function (id) { present[id] = true; }); });
+      var transition = transitionFor(frame, target);
+      var fading = transition.kind === "fade";
+      var departing = transition.departing.filter(function (id) { return current[id]; });
+      var arriving = transition.arriving.filter(function (id) { return present[id] && !current[id]; });
+      Object.keys(current).forEach(function (id) { if (!present[id] && departing.indexOf(id) < 0) departing.push(id); });
+      Object.keys(present).forEach(function (id) { if (!current[id] && arriving.indexOf(id) < 0) arriving.push(id); });
+      if (fading) { departing = Object.keys(current); arriving = Object.keys(present); }
+      return { present: present, transition: transition, fading: fading, departing: departing, arriving: arriving };
+    }
+
+    // How long a step to `target` takes until the target's code has fully arrived — its
+    // marks' fade out, its departures' fade out, the move and its arrivals' fade in; not the
+    // target's marks' fade in, which follows — found before the step starts, by laying the
+    // target out unseen and measuring where each surviving token would be, as the step
+    // itself does when it reaches its move. Nothing when motion is reduced, since the step
+    // then takes no time.
+    function lead(target) {
+      if (reduced || target === frame) return 0;
+      var current = {};
+      code.querySelectorAll("[data-atom]").forEach(function (span) { current[span.dataset.atom] = span; });
+      var step = exchange(target, current);
+      var MOVE = step.transition.duration ? step.transition.duration * 1000 : MOVE_DEFAULT;
+      var total = 0;
+      if (code.querySelector(".pyro-marked, .pyro-marker") || pre.classList.contains("pyro-focusing")) total += FADE;
+      if (step.departing.length) total += FADE;
+      var measured = measure(target);
+      var before = pre.getBoundingClientRect().height;
+      var resized = Math.abs(measured.height - before) > 0.5;
+      if (step.fading) { if (resized) total += MOVE / 2; }
+      else {
+        var moves = [];
+        Object.keys(step.present).forEach(function (id) {
+          if (!current[id] || !measured.last[id]) return;
+          var first = place(current[id]), last = measured.last[id];
+          var dx = first.left - last.left, dy = first.top - last.top;
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moves.push({ id: id, dx: dx, dy: dy });
+        });
+        total += planMoves(moves, resized, before, measured.height, frame, target, MOVE).T;
+      }
+      if (step.arriving.length) total += FADE;
+      return total;
+    }
+
     // Timings, in milliseconds; the stylesheet's fades match. A step is a fade out, then a
     // move, then a fade in. The move is two halves. In the first, tokens joining lines that
     // remain slide along their old rows (H1), and STAGGER later the contracting vertical
@@ -1199,7 +1347,6 @@
     var busy = false;
     var pending = null;   // the step chosen while the block moved, gone to once it settles
 
-    function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
     function nextFrame() { return new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); }); }
 
     // One step, in three phases, each awaited before the next: the atoms the target frame
@@ -1209,43 +1356,19 @@
     // the arrivals fade in. A phase with nothing to do takes no time.
     function show(target, animated) {
       var moving = animated && !reduced;
-      var lines = linesOf(target);
-      var present = {};
-      lines.forEach(function (ids) { ids.forEach(function (id) { present[id] = true; }); });
       var current = {};
       code.querySelectorAll("[data-atom]").forEach(function (span) { current[span.dataset.atom] = span; });
 
-      // The transition says what departs and arrives; whatever the block holds beyond its
-      // say (after a jump) goes or comes too. A fade takes everything out and brings
-      // everything in; an edit is played as a morph for now.
-      var transition = transitionFor(frame, target);
-      var fading = transition.kind === "fade";
+      // What departs and arrives; an edit is played as a morph for now.
+      var step = exchange(target, current);
+      var present = step.present, transition = step.transition, fading = step.fading;
+      var departing = step.departing, arriving = step.arriving;
       var MOVE = transition.duration ? transition.duration * 1000 : MOVE_DEFAULT;
-      var departing = transition.departing.filter(function (id) { return current[id]; });
-      var arriving = transition.arriving.filter(function (id) { return present[id] && !current[id]; });
-      Object.keys(current).forEach(function (id) { if (!present[id] && departing.indexOf(id) < 0) departing.push(id); });
-      Object.keys(present).forEach(function (id) { if (!current[id] && arriving.indexOf(id) < 0) arriving.push(id); });
-      if (fading) { departing = Object.keys(current); arriving = Object.keys(present); }
 
       // The target's lines, block-level, from the surviving nodes and the arriving atoms,
       // each followed by its marker rows — unseen when the step is animated, so that the
       // layout the survivors move into already leaves their room.
-      function rebuild() {
-        var fragment = document.createDocumentFragment();
-        lines.forEach(function (ids, index) {
-          var line = document.createElement("span");
-          line.className = "pyro-line";
-          var length = 0;
-          var text = "";
-          ids.forEach(function (id) { line.appendChild(spanFor(id)); length += atoms[id].text.length; text += atoms[id].text; });
-          fragment.appendChild(line);
-          markersOf(target, index, length, text.match(/^\s*/)[0]).forEach(function (row) {
-            if (moving) { row.style.transition = "none"; row.style.opacity = "0"; }
-            fragment.appendChild(row);
-          });
-        });
-        code.replaceChildren(fragment);
-      }
+      function rebuild() { code.replaceChildren(layout(target, spanFor, moving)); }
 
       // Settled on the target: a step chosen while the block moved is gone to now, the
       // latest chosen, so that clicks made mid-move are neither queued nor lost.
@@ -1325,51 +1448,10 @@
         });
         if (!moves.length && !resized) return Promise.resolve();
 
-        // Which line each surviving atom leaves and reaches, by line identity; a line is busy
-        // when some atom stays on it from one frame to the next. A token joining a busy line
-        // slides along its old row to its column first (H1) and then drops into its slot (V);
-        // one reaching a new or emptied line drops first (V) and slides along the empty row
-        // after (H2), with the tokens shifting within their own lines.
-        var wasOn = lineOfAtoms(frame), nowOn = lineOfAtoms(target);
-        var busy = {};
-        Object.keys(nowOn).forEach(function (id) { if (wasOn[id] === nowOn[id]) busy[nowOn[id]] = true; });
-
-        // A token shifting within its own line moves with the tokens that line exchanges: in
-        // H1 when the line receives joiners, so that it makes room before they drop in, and
-        // otherwise in H2, closing the gap once the leavers have gone.
-        var receiving = {};
-        moves.forEach(function (move) {
-          if (wasOn[move.id] !== nowOn[move.id] && busy[nowOn[move.id]]) receiving[nowOn[move.id]] = true;
-        });
-
-        // `dy` is the token's displacement back to where it was: positive means it moves up.
-        var h1 = [], v1 = [], v2 = [], h2 = [];
-        moves.forEach(function (move) {
-          var changesLine = wasOn[move.id] !== nowOn[move.id];
-          var joining = changesLine && busy[nowOn[move.id]];
-          var early = changesLine ? joining : receiving[nowOn[move.id]];
-          if (Math.abs(move.dx) > 0.5) (early ? h1 : h2).push(move);
-          if (Math.abs(move.dy) > 0.5) {
-            var contracting = changesLine ? joining : move.dy > 0;
-            (contracting ? v1 : v2).push(move);
-          }
-        });
-        var shrinking = resized && after0 < before, growing = resized && after0 > before;
-
-        // The schedule, as each part's start: the contracting vertical part STAGGER after H1
-        // when both exist; the expanding vertical part halfway through the contracting one
-        // (or after H1, where there is no contraction); H2 STAGGER after that. The move ends
-        // with its last part.
-        var firstV = v1.length > 0 || shrinking, secondV = v2.length > 0 || growing;
-        var s1 = (h1.length && firstV) ? STAGGER : 0;
-        var v2Start = firstV ? s1 + MOVE / 2 : (h1.length ? MOVE : 0);
-        var s2 = (secondV && h2.length) ? STAGGER : 0;
-        var h2Start = v2Start + s2;
-        var T = 0;
-        if (h1.length) T = Math.max(T, MOVE);
-        if (firstV) T = Math.max(T, s1 + MOVE);
-        if (secondV) T = Math.max(T, v2Start + MOVE);
-        if (h2.length) T = Math.max(T, h2Start + MOVE);
+        var plan = planMoves(moves, resized, before, after0, frame, target, MOVE);
+        var h1 = plan.h1, v1 = plan.v1, v2 = plan.v2, h2 = plan.h2;
+        var s1 = plan.s1, v2Start = plan.v2Start, h2Start = plan.h2Start, T = plan.T;
+        var shrinking = plan.shrinking;
         if (T === 0) return Promise.resolve();
 
         // One animation per axis per token, over the whole move, adding: held at its
@@ -1450,6 +1532,8 @@
     function choose(index) {
       timeline.pause();
       stop();
+      var deck = block.closest(".pyro-deck");
+      if (deck && deck.pyroDeck) deck.pyroDeck.halt();
       if (busy) { pending = index; mark(index); return; }
       if (index !== frame) show(index, true);
     }
@@ -1476,6 +1560,7 @@
       timed: timed,
       frame: function () { return frame; },
       busy: function () { return busy; },
+      lead: lead,
       show: show,
       stop: stop
     };
@@ -1483,46 +1568,138 @@
 
   // A deck shows one slide at a time. Stepping forward steps the last animated block on the
   // slide through its frames, then moves to the next slide; stepping back does the reverse,
-  // and a slide entered backwards shows its blocks' last frames.
+  // and a slide entered backwards shows its blocks' last frames. A slide changes by a fade:
+  // the slide goes over SLIDE ms, nothing is shown for SLIDE ms, and the next comes over
+  // SLIDE ms; the keys are ignored while it changes. A deck with a schedule — the time, in
+  // seconds from its wiring, at which each of its steps should have landed — is conducted
+  // to it: each step is started as long before its time as it will take (a step of an
+  // animated block by the block's own measure, a change of slide its three SLIDEs), so that
+  // the new code, or the new slide, is fully in at the time said. A step by hand halts the
+  // conductor, and the deck is the reader's from then on.
+  var SLIDE = 400;
+
   function wireDeck(deck) {
     var leaves = Array.prototype.slice.call(deck.querySelectorAll(":scope > .pyro-leaf"));
     var counter = deck.querySelector(":scope > .pyro-deck-controls .pyro-deck-counter");
     var index = 0;
+    var changing = false;
+    var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     function players(leaf) {
       return Array.prototype.slice.call(leaf.querySelectorAll(".pyro-animated"))
         .map(function (block) { return block.pyroPlayer; }).filter(Boolean);
     }
 
-    function go(target, backward) {
-      if (target < 0 || target >= leaves.length || target === index) return;
-      leaves[index].classList.remove("pyro-current");
+    // The last animated block of the slide shown, which the deck steps before it moves on.
+    function stepper() {
+      var animated = players(leaves[index]);
+      return animated.length ? animated[animated.length - 1] : null;
+    }
+
+    function go(target, backward, animated) {
+      if (changing || target < 0 || target >= leaves.length || target === index) return Promise.resolve();
+      var from = leaves[index];
       index = target;
-      leaves[index].classList.add("pyro-current");
-      players(leaves[index]).forEach(function (player) {
-        player.stop();
-        player.show(backward ? player.data.slides.length - 1 : 0, false);
-      });
-      if (counter) counter.textContent = (index + 1) + " / " + leaves.length;
+      var to = leaves[index];
+
+      function enter() {
+        from.classList.remove("pyro-current", "pyro-leaving");
+        to.classList.add("pyro-current");
+        players(to).forEach(function (player) {
+          player.stop();
+          player.show(backward ? player.data.slides.length - 1 : 0, false);
+        });
+        if (counter) counter.textContent = (index + 1) + " / " + leaves.length;
+      }
+
+      if (!animated || reduced) { enter(); return Promise.resolve(); }
+      changing = true;
+      from.classList.add("pyro-leaving");
+      return after(SLIDE).then(function () {
+        to.classList.add("pyro-arriving");
+        enter();
+        return after(SLIDE);
+      }).then(function () {
+        void to.offsetHeight;
+        to.classList.remove("pyro-arriving");
+        return after(SLIDE);
+      }).then(function () { changing = false; });
+    }
+
+    // The deck's next step forward: the slide's animated block's next frame, or the next
+    // slide; null at the end. Its `lead` is how long it takes to land, and `run` plays it.
+    function upcoming() {
+      var player = stepper();
+      if (player && player.frame() < player.data.slides.length - 1) {
+        var target = player.frame() + 1;
+        return { lead: player.lead(target), run: function () { return player.show(target, true); } };
+      }
+      if (index < leaves.length - 1) {
+        var next = index + 1;
+        return { lead: reduced ? 0 : 3 * SLIDE, run: function () { return go(next, false, true); } };
+      }
+      return null;
     }
 
     function advance(delta) {
-      var animated = players(leaves[index]);
-      var player = animated.length ? animated[animated.length - 1] : null;
+      halt();
+      if (changing) return;
+      var player = stepper();
       if (player) {
         if (player.busy()) return;
         var frame = player.frame();
         if (delta > 0 && frame < player.data.slides.length - 1) { player.show(frame + 1, true); return; }
         if (delta < 0 && frame > 0) { player.show(frame - 1, true); return; }
       }
-      go(index + delta, delta < 0);
+      go(index + delta, delta < 0, true);
     }
+
+    // The conductor: each step of the schedule in turn, started at its time less its lead
+    // (at once, when that has passed), the next scheduled when it has landed, so that its
+    // lead is measured from where the deck then is.
+    var conductor = null;
+
+    function conduct(schedule) {
+      var origin = performance.now();
+      var step = 0;
+      var timer = null;
+
+      function next() {
+        if (!conductor || step >= schedule.length) return;
+        var action = upcoming();
+        if (!action) return;
+        var start = schedule[step] * 1000 - action.lead;
+        var delay = Math.max(0, start - (performance.now() - origin));
+        timer = setTimeout(function () {
+          timer = null;
+          step++;
+          action.run().then(next);
+        }, delay);
+      }
+
+      conductor = { stop: function () { if (timer) clearTimeout(timer); timer = null; } };
+      next();
+    }
+
+    function halt() { if (conductor) { conductor.stop(); conductor = null; } }
 
     var prev = deck.querySelector(":scope > .pyro-deck-controls .pyro-deck-prev");
     var next = deck.querySelector(":scope > .pyro-deck-controls .pyro-deck-next");
     if (prev) prev.addEventListener("click", function () { advance(-1); });
     if (next) next.addEventListener("click", function () { advance(1); });
-    deck.pyroDeck = { advance: advance, go: function (target) { go(target, false); }, count: leaves.length };
+    deck.pyroDeck = {
+      advance: advance,
+      go: function (target) { halt(); go(target, false, true); },
+      halt: halt,
+      conducted: function () { return conductor !== null; },
+      count: leaves.length
+    };
+
+    var schedule = null;
+    if (deck.dataset.schedule) {
+      try { schedule = JSON.parse(deck.dataset.schedule); } catch (error) { console.error(error); }
+    }
+    if (schedule && schedule.length) conduct(schedule);
   }
 
   // A drawing wider than its holder pans with the pointer: the holder is scrolled so that the

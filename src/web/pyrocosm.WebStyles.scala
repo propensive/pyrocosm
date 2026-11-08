@@ -720,7 +720,10 @@ object WebStyles:
             display: none; min-height: 60vh; padding: var(--pyro-space-6) 0; font-size: 1.35rem
           }
         """ +
-        css".pyro-leaf.pyro-current { display: block }" +
+        css".pyro-leaf.pyro-current { display: block; transition: opacity 0.4s ease }" +
+        // A slide leaving, or one arriving before its fade in, is unseen: the script fades a
+        // slide out over 0.4 s, rests 0.4 s, and fades the next in over 0.4 s.
+        css".pyro-leaf.pyro-leaving, .pyro-leaf.pyro-arriving { opacity: 0 }" +
         css".pyro-leaf h1 { font-size: 3rem } .pyro-leaf h2 { font-size: 2.2rem }" +
         css".pyro-leaf .pyro-codeblock { font-size: 1.1rem }" +
         css"""

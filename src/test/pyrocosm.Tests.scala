@@ -1586,11 +1586,12 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == Purview(List(Purview.Entry(t"/api/com", t"com"))))
 
-    val deckOfTwo: Block =
-      Block.Deck
-        ( List
-            ( Block.Leaf(List(Block.Heading(1, Inline.text(t"Effects")), Block.paragraph(t"so"))),
-              Block.Leaf(List(animatedBlock)) ) )
+    val twoLeaves: List[Block.Leaf] =
+      List
+        ( Block.Leaf(List(Block.Heading(1, Inline.text(t"Effects")), Block.paragraph(t"so"))),
+          Block.Leaf(List(animatedBlock)) )
+
+    val deckOfTwo: Block = Block.Deck(twoLeaves)
 
     test(m"a deck shows its first slide, its others hidden, with a counter"):
       val shown: Text = html.block(deckOfTwo).show
@@ -1601,6 +1602,16 @@ object Tests extends Suite(m"Pyrocosm tests"):
         shown.contains(t"""<span class="pyro-deck-counter">1 / 2</span>""") )
 
     . assert(_ == (true, true, true))
+
+    test(m"a deck with a schedule carries it, as JSON, for the script to conduct it to"):
+      val scheduled: Block = Block.Deck(twoLeaves, List(4.0, 8.0, 12.5))
+      val shown: Text = html.block(scheduled).show
+      val plain: Text = html.block(deckOfTwo).show
+
+      ( shown.starts(t"""<div class="pyro-deck" tabindex="0" data-schedule="[4.0,8.0,12.5]">"""),
+        plain.contains(t"data-schedule") )
+
+    . assert(_ == (true, false))
 
     test(m"a staged interface's page is its primary panel's content alone"):
       val slides: Live[List[Block]] = Live(List(deckOfTwo))

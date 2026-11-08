@@ -90,6 +90,11 @@ object HtmlRenderer:
   // `aria-current="step"` on the step showing now.
   given dataStep: ("data-step" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
+  // `data-schedule="[4,8,12]"` on a deck which plays itself: the time, in seconds from the
+  // page's opening, at which each of its steps lands, which the script conducts it to.
+  given dataSchedule: ("data-schedule" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
+
   given ariaCurrent: ("aria-current" is Attribute of Whatwg.Textual in Whatwg) =
     Whatwg.globalAttribute()
 
@@ -489,8 +494,8 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
       Figure(id = figure.id, `class` = cls(t"pyro-drawing"))(holder, Figcaption(phrase(figure.alt)))
 
-    case Block.Deck(leaves) =>
-      deck(leaves)
+    case Block.Deck(leaves, schedule) =>
+      deck(leaves, schedule)
 
     case Block.Tree(roots) =>
       val nodes = roots.indexed.map: (root: Block.TreeNode, index: Ordinal) =>
@@ -789,8 +794,9 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
   // JSON in a hidden element the script reads. Slide 0 is what a page without the script
   // shows.
   // A deck: every slide a section, the first current, which is what a page without the script
-  // shows; and its controls. The script shows one slide at a time and steps through them.
-  def deck(leaves: List[Block.Leaf]): Html of Flow =
+  // shows; and its controls. The script shows one slide at a time and steps through them, or,
+  // given a schedule, conducts them to it.
+  def deck(leaves: List[Block.Leaf], schedule: List[Double] = Nil): Html of Flow =
     val slides: List[Html of Flow] =
       leaves.indexed.map: (leaf: Block.Leaf, index: Ordinal) =>
         val current: List[Name[CssClass]] =
@@ -804,7 +810,12 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
           Span(`class` = cls(t"pyro-deck-counter"))(t"1 / ${leaves.size.toString.tt}"),
           Button(`class` = cls(t"pyro-deck-next"), `type` = t"button")(t"›") )
 
-    Div(`class` = cls(t"pyro-deck"), tabindex = t"0")(Html.Fragment(slides*), controls)
+    val content: Html of Flow = Html.Fragment(slides*)
+
+    if schedule.nil then Div(`class` = cls(t"pyro-deck"), tabindex = t"0")(content, controls)
+    else
+      val times: Text = t"[${schedule.map(_.toString.tt).join(t",")}]"
+      Div(`class` = cls(t"pyro-deck"), tabindex = t"0", `data-schedule` = times)(content, controls)
 
   def animatedCode
     ( language: pyrocosm.Language, animation: Block.Animation, id: Optional[Text] = Unset )
