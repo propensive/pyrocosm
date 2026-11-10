@@ -2104,7 +2104,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"a decoration carries its tokens, note, marker, marks and completions"):
       val completions =
         List
-          ( Control.Field.Completion(t"println", t"term", t"…"),
+          ( Control.Field.Completion(t"println", t"term", t"…", info = t"prints a line"),
             Control.Field.Completion(t"/session main", t"command", t"", whole = true) )
 
       prompt.decoration() =
@@ -2122,6 +2122,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
           t"pyro-note",
           t"pyro-completions",
           t"println",
+          t"""<span class="pyro-info">prints a line</span>""",
           t"reads as code",
           t"""<li class="pyro-replacement">""",
           t"pyro-note-erroneous" )

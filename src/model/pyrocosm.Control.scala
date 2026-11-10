@@ -59,8 +59,14 @@ object Control:
 
     // A candidate at the caret. Accepting it replaces the identifier before the caret with
     // `name`, or, when `whole` is set, the whole text: a REPL's `/session name` completes the
-    // line, and a path drills further on the next Tab.
-    case class Completion(name: Text, kind: Text, signature: Text, whole: Boolean = false)
+    // line, and a path drills further on the next Tab. `info` is a line about the candidate,
+    // shown after its signature, from documentation the application has to hand.
+    case class Completion
+      ( name:      Text,
+        kind:      Text,
+        signature: Text,
+        whole:     Boolean        = false,
+        info:      Optional[Text] = Unset )
 
     // One edit of a field's text: `removed` characters from `start` (possibly none) replaced
     // by `inserted` (possibly empty). A keystroke, a paste or a recall is one splice; the

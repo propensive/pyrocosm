@@ -727,13 +727,15 @@ extends Focus, Refreshable:
   private var lastWidth: Int = 80
 
   // One row per candidate, cut to the width: a signature can run long, and a wrapped row
-  // would push the rows beneath it out of the field.
+  // would push the rows beneath it out of the field. A candidate's info follows its signature,
+  // in italics, so it is what a narrow terminal loses first.
   private def completionLines: List[Teletype] = completionLines(lastWidth)
 
   private def completionLines(width: Int): List[Teletype] =
     completions.indexed.map: (candidate, index) =>
       val muted = Fg(renderer.theme.muted)
-      val line: Teletype = e"  ${candidate.name}  $muted(${candidate.signature})"
+      val info: Teletype = candidate.info.lay(e"") { info => e"  $Italic($info)" }
+      val line: Teletype = e"  ${candidate.name}  $muted(${candidate.signature})$info"
       val cut: Teletype = if line.length > width.max(1) then line.takeChars(width.max(1)) else line
       if selected && index.n0 == completion then e"$Reverse($cut)" else cut
 

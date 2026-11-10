@@ -1432,6 +1432,12 @@ object WebStyles:
           .pyro-completions .pyro-signature {
             color: var(--pyro-muted); margin-left: auto; font-size: var(--pyro-text-small)
           }
+        """ +
+        css"""
+          .pyro-completions .pyro-info {
+            font-style: italic; font-size: var(--pyro-text-small); white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis
+          }
         """
 
     // Narrower than a desk: the columns stack, a side panel stops sticking. Narrower still, a
