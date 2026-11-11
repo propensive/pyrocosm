@@ -134,7 +134,7 @@ extends Frontend:
     :   fixture =
 
       fixtures = fixtures :+ fixture
-      List.from(cells).each: (cell: Live[?]) => bindings = bindings :+ (cell, fixture, panel)
+      cells.each: (cell: Live[?]) => bindings = bindings :+ (cell, fixture, panel)
       fixture
 
     def control(control: Control): Pane = control match

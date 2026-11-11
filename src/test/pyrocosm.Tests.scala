@@ -2749,11 +2749,10 @@ object Tests extends Suite(m"Pyrocosm tests"):
       // The scratch repository never signs: a user's global `commit.gpgsign` would otherwise
       // have `git commit` wait on a passphrase the test runner cannot supply.
       def git(arguments: Text*): Text =
-        val fixed =
-          scala.collection.immutable.List
-            ( t"git", t"-C", repo, t"-c", t"commit.gpgsign=false", t"-c", t"tag.gpgsign=false" )
+        val fixed: List[Text] =
+          List(t"git", t"-C", repo, t"-c", t"commit.gpgsign=false", t"-c", t"tag.gpgsign=false")
 
-        Command((fixed ++ arguments)*).exec[Text]().trim
+        Command((fixed + arguments)*).exec[Text]().trim
 
       def put(path: Text, content: Text): Unit =
         val file = java.nio.file.Path.of(repo.s, path.s).nn
