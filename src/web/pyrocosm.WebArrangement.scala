@@ -273,7 +273,8 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
       if decoration0.detail.nil then Html.Fragment[Flow]()
       else Div(`class` = cls(t"pyro-note"))(renderer.blocks(decoration0.detail))
 
-    // A candidate that replaces the whole text says so, for the script.
+    // A candidate that replaces the whole text says so, for the script; one with info has it
+    // after its signature.
     val list: Html of Flow =
       if decoration0.completions.nil then Html.Fragment[Flow]()
       else
@@ -281,8 +282,14 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
           val classes: List[Name[CssClass]] =
             if completion.whole then List(cls(t"pyro-replacement")) else Nil
 
+          val info: Html of Flow =
+            completion.info.lay(Html.Fragment[Flow]()): info =>
+              Span(`class` = cls(t"pyro-info"))(info)
+
           Li(`class` = classes)
-            ( Code(completion.name), Span(`class` = cls(t"pyro-signature"))(completion.signature) )
+            ( Code(completion.name),
+              Span(`class` = cls(t"pyro-signature"))(completion.signature),
+              info )
 
         Ul(`class` = cls(t"pyro-completions"))(items*)
 
