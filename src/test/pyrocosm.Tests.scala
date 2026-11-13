@@ -1782,6 +1782,71 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == (true, true, List(true, true, true)))
 
+    test(m"a page whose matter is in one language offers no choice of language"):
+      page.contains(t"pyro-language")
+
+    . assert(_ == false)
+
+    test(m"a page whose matter is in several languages offers them, the one shown chosen"):
+      val several: Interface =
+        Interface
+          ( Inline.text(t"Docs"), Nil, language = t"fr-CA",
+            languages = List(t"en", t"fr", t"fr-CA", t"de") )
+
+      val german: HtmlRenderer = HtmlRenderer(locale = Audience(List(t"de")).locale())
+      val shown: Text = PyrocosmPage(several, german, WebTheme.default).markup.show
+      val select: Int = shown.s.indexOf("<select id=\"pyro-language\"")
+
+      ( select > shown.s.indexOf("pyro-menubar-link"), select < shown.s.indexOf("id=\"pyro-mode\""),
+        shown.contains(t">en</option>"), shown.contains(t">fr-CA</option>"),
+        shown.contains(t">de</option>"), shown.contains(t"""lang="fr-CA""""),
+        shown.s.indexOf("selected") > shown.s.indexOf("value=\"fr-CA\"") )
+
+    . assert(_ == (true, true, true, true, true, true, true))
+
+    test(m"the page's own words are in the reader's language, and the script's are carried"):
+      val french: HtmlRenderer = HtmlRenderer(locale = Audience(List(t"fr-CH")).locale())
+      val reading: Interface = Interface(Inline.text(t"Docs"), Nil, purview = Purview())
+      val shown: Text = PyrocosmPage(reading, french, WebTheme.default).markup.show
+
+      ( shown.contains(t"Signets"), shown.contains(t"""lang="fr""""),
+        shown.contains(t"""<meta name="pyro-phrases""""), shown.contains(t"reconnexion"),
+        page.contains(t">Configuration</a>") )
+
+    . assert(_ == (true, true, true, true, true))
+
+    test(m"a browser's languages are read most wanted first, without what it refuses"):
+      ( Tongue.accepted(t"fr-CH, fr;q=0.9, en;q=0.8, *;q=0.5"),
+        Tongue.accepted(t"en;q=0.5, de, es;q=0"), Tongue.accepted(t"?!") )
+
+    . assert(_ == (List(t"fr-CH", t"fr", t"en"), List(t"de", t"en"), Nil))
+
+    test(m"a reader's choice is kept in a cookie among others"):
+      (Tongue.kept(t"a=b; pyro-language=fr-CA; c=d"), Tongue.kept(t"pyro-language=<script>"))
+
+    . assert(_ == (t"fr-CA", Unset))
+
+    test(m"a reader is given their language, a variant of it, or what the matter is written in"):
+      ( Audience(List(t"fr-CA")).language(List(t"en", t"fr")),
+        Audience(List(t"fr")).language(List(t"en", t"fr-CA")),
+        Audience(List(t"es", t"de")).language(List(t"en", t"de")),
+        Audience(List(t"es")).language(List(t"en", t"fr")), Audience().language(Nil) )
+
+    . assert(_ == (t"fr", t"fr-CA", t"de", t"en", Unset))
+
+    test(m"Pyrocosm's words follow the matter's language, then the reader's, then English"):
+      ( Tongue.code(Audience(List(t"de")).locale(t"fr-CA")),
+        Tongue.code(Audience(List(t"es", t"de-AT")).locale(t"pl")),
+        Tongue.code(Audience(List(t"es")).locale()) )
+
+    . assert(_ == (t"fr", t"de", t"en"))
+
+    test(m"a language is named by its two letters, or in full where two share them"):
+      ( Tongue.labels(List(t"en-US", t"fr", t"fr-CA")), Tongue.valid(t"pt-BR"),
+        Tongue.valid(t"french") )
+
+    . assert(_ == (List((t"en-US", t"en"), (t"fr", t"fr"), (t"fr-CA", t"fr-CA")), true, false))
+
     test(m"the masthead precedes the main matter, outside it"):
       val header = page.s.indexOf("<header")
       val main = page.s.indexOf("<main")
@@ -1793,7 +1858,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
     test(m"a page with navigation and detail has both side columns, and says so"):
       ( page.contains(t"""<aside class="graffiti-verso">"""),
         page.contains(t"""<aside class="graffiti-recto">"""),
-        page.contains(t"""<body dir="ltr" class="pyro-has-verso pyro-has-recto">""") )
+        page.contains(t"""<body dir="ltr" lang="en" class="pyro-has-verso pyro-has-recto">""") )
 
     . assert(_ == (true, true, true))
 
@@ -1819,7 +1884,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val without: Text = PyrocosmPage(plain, html, WebTheme.default, Unset, Presence()).markup.show
       val purview: Text = t"""<section id="pyro-purview" class="pyro-panel pyro-purview">"""
 
-      ( under.contains(t"""<body dir="ltr" class="pyro-has-recto">"""),
+      ( under.contains(t"""<body dir="ltr" lang="en" class="pyro-has-recto">"""),
         under.contains(purview),
         without.contains(t"pyro-has-recto"),
         without.contains(t"pyro-purview") )
@@ -2056,7 +2121,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
       ( page.contains(t"""class="graffiti-verso""""),
         page.contains(t"""class="graffiti-recto""""),
-        page.contains(t"""<body dir="ltr">""") )
+        page.contains(t"""<body dir="ltr" lang="en">""") )
 
     . assert(_ == (false, false, true))
 

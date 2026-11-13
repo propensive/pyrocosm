@@ -98,6 +98,10 @@ object HtmlRenderer:
   given ariaCurrent: ("aria-current" is Attribute of Whatwg.Textual in Whatwg) =
     Whatwg.globalAttribute()
 
+  // `aria-label="…"` on a control which shows no words of its own.
+  given ariaLabel: ("aria-label" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
+
   // `data-alternative="1"` on a tab of a code block with alternatives, and on the alternative
   // it shows.
   given dataAlternative: ("data-alternative" is Attribute of Whatwg.Textual in Whatwg) =
@@ -137,8 +141,15 @@ object HtmlRenderer:
 // import toggle or a bookmark button shows whether its page is in it. The `prefix` is the path
 // the application is served under (`/fume`, say; empty at the origin's root), which goes before
 // every local destination's link; a page's path as the application knows it, which a purview
-// button carries for the frontend, has no prefix.
-class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
+// button carries for the frontend, has no prefix. The `locale` is the reader's, in which
+// Pyrocosm's own words (`Phrases`) are said: the matter is the application's, as it gives it.
+class HtmlRenderer
+  ( purview: Purview                = Purview(),
+    prefix:  Text                   = t"",
+    val locale: Locale[Tongue.Chrome] = Locale(en) ):
+
+  private given Locale[Tongue.Chrome] = locale
+
   // The attribute givens are imported wholesale: a macro summons them, which `-Wunused` does not
   // see, so it would call any of them imported by name unused.
   import HtmlRenderer.{toneClass, accentClass, cls, jsonText, given}
@@ -238,12 +249,18 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
   private def importButton(path: Text, label: Text): Html of Phrasing =
     val active: Boolean = purview.imported(path)
-    val title: Text = if active then t"Remove the import of $label.*" else t"Import $label.*"
+
+    val title: Text =
+      if active then Phrases.removeImport(label)() else Phrases.addImport(label)()
+
     purviewButton(t"import", path, label, active, title)
 
   private def bookmarkButton(path: Text, label: Text): Html of Phrasing =
     val active: Boolean = purview.bookmarked(path)
-    val title: Text = if active then t"Remove the bookmark of $label" else t"Bookmark $label"
+
+    val title: Text =
+      if active then Phrases.removeBookmark(label)() else Phrases.addBookmark(label)()
+
     val mark: Text =
       t"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">""" +
         t"""<path d="M6 3h12v18l-6-5-6 5z"/></svg>"""
@@ -258,7 +275,7 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
       else
         val items = entries.map: (entry: Purview.Entry) =>
           val remove: Html of Phrasing =
-            purviewButton(kind, entry.path, t"", true, t"Remove ${entry.label}")
+            purviewButton(kind, entry.path, t"", true, Phrases.remove(entry.label)())
 
           val style: List[Name[CssClass]] = List(cls(t"pyro-link"), cls(t"pyro-locate"))
           Li(A(href = entry.path, `class` = style)(entry.label), t" ", remove)
@@ -266,10 +283,10 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         Ul(`class` = cls(t"pyro-purview-list"))(items*)
 
     Section(id = t"pyro-purview", `class` = List(cls(t"pyro-panel"), cls(t"pyro-purview")))
-      ( H2(t"Imports"),
-        entries(t"import", purview.imports, t"Nothing is imported: every name is written in full."),
-        H2(t"Bookmarks"),
-        entries(t"bookmark", purview.bookmarks, t"No page is bookmarked.") )
+      ( H2(Phrases.imports()),
+        entries(t"import", purview.imports, Phrases.noImports()),
+        H2(Phrases.bookmarks()),
+        entries(t"bookmark", purview.bookmarks, Phrases.noBookmarks()) )
 
   // Each run of chained tokens as Amok rendered a qualified name: every linked segment after the
   // first wraps everything before it, its separators and itself in a `pyro-qualified` span, and
@@ -444,11 +461,11 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
         case _            => Glyph.Bullet
 
       val severity: Text = tone match
-        case Tone.Failure => t"error"
-        case Tone.Warning => t"warning"
-        case Tone.Success => t"ok"
-        case Tone.Info    => t"info"
-        case _            => t"note"
+        case Tone.Failure => Phrases.error()
+        case Tone.Warning => Phrases.warning()
+        case Tone.Success => Phrases.ok()
+        case Tone.Info    => Phrases.info()
+        case _            => Phrases.note()
 
       val where: Html of Phrasing =
         location.lay(Html.Fragment[Phrasing]()): (location: Block.Location) =>
@@ -1216,7 +1233,9 @@ class HtmlRenderer(purview: Purview = Purview(), prefix: Text = t""):
 
     val sections = stacks.indexed.map: (stack0: Block.Trace.Stack, index: Ordinal) =>
       if index.n0 == 0 then stack(stack0)
-      else Html.Fragment[Flow](P(`class` = cls(t"pyro-caused-by"))(t"caused by:"), stack(stack0))
+      else
+        Html.Fragment[Flow]
+          ( P(`class` = cls(t"pyro-caused-by"))(Phrases.causedBy()), stack(stack0) )
 
     Html.Fragment[Flow](sections*)
 

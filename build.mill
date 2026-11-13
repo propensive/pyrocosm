@@ -100,6 +100,7 @@ object settings:
     "gossamer-core", "rudiments-core", "vacuous-core", "prepositional-core", "contingency-core",
     "spectacular-core", "wisteria-core", "fulminate-core", "denominative-core", "aviation-core",
     "clavichord-core",     // Keypress
+    "cosmopolite-core",    // Locale and Polyglot, for the languages an interface is read in
     "quantitative-core",   // Quantity, for measures
     "acyclicity-core",     // Dag, for graphs
     "archimedes-core",     // MathML
@@ -125,7 +126,7 @@ object settings:
 
   def webDeps(soundness: String) = Seq(
     "honeycomb-core", "cataclysm-core", "graffiti-core", "perihelion-core", "scintillate-server",
-    "jacinta-core", "iridescence-core", "eucalyptus-core")
+    "jacinta-core", "iridescence-core", "eucalyptus-core", "cosmopolite-core")
   . map(component(soundness))
 
   // The instances that need the compiler: harlequin highlighting, delicious diagnostic markup,

@@ -222,6 +222,21 @@ object Tool:
           val atoms = matches.map(_.primaryAtom).filter(_ != t"")
           if atoms.nil then t"true" else atoms.join(t":")
 
+  // What the user says once for every tool: `$XDG_CONFIG_HOME/pyrocosm/config.tel`, whether or
+  // not it exists; `Unset` if the environment names no configuration home.
+  def sharedFile(using Environment): Optional[Path on Linux] =
+    safely:
+      Directories.configHome[Path on Linux] / Name[Linux](t"pyrocosm") / Name[Linux](t"config.tel")
+
+  // The settings that file may give, which are the user's and no one tool's: the `language`
+  // they read in. Any other setting is a tool's own, and is not read from here.
+  val sharedSettings: List[Text] = List(t"language")
+
+  // The shared file as the last source of the `Setting` cascade, for the settings it may give.
+  def shared(using Environment): Configurator =
+    val all: Configurator = configurator(sharedFile.let(document(_)))
+    name => if sharedSettings.has(name) then all.read(name) else Unset
+
   // Reads (and so registers) a flag, and says whether it is present. NOT inline, and not
   // written at its use in `standard`: a `Flag`'s `apply()` is a transparent inline whose result
   // narrows to a `Prospective` only once it is expanded, and inside an inline method it is not
@@ -414,7 +429,8 @@ object Tool:
     // taking priority over the user's. The caller composes the properties and the environment
     // ahead of it (`standard` does so).
     def configurator(directory: Text)(using Environment): Configurator =
-      Tool.configurator(tool.repoConfig(directory)) ++ Tool.configurator(tool.userConfig)
+      Tool.configurator(tool.repoConfig(directory)) ++ Tool.configurator(tool.userConfig) ++
+        Tool.shared
 
     // Wraps an application's dispatch with the standard subcommands. `dispatch` is the
     // application's own `arguments match`, run when none of the standard subcommands applies; it
@@ -1212,6 +1228,12 @@ object Tool:
 // starts, so that it is simply there, for as long as the daemon lives, without a `serve`
 // command ever being run. A third, `no-upgrade-check`, turns off the daily check for a newer
 // release (below).
+//
+// One setting is the user's rather than any tool's, and so is read last of all from a file
+// every tool shares, `$XDG_CONFIG_HOME/pyrocosm/config.tel`: `language`, the language the
+// user reads in (`fr`, or with a region `fr-CA`), which a web front-end opens its pages in
+// unless a reader has chosen another there. A tool's own configuration may still say
+// otherwise for itself.
 //
 // UPGRADES. Once a day, in the background of the daemon, a released tool fetches the manifest of
 // its newest release (`Release`). When that is newer than the running build, the `upgrade`

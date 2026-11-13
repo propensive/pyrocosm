@@ -32,14 +32,19 @@ case class Shortcut(keypress: Keypress, action: Action, description: List[Inline
 // the activities — the concurrent work it keeps in view, which come and go while it runs. A
 // description, not a layout — see `Panel`. An interface whose pages are read under a `Purview`
 // says so by giving its starting one (empty, if need be): a frontend then shows the reader's
-// imports and bookmarks beside the matter and keeps them for them.
+// imports and bookmarks beside the matter and keeps them for them. One whose matter exists in
+// several languages says which (`languages`, as `Tongue` writes them, the one it is written in
+// first) and which this interface shows (`language`): a frontend then lets the reader choose
+// among them, and opens another interface for the choice (see `Audience`).
 case class Interface
   ( title:      List[Inline],
     panels:     List[Panel],
     controls:   List[Control]        = Nil,
     shortcuts:  List[Shortcut]       = Nil,
     hints:      Hints                = Hints.none,
-    purview:    Optional[Purview]    = Unset ):
+    purview:    Optional[Purview]    = Unset,
+    language:   Optional[Text]       = Unset,
+    languages:  List[Text]           = Nil ):
 
   // The work in flight, which the application assigns as it starts and finishes.
   val activities: Live[List[Activity]] = Live(Nil)

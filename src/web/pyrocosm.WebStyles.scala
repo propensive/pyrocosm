@@ -338,6 +338,15 @@ object WebStyles:
         """ +
         css".pyro-mode:hover { border-bottom-color: var(--pyro-button) }" +
         css"""
+          .pyro-language {
+            padding: 0 var(--pyro-space-1); margin: 0; border: 0;
+            border-bottom: 2px solid transparent; border-radius: 0; font-family: inherit;
+            font-size: inherit; background-color: transparent; color: var(--pyro-on-menubar);
+            cursor: pointer
+          }
+        """ +
+        css".pyro-language:hover { border-bottom-color: var(--pyro-button) }" +
+        css"""
           .pyro-mode-icon { display: none; width: 1.25rem; height: 1.25rem }
           .pyro-mode-mixed { display: block }
         """ +

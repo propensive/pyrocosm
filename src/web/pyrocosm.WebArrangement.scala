@@ -75,6 +75,14 @@ object PyrocosmPage:
   // origin's root, for the script to open its socket and tell its own pages from another's.
   val PrefixMeta = Tag.void["meta", Whatwg](presets = proscenium.Map(t"name" -> t"pyro-prefix"))
 
+  // `<meta name="pyro-phrases">`: the script's own words in the reader's language, as JSON by
+  // the names it knows them by, so that the script is one file whatever the language.
+  val PhrasesMeta = Tag.void["meta", Whatwg](presets = proscenium.Map(t"name" -> t"pyro-phrases"))
+
+  // A language on `lang`, as honeycomb declares the attribute but no way to attribute a value
+  // to it.
+  given language: Text is Attributive to Whatwg.Language = (key, value) => (key, value)
+
   // `data-history="…"` on a field: the application's history, seeded for the script.
   given history: ("data-history" is Attribute of Whatwg.Textual in Whatwg) =
     Whatwg.globalAttribute()
@@ -142,12 +150,33 @@ class PyrocosmPage
   ( interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset,
     presence: Presence = Presence.shared, prefix: Text = t"" )
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
-  import HtmlRenderer.{cls, panelId, classes}
+  import HtmlRenderer.{cls, panelId, classes, ariaLabel}
   // The attribute givens are imported wholesale: a macro summons them, which `-Wunused` does not
   // see, so it would call any of them imported by name unused.
   import PyrocosmPage.given
 
   private val plan: WebArrangement.Plan = WebArrangement.plan(interface)
+
+  // The reader's locale, for Pyrocosm's own words, and the language of the page: the one the
+  // interface shows its matter in, if it says, and otherwise that of those words.
+  private given locale: Locale[Tongue.Chrome] = renderer.locale
+  private val spoken: Text = interface.language.or(Tongue.code(locale))
+
+  // The reader's choice of language, when the interface has its matter in more than one: each
+  // by its two letters (in full, where two share them), the one shown chosen. The script keeps
+  // a choice in a cookie and asks for the page again.
+  private def languages: Html of Phrasing =
+    if interface.languages.stdlib.size < 2 then Html.Fragment[Phrasing]() else
+      val items = Tongue.labels(interface.languages).map: (code: Text, label: Text) =>
+        if code.lower != spoken.lower then Option(value = code, title = code)(label)
+        else Option(value = code, title = code, selected = true)(label)
+
+      Select
+        ( id = t"pyro-language",
+          `class` = cls(t"pyro-language"),
+          `aria-label` = Phrases.language(),
+          title = Phrases.language() )
+        (items*)
 
   override def pageTitle: Text = Inline.plain(interface.title)
   override def versoWidth: Quantity[Rems[1]] = 15.0*Rem
@@ -337,12 +366,14 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
           ( A(href = t"$prefix/", `class` = cls(t"pyro-wordmark"))(t"Pyrocosm"),
             Div(id = t"pyro-menubar-tools", `class` = cls(t"pyro-menubar-tools"))
               ( renderer.toolLinks(presence.peers()) ),
-            A(href = t"$prefix/config", `class` = cls(t"pyro-menubar-link"))(t"Configuration"),
+            A(href = t"$prefix/config", `class` = cls(t"pyro-menubar-link"))
+              ( Phrases.configuration() ),
+            languages,
             Button
               ( id = t"pyro-mode",
                 `type` = t"button",
                 `class` = cls(t"pyro-mode"),
-                title = t"Light, dark or mixed" )
+                title = Phrases.mode() )
               (PyrocosmPage.modeIcons*) ) )
 
   // The global controls other than a field, each an item of the masthead's toolbar.
@@ -372,7 +403,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
           Output
             ( id = t"pyro-connection",
               `class` = List(cls(t"pyro-connection"), cls(t"pyro-offline")) )
-            ( t"connecting" ) )
+            ( Phrases.connecting() ) )
 
     val items = toolbarItems
     if items.nil then brand else Html.Fragment(brand, Menu(`class` = cls(t"pyro-toolbar"))(items*))
@@ -420,7 +451,11 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
       Script(t"document.documentElement.dataset.mode = $chosen || $system;")
 
     val script = Script(src = t"$prefix/pyrocosm.js", defer = true)
-    Html.Fragment[Metadata](fonts, mode, script, named, prefixed, super.head)
+
+    val phrases: Html of Metadata =
+      PyrocosmPage.PhrasesMeta(content = Phrases.scripted.in[Json].show)
+
+    Html.Fragment[Metadata](fonts, mode, script, named, prefixed, phrases, super.head)
 
   // The fonts' import first, as CSS requires; then graffiti's rules; then this page's own.
   protected override def styles: Css = WebStyles.fonts + super.styles + WebStyles.rules(theme)
@@ -438,7 +473,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     val stage: Html of Flow = Div(`class` = cls(t"pyro-stage-content"))(shown*)
     val sheet: Html of Metadata = Link.Stylesheet(href = t"$prefix/pyrocosm.css")
     val head0: Html of "head" = Head(Title(pageTitle), sheet, head)
-    Html(head0, Body(dir = direction.show, `class` = cls(t"pyro-stage"))(stage))
+    Html(head0, Body(dir = direction.show, lang = spoken, `class` = cls(t"pyro-stage"))(stage))
 
   private def framed: Html of "html" =
     val verso: List[Name[CssClass]] =
@@ -449,4 +484,4 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
     val sheet: Html of Metadata = Link.Stylesheet(href = t"$prefix/pyrocosm.css")
     val head0: Html of "head" = Head(Title(pageTitle), sheet, head)
-    Html(head0, Body(dir = direction.show, `class` = sides)(frame))
+    Html(head0, Body(dir = direction.show, lang = spoken, `class` = sides)(frame))

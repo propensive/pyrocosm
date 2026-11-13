@@ -131,13 +131,17 @@ object WebFrontend:
 // line sets, unless given), empty at an origin's root: the pages name their paths under it, and
 // a request may name it or not — a page reached through the hub and one reached directly are
 // the same page — while every path the application sees (a `Located` event, the fallback's
-// request, a purview's entries) is its own, without it.
+// request, a purview's entries) is its own, without it. `language` is the one the user's
+// configuration asks for, which a reader's own choice (a cookie) comes before and their
+// browser's after: a page is opened for its `Audience`, and Pyrocosm's own words on it are in
+// the nearest language it has.
 class WebFrontend
   ( port:     Int,
     theme:    WebTheme = WebTheme.default,
     fallback: Http.Request => Optional[Http.Response] = _ => Unset,
     presence: Presence = Presence.shared,
-    prefix:   Optional[Text] = Unset )
+    prefix:   Optional[Text] = Unset,
+    language: Optional[Text] = Unset )
   ( using monitor: Monitor, probate: Probate, errorPage: WebserverErrorPage )
 extends pyrocosm.Frontend:
 
@@ -170,7 +174,15 @@ extends pyrocosm.Frontend:
 
   @caps.unsafe.untrackedCaptures
   @volatile
-  private var opener: (() -> (Interface, Event -> Unit)) | Null = null
+  private var opener: (Audience -> (Interface, Event -> Unit)) | Null = null
+
+  // Who a request is from: the language its cookie keeps, then the configuration's, then
+  // those its browser asks for.
+  private def audience(cookies: Optional[Text], accepted: Optional[Text]): Audience =
+    val chosen: List[Text] = cookies.let(Tongue.kept(_)).lay(List[Text]())(List(_))
+    val configured: List[Text] = language.lay(List[Text]())(List(_))
+    val asked: List[Text] = accepted.lay(List[Text]())(Tongue.accepted(_))
+    Audience(chosen + configured + asked)
 
   def stop(): Unit = stopped.countDown()
 
@@ -180,23 +192,24 @@ extends pyrocosm.Frontend:
     PyrocosmPage(Interface(Nil, Nil), HtmlRenderer(), theme).css.show
 
   // The configuration page the menu bar links to: the same chrome, and for now a note on where
-  // a tool's settings live. It has no session of its own.
-  private lazy val configuration: Text =
-    val note: Text =
-      t"There is nothing to configure here yet. A tool is configured by its config.tel file: " +
-        t".pyrocosm/<tool>/config.tel in a project, or ~/.config/<tool>/config.tel for the user."
-
+  // a tool's settings live. It has no session of its own, and is said in its reader's language.
+  private def configuration(audience: Audience): Text =
+    given locale: Locale[Tongue.Chrome] = audience.locale()
     val themeName: Text = theme.getClass.getSimpleName.nn.replace("$", "").nn.tt
+
+    def entry(name: Text, value: Text): Block.Entry =
+      Block.Entry(Inline.text(name), List(Block.paragraph(value)))
 
     val content: List[Block] =
       List
-        ( Block.Heading(1, Inline.text(t"Configuration")),
-          Block.paragraph(note),
+        ( Block.Heading(1, Inline.text(Phrases.configuration())),
+          Block.paragraph(Phrases.unconfigurable()),
           Block.Record
             ( List
-                ( Block.Entry(Inline.text(t"port"), List(Block.paragraph(bound.toString.tt))),
-                  Block.Entry(Inline.text(t"theme"), List(Block.paragraph(themeName))) ),
-              Inline.text(t"This frontend") ) )
+                ( entry(Phrases.port(), bound.toString.tt),
+                  entry(Phrases.theme(), themeName),
+                  entry(Phrases.languageSetting(), language.or(t"—")) ),
+              Inline.text(Phrases.thisFrontend()) ) )
 
     val panel: Panel =
       Panel
@@ -206,8 +219,8 @@ extends pyrocosm.Frontend:
           Live(content),
           Panel.Priority.Essential )
 
-    val interface = Interface(Inline.text(t"Configuration"), List(panel))
-    val renderer: HtmlRenderer = HtmlRenderer(prefix = served)
+    val interface = Interface(Inline.text(Phrases.configuration()), List(panel))
+    val renderer: HtmlRenderer = HtmlRenderer(prefix = served, locale = locale)
     val page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, prefix = served)
     t"<!DOCTYPE html>${page.markup.show}"
 
@@ -221,7 +234,15 @@ extends pyrocosm.Frontend:
     @volatile
     var purview: Purview = interface.purview.or(Purview())
 
-    def renderer: HtmlRenderer = HtmlRenderer(purview, served)
+    // Who the session's pages are read by: whoever last asked for one. A session of its own
+    // has one reader; a shared one says Pyrocosm's words in the language of the last to open
+    // it.
+    @caps.unsafe.untrackedCaptures
+    @volatile
+    var audience: Audience = Audience(language.lay(List[Text]())(List(_)))
+
+    def renderer: HtmlRenderer =
+      HtmlRenderer(purview, served, audience.locale(interface.language))
 
     def page: PyrocosmPage =
       val session: Optional[Text] = if shared.present then Unset else id
@@ -524,12 +545,18 @@ extends pyrocosm.Frontend:
 
   // An interface per page, from `open`, each with its own handler. Both are vouched pure, as
   // `run`'s handler is: they live as long as the frontend serves.
-  def serve(open: () => (Interface, Event => Unit)): Unit =
-    val open0: () -> (Interface, Event => Unit) = caps.unsafe.unsafeAssumePure(open)
+  def serve(open: () => (Interface, Event => Unit)): Unit = attend { (_: Audience) => open() }
 
-    val opener0: () -> (Interface, Event -> Unit) =
-      caps.unsafe.unsafeAssumePure: () =>
-        val pair = open0()
+  // The same, for an application whose matter is in several languages: `open` is told who the
+  // page is for, and gives an interface in the language of theirs it has (`Audience.language`),
+  // saying which (`Interface.language`) and which others there are (`Interface.languages`).
+  // A reader who chooses another is given another page, and so another session.
+  def attend(open: Audience => (Interface, Event => Unit)): Unit =
+    val open0: Audience -> (Interface, Event => Unit) = caps.unsafe.unsafeAssumePure(open)
+
+    val opener0: Audience -> (Interface, Event -> Unit) =
+      caps.unsafe.unsafeAssumePure: (audience: Audience) =>
+        val pair = open0(audience)
         (pair(0), caps.unsafe.unsafeAssumePure(pair(1)))
 
     opener = opener0
@@ -537,7 +564,9 @@ extends pyrocosm.Frontend:
 
   // The session a request is for: the shared one, the one its `session` parameter names, or,
   // for a page in per-page mode, a new one.
-  private def sessionFor(target: Text, fresh: Boolean): Optional[Session] =
+  private def sessionFor(target: Text, fresh: Boolean, audience: Audience = Audience())
+  :   Optional[Session] =
+
     val query: Text = target.cut(t"?").at(Sec).or(t"")
 
     val named: Optional[Text] =
@@ -548,7 +577,7 @@ extends pyrocosm.Frontend:
         val open0 = opener
 
         if fresh && open0 != null then
-          val (interface, handle) = open0()
+          val (interface, handle) = open0(audience)
           this.open(interface, handle)
         else
           Unset
@@ -582,9 +611,17 @@ extends pyrocosm.Frontend:
       // The page at a path: the session is told where it is before the page is rendered, so
       // that the first paint shows the right content, and the browser's own scroll to a
       // fragment finds its target.
+      def header(name: Text): Optional[Text] =
+        request.textHeaders.seek(_.key.lower == name).let(_.value)
+
+      def reader: Audience = audience(header(t"cookie"), header(t"accept-language"))
+
       def page(path: Text): Http.Response =
-        sessionFor(target, fresh = true).lay(unsessioned): session =>
-          session.adopt(request.textHeaders.seek(_.key.lower == t"cookie").let(_.value))
+        val reader0: Audience = reader
+
+        sessionFor(target, fresh = true, reader0).lay(unsessioned): session =>
+          session.audience = reader0
+          session.adopt(header(t"cookie"))
           session.locate(path)
           val html: Text = t"<!DOCTYPE html>${session.page.markup.show}"
 
@@ -626,7 +663,7 @@ extends pyrocosm.Frontend:
         case t"/config" =>
           Http.Ok
             ( List(Http.Header(t"content-type", t"text/html; charset=utf-8")),
-              Http.Body.Fixed(configuration.in[Data]) )
+              Http.Body.Fixed(configuration(reader).in[Data]) )
 
         case t"/socket" =>
           sessionFor(target, fresh = false).lay(unsessioned): session =>
