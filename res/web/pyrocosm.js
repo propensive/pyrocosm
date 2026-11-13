@@ -13,13 +13,25 @@
   function status(online) {
     indicator = indicator || document.getElementById("pyro-connection");
     if (!indicator) return;
-    indicator.textContent = online ? "connected" : "reconnecting";
+    indicator.textContent = phrase(online ? "connected" : "reconnecting");
     indicator.classList.toggle("pyro-online", online);
     indicator.classList.toggle("pyro-offline", !online);
   }
 
   function send(message) {
     if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  }
+
+  // The script's own words, which the page carries in the reader's language; a word the page
+  // does not have is said as it is named.
+  var phrases = null;
+
+  function phrase(name) {
+    if (!phrases) {
+      var meta = document.querySelector('meta[name="pyro-phrases"]');
+      try { phrases = meta ? JSON.parse(meta.content) : {}; } catch (error) { phrases = {}; }
+    }
+    return phrases[name] || name;
   }
 
   function sessionQuery() {
@@ -90,8 +102,7 @@
     document.documentElement.dataset.mode = mode;
     var button = document.getElementById("pyro-mode");
     if (!button) return;
-    var next = modes[(modes.indexOf(mode) + 1) % modes.length];
-    var label = mode.charAt(0).toUpperCase() + mode.substring(1) + " mode (click for " + next + ")";
+    var label = phrase(mode);
     button.title = label;
     button.setAttribute("aria-label", label);
   }
@@ -106,6 +117,19 @@
       var next = modes[(modes.indexOf(current) + 1) % modes.length];
       try { localStorage.setItem("pyro-mode", next); } catch (error) {}
       applyMode(next);
+    });
+  }
+
+  // The reader's language, of those the application has its matter in: kept for a year, for
+  // every tool of this origin, and the page asked for again, which opens it in the language.
+  function wireLanguage() {
+    var select = document.getElementById("pyro-language");
+    if (!select || select.dataset.pyroWired) return;
+    select.dataset.pyroWired = "1";
+    select.addEventListener("change", function () {
+      var kept = "; path=/; max-age=31536000; SameSite=Lax";
+      document.cookie = "pyro-language=" + select.value + kept;
+      location.reload();
     });
   }
 
@@ -1893,6 +1917,7 @@
 
   wire(document);
   wireMode();
+  wireLanguage();
   var first = document.querySelector(".pyro-editor");
   if (first) first.focus({ preventScroll: true });
   connect();

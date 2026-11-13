@@ -33,7 +33,9 @@ import webserverErrorPages.minimalErrorPage
 // its handler), and a ticker driving every live session a few times a second for as long as
 // the front-end runs, which is what notices a change the daemon made meanwhile. `stop` ends it
 // from another invocation, so the frontend is vouched pure. The port `0` means the hub's
-// origin, under `/<tool>/`, which `Tool.address` names.
+// origin, under `/<tool>/`, which `Tool.address` names. A tool whose matter is in several
+// languages opens its sessions with `attending`, which says who each is for; the `language`
+// setting is the one a reader has unless they choose another.
 object WebService:
   // One tab's session: its interface, its handler, and what the ticker does for it.
   case class Session(interface: Interface, handle: Event => Unit, tick: () => Unit = () => ())
@@ -46,6 +48,15 @@ object WebService:
     ( open: () -> Session )
   :   Tool.Web =
 
+    attending(port0, every, fallback) { (_: Audience) => open() }
+
+  def attending
+    ( port0:    Int                                           = 0,
+      every:    Duration                                      = 0.25*Second,
+      fallback: Http.Request -> Optional[Http.Response]       = _ => Unset )
+    ( open: Audience -> Session )
+  :   Tool.Web =
+
     new Tool.Web:
       def port: Int = port0
 
@@ -53,12 +64,20 @@ object WebService:
       @volatile
       private var frontend: Optional[WebFrontend] = Unset
 
-      def serve(port: Int)(using Monitor, Probate): Unit =
+      def serve(port: Int)(using Monitor, Probate): Unit = serve(port, _ => Unset)
+
+      override def serve(port: Int, settings: Text => Optional[Text])(using Monitor, Probate)
+      :   Unit =
+
+        val language: Optional[Text] =
+          settings(t"language").let: (code: Text) => if Tongue.valid(code) then code else Unset
+
         val serving: Atomic[Boolean] = Atomic(true)
         val live: juc.ConcurrentHashMap[Session, Boolean] = juc.ConcurrentHashMap()
 
         val running: WebFrontend =
-          scala.caps.unsafe.unsafeAssumePure(WebFrontend(port, fallback = fallback))
+          scala.caps.unsafe.unsafeAssumePure:
+            WebFrontend(port, fallback = fallback, language = language)
 
         frontend = running
 
@@ -68,8 +87,8 @@ object WebService:
               live.keySet.nn.forEach: session => session.nn.tick()
               snooze(every)
 
-          running.serve: () =>
-            val session: Session = open()
+          running.attend: (audience: Audience) =>
+            val session: Session = open(audience)
             live.put(session, true)
 
             // The handler lives as long as the session; vouched pure, as the frontend's are.

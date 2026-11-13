@@ -156,6 +156,18 @@ the reader's purview in a cookie (`pyro-purview`, read when a page is asked for,
 paint is right), shows it in the recto column, and on a toggle re-renders the panels under the
 new purview; the terminal renders under the purview it is given and shows the toggles as nothing.
 
+A reader has a language too. An `Interface` whose matter exists in several says which
+(`languages`, written as `fr` or `fr-CA`, the one it is written in first) and which it shows
+(`language`); the web then offers the choice in the menu bar, by each language's two letters,
+keeps it in a cookie for every tool of the origin (`pyro-language`), and asks for the page
+again. A page is opened for an `Audience`: the languages its reader would have, in order — the
+cookie's, then the `language` of the user's configuration, then the browser's
+`Accept-Language` — from which an application picks the one it has (`Audience.language`;
+`WebFrontend.attend`, `WebService.attending`). Pyrocosm's own words (`Phrases`) are a
+`Polyglot` each, in English, French and German, and are said in the nearest of those to the
+language shown: a regional variant reads as its language, and a language it has no words for
+as English. What an application shows is the application's to translate.
+
 `Hints` is an open, typed bag. Three vocabularies live in the model so an application can attach
 any of them without touching a renderer: `pyrocosm.hints.*` (medium-neutral: `Proportion`,
 `Minimum`, `Beside`, `Below`, `Compact`, `Follow`), `hints.terminal.*` (`Occupancy`, `Border`,
@@ -343,7 +355,9 @@ established: a setting's camelCase name is a kebab-case keyword, a bare keyword 
 `true`, and a repeated keyword's atoms join with `:`. Two keywords `Tool` reads itself, for a
 tool with a web front-end: `port`, and a bare `serve`, which launches the front-end when the
 daemon starts (that is, on the first real invocation, under the daemon's own monitor, so it
-outlives the client that happened to start it) and keeps it until `quit`.
+outlives the client that happened to start it) and keeps it until `quit`. One setting is the
+user's rather than a tool's, and is read last of all from `$XDG_CONFIG_HOME/pyrocosm/config.tel`,
+which every tool shares: `language`, the language the user reads in.
 
 The version is not a constant in the code, where it drifts, but a `META-INF/pyrocosm/<name>/
 version` resource the tool's build writes: the version a release or snapshot is published as,

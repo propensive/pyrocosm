@@ -95,11 +95,20 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
         val target: Text = request0.target
         val path: Text = target.cut(t"?").at(Prim).or(t"/")
 
+        // Who is reading: the language their cookie keeps, then those their browser asks for.
+        def header(name: Text): Optional[Text] =
+          request0.textHeaders.seek(_.key.lower == name).let(_.value)
+
+        def reader: Audience =
+          Audience
+            ( header(t"cookie").let(Tongue.kept(_)).lay(List[Text]())(List(_)) +
+              header(t"accept-language").lay(List[Text]())(Tongue.accepted(_)) )
+
         path match
           case t"/" | t"/index.html" =>
             Http.Ok
               ( List(Http.Header(t"content-type", t"text/html; charset=utf-8")),
-                Http.Body.Fixed(landing.in[Data]) )
+                Http.Body.Fixed(landing(reader).in[Data]) )
 
           case t"/pyrocosm.css" =>
             Http.Ok
@@ -192,7 +201,9 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
 
   // The page at `/`: the tools serving a front-end on this machine, each a link to its path
   // under this origin, and those on other machines, each a link to where it is.
-  private def landing: Text =
+  private def landing(audience: Audience): Text =
+    given locale: Locale[Tongue.Chrome] = audience.locale()
+
     val adverts: List[Advert] = hub.nodes().filter(_.node.tool != Wire.tool)
     val local: List[Advert] = adverts.filter(_.node.shares(hub.node))
     val remote: List[Advert] = adverts.filter(!_.node.shares(hub.node))
@@ -214,13 +225,13 @@ class Portal(hub: Hub, port: Int, theme: WebTheme = WebTheme.default)
     val page: Html of "html" =
       Html
         ( Head(Title(t"Pyrocosm"), Link.Stylesheet(href = t"/pyrocosm.css")),
-          Body
+          Body(lang = Tongue.code(locale))
             ( Nav(`class` = List(TopMenu.menuClass, HtmlRenderer.cls(t"pyro-menubar")))
                 ( Div(`class` = HtmlRenderer.cls(t"pyro-menubar-inner"))
                     ( A(href = t"/", `class` = HtmlRenderer.cls(t"pyro-wordmark"))(t"Pyrocosm") ) ),
               Main
-                ( H1(t"Pyrocosm on ${hub.node.machine}"),
-                  listing(t"Tools on this machine", here),
-                  listing(t"Tools on other machines", elsewhere) ) ) )
+                ( H1(Phrases.on(hub.node.machine)()),
+                  listing(Phrases.toolsHere(), here),
+                  listing(Phrases.toolsElsewhere(), elsewhere) ) ) )
 
     t"<!DOCTYPE html>${page.show}"
