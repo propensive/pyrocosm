@@ -35,7 +35,7 @@ import codepages.utf8Codepage
 import dysasymptotics.linearAccess
 import formatting.{compactJsonFormatting, compactCssFormatting}
 import logging.silentLogging
-import perihelion.{Channel, Message}
+import perihelion.Websocket.{Channel, Message}
 import strategies.throwUnsafely
 
 // The messages the frontend and its script exchange as JSON. Flat case classes, so the shape is

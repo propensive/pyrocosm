@@ -22,7 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import soundness.{Token as _, *}
+import soundness.*
 
 import dysasymptotics.{linearAccess, linearSize}
 

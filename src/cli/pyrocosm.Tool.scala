@@ -361,7 +361,7 @@ object Tool:
     sections.map: facts =>
       val grid: Grid[Teletype] = scaffold.tabulate(facts).grid(width)
 
-      val rows: List[TableSection[Teletype]] = grid.sections match
+      val rows: List[Table.Section[Teletype]] = grid.sections match
         case _ :: rows => rows
         case _         => Nil
 
@@ -545,7 +545,7 @@ object Tool:
 
             case Tool.ui.Swarm() :: Tool.ui.Log() :: _ =>
               val follow: Boolean = Tool.flagPresent(Tool.ui.Follow)
-              val level: Level = Swarming.level(Tool.settingValue(Tool.ui.Threshold))
+              val level: Log.Level = Swarming.level(Tool.settingValue(Tool.ui.Threshold))
               execute(tool.swarmLog(follow, level))
 
             case Tool.ui.Swarm() :: _ =>
@@ -1173,7 +1173,7 @@ object Tool:
           Out.println(t"Usage: ${tool.name} swarm revoke <name>")
           Tool.UsageError
 
-    private def swarmLog(follow: Boolean, level: Level)
+    private def swarmLog(follow: Boolean, level: Log.Level)
       ( using invocation: Invocation, resident: Resident, monitor: Monitor )
     :   Exit =
 

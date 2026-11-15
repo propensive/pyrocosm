@@ -22,12 +22,11 @@
                                                                                                   */
 package pyrocosm
 
-// Excluded from the umbrella: `Control` (coaxial), `Figure` (savagery), `Glyph` (phoenicia),
-// `Language` (cosmopolite), `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin), which
-// would outrank this package's own definitions, since a wildcard import beats a package member
-// declared in another file.
-import soundness.{Control as _, Figure as _, Filter as _, Glyph as _, Language as _, Origin as _,
-  Standing as _, Status as _, Step as _, Token as _, Tool as _, *}
+// Excluded from the umbrella: `Channel` (anticipation), `Control` (coaxial), `Glyph` (phoenicia),
+// `Language` (cosmopolite) and `Published` (galilei), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Channel as _, Control as _, Filter as _, Glyph as _, Language as _, Origin as _,
+  Published as _, Status as _, *}
 
 import codepages.utf8Codepage
 import discriminables.jsonByKindDiscriminable
@@ -832,7 +831,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     test(m"a compiler notice exhibits as a diagnostic with an excerpt"):
       val notice =
-        anthology.Notice
+        anthology.Compiler.Notice
           ( anthology.Importance.Error, t"Foo.scala", t"Not found: x", Span.line(1.z, 4.z, 1) )
 
       val diagnostic = Notices.diagnostic(notice, Notices.lines(t"val a = 1\nval b = x\nval c = 3"))

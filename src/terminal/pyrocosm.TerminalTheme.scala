@@ -22,9 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-// Excluded from the umbrella: `Token` (harlequin), which would outrank this package's own
-// definitions, since a wildcard import beats a package member declared in another file.
-import soundness.{Token as _, *}
+import soundness.*
 
 object TerminalTheme:
   given default: TerminalTheme = Solarized

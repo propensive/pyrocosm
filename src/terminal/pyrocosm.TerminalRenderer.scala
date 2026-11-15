@@ -22,10 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-// Excluded from the umbrella: `Standing` (ultimatum), `Step` (ultimatum), `Token` (harlequin),
-// which would outrank this package's own definitions, since a wildcard import beats a package
-// member declared in another file.
-import soundness.{Standing as _, Step as _, Token as _, *}
+import soundness.*
 
 import columnAttenuation.ignoreAttenuation
 import dysasymptotics.{linearAccess, linearSize}
@@ -47,9 +44,9 @@ object TerminalRenderer:
   // The braille ring: six dots with a two-dot gap chasing round the cell, eight frames. The
   // same design as Ultimatum's `brailleRingSpinner`, added there alongside this and defined
   // here until the release carrying it; the ASCII line is its fallback.
-  private[pyrocosm] def ring(using Gauging): Fraction is Gaugeable =
-    val ascii = ultimatum.Spinner.each(t"-\\|/", 130, Gaugeable.Glyphs.Ascii)
-    ultimatum.Spinner.each(t"⣸⢹⠻⠟⡏⣇⣦⣴", 80, Gaugeable.Glyphs.Unicode, ascii).gaugeable
+  private[pyrocosm] def ring(using Gauging): Tui.Fraction is Gaugeable =
+    val ascii = ultimatum.Tui.Spinner.each(t"-\\|/", 130, Gaugeable.Glyphs.Ascii)
+    ultimatum.Tui.Spinner.each(t"⣸⢹⠻⠟⡏⣇⣦⣴", 80, Gaugeable.Glyphs.Unicode, ascii).gaugeable
 
   // The columnars fume's tables use: `Stretch` absorbs the spare width so a table spans the
   // line; `Rigid` never shrinks, so figures never wrap.
@@ -114,7 +111,7 @@ class TerminalRenderer
     val purview: Purview       = Purview() )
   ( using metric:      Text is Measurable,
           hyphenation: Hyphenation,
-          tableStyle:  TableStyle,
+          tableStyle:  Table.Style,
           gauging:     Gauging,
           glyphs:      Gaugeable.Glyphs ):
 
@@ -124,7 +121,7 @@ class TerminalRenderer
   // The table machinery's evidence, for a `TableCache` rendering through this renderer.
   val measurable: Text is Measurable = metric
   val hyphenating: Hyphenation = hyphenation
-  val tabling: TableStyle = tableStyle
+  val tabling: Table.Style = tableStyle
 
   private def tint(chroma: Chroma)(text: Teletype): Teletype = e"${Fg(chroma)}($text)"
   private def toned(tone: Tone)(text: Teletype): Teletype = tint(theme.tone(tone))(text)
@@ -186,7 +183,10 @@ class TerminalRenderer
 
   // The lines of a run of blocks, one blank line between blocks.
   def blocks
-    ( blocks: List[Block], width: Int, tick: Tick = Tick.zero, selected: Optional[Action] = Unset )
+    ( blocks:   List[Block],
+      width:    Int,
+      tick:     Tui.Tick         = Tui.Tick.zero,
+      selected: Optional[Action] = Unset )
   :   List[Teletype] =
 
     val rendered: List[List[Teletype]] =
@@ -256,7 +256,11 @@ class TerminalRenderer
 
       graphicalTeletype[Raster](using cropped).teletype(raster).cut(t"\n").filter(_.length > 0)
 
-  def block(block: Block, width: Int, tick: Tick = Tick.zero, selected: Optional[Action] = Unset)
+  def block
+    ( block:    Block,
+      width:    Int,
+      tick:     Tui.Tick         = Tui.Tick.zero,
+      selected: Optional[Action] = Unset )
   :   List[Teletype] =
 
     block match
@@ -793,8 +797,8 @@ class TerminalRenderer
             Column(blank)(location),
             Column(blank, sizing = columnar.Collapsible(0.5))(code) )
 
-      given style: TableStyle =
-        TableStyle
+      given style: Table.Style =
+        Table.Style
           ( padding    = 0,
             topLine    = Unset,
             bottomLine = Unset,
@@ -845,61 +849,62 @@ class TerminalRenderer
             val prefix = if index.n0 == 0 then label(series0) else Teletype(t" "*(labelWidth + 2))
             prefix.append(bar).append(faint(Teletype(t" ${figure(value)}")))
 
-  private def gauge(status: Status, caption: Optional[List[Inline]], width: Int, tick: Tick)
+  private def gauge(status: Status, caption: Optional[List[Inline]], width: Int, tick: Tui.Tick)
   :   List[Teletype] =
 
     val text: Optional[Text] = caption.let(Inline.plain(_))
 
     inline def line[status: Gaugeable](value: status): List[Teletype] =
       text.lay(List(gaugeLine(value, width, tick))): caption =>
-        List(gaugeLine(Captioned(value, caption), width, tick))
+        List(gaugeLine(Tui.Captioned(value, caption), width, tick))
 
-    // A bar fills its row, caption and all. Ultimatum's `Captioned` holds the bar to its design's
-    // preferred width, so the caption is laid out here instead, the bar taking what it leaves.
+    // A bar fills its row, caption and all. Ultimatum's `Tui.Captioned` holds the bar to its
+    // design's preferred width, so the caption is laid out here instead, the bar taking what it
+    // leaves.
     inline def filled[status: Gaugeable](value: status): List[Teletype] =
       text.lay(List(gaugeLine(value, width, tick))): caption =>
-        val layout = summon[CaptionLayout]
+        val layout = summon[Tui.CaptionLayout]
         val room = layout.gaugeWidth(width, caption, width, gauging)
         List(layout.compose(gaugeLine(value, room, tick), room, caption, width, gauging))
 
     // Progress of unknown extent is a one-character spinner beside its caption, not a bar
     // sweeping the width: there is no extent to show. Ultimatum's spinners are designs for a
-    // `Fraction` that animate on the tick's frame.
+    // `Tui.Fraction` that animate on the tick's frame.
     def spinner: List[Teletype] =
-      val mark = gaugeLine(Fraction(0.0), 1, tick)(using TerminalRenderer.ring)
+      val mark = gaugeLine(Tui.Fraction(0.0), 1, tick)(using TerminalRenderer.ring)
       List(text.lay(mark) { caption => e"$mark ${caption}" })
 
     status match
-      case Status.Fraction(value)        => filled(Fraction(value))
+      case Status.Fraction(value)        => filled(Tui.Fraction(value))
       case Status.Indeterminate()        => spinner
-      case Status.Reckoning(done, total) => filled(Reckoning(done, total))
+      case Status.Reckoning(done, total) => filled(Tui.Reckoning(done, total))
       case Status.Elapsed(seconds)       => line(Duration((seconds*1000).toLong))
-      case Status.Remaining(seconds)     => line(Countdown(Duration((seconds*1000).toLong)))
+      case Status.Remaining(seconds)     => line(Tui.Countdown(Duration((seconds*1000).toLong)))
 
       case Status.Standing(standing) =>
         val mapped = standing match
-          case Standing.Pending   => ultimatum.Standing.Pending
-          case Standing.Running   => ultimatum.Standing.Running
-          case Standing.Succeeded => ultimatum.Standing.Succeeded
-          case Standing.Failed    => ultimatum.Standing.Failed
-          case Standing.Warned    => ultimatum.Standing.Warned
-          case Standing.Skipped   => ultimatum.Standing.Skipped
+          case Standing.Pending   => ultimatum.Tui.Standing.Pending
+          case Standing.Running   => ultimatum.Tui.Standing.Running
+          case Standing.Succeeded => ultimatum.Tui.Standing.Succeeded
+          case Standing.Failed    => ultimatum.Tui.Standing.Failed
+          case Standing.Warned    => ultimatum.Tui.Standing.Warned
+          case Standing.Skipped   => ultimatum.Tui.Standing.Skipped
 
         val mark = gaugeLine(mapped, 1, tick)
         List(text.lay(mark) { caption => e"$mark ${caption}" })
 
       case Status.Steps(steps) =>
-        val mapped: Sequence[ultimatum.Step] =
+        val mapped: Sequence[ultimatum.Tui.Step] =
           steps.map: (step: Step) =>
             val standing = step.standing match
-              case Standing.Pending   => ultimatum.Standing.Pending
-              case Standing.Running   => ultimatum.Standing.Running
-              case Standing.Succeeded => ultimatum.Standing.Succeeded
-              case Standing.Failed    => ultimatum.Standing.Failed
-              case Standing.Warned    => ultimatum.Standing.Warned
-              case Standing.Skipped   => ultimatum.Standing.Skipped
+              case Standing.Pending   => ultimatum.Tui.Standing.Pending
+              case Standing.Running   => ultimatum.Tui.Standing.Running
+              case Standing.Succeeded => ultimatum.Tui.Standing.Succeeded
+              case Standing.Failed    => ultimatum.Tui.Standing.Failed
+              case Standing.Warned    => ultimatum.Tui.Standing.Warned
+              case Standing.Skipped   => ultimatum.Tui.Standing.Skipped
 
-            ultimatum.Step(Inline.plain(step.name), standing, step.detail.let(Inline.plain(_)))
+            ultimatum.Tui.Step(Inline.plain(step.name), standing, step.detail.let(Inline.plain(_)))
 
           . to[Sequence]
 

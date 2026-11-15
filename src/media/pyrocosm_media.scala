@@ -22,10 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-// Excluded from the umbrella: `Figure` (savagery), which would
-// outrank this package's own definitions, since a wildcard import beats a package member
-// declared in another file.
-import soundness.{Figure as _, *}
+import soundness.*
 
 import monotonous.alphabets.base64Standard
 

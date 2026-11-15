@@ -22,7 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import soundness.*
+// Excluded from the umbrella: `Channel` (anticipation), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Channel as _, *}
 
 // A run of blocks as a record, since a BinTEL document's root is one; its codecs and schema are
 // derived here, apart from the suite, whose class the inlined derivations would make too large.
