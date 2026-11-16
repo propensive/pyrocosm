@@ -725,7 +725,9 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           delta.connect(a)
           await(50)(delta.connected(t"a"))
 
-          await(50):
+          // Seven nodes across three hubs take the longest of anything here to agree, and longer
+          // than ten seconds on a slow CI runner; the wait ends as soon as they do.
+          await(150):
             alpha.nodes().size == 7 && beta.nodes().size == 7 && gamma.nodes().size == 7 &&
               delta.nodes().size == 7
 
