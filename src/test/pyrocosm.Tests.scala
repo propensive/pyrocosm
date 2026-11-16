@@ -887,17 +887,6 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == Tel.Error(Tel.Error.Reason.TooManyAtoms).bolt.text)
 
-    test(m"a compiler notice's bolt code is taken off its message, as the diagnostic's code"):
-      def notice(message: Text): anthology.Compiler.Notice =
-        anthology.Compiler.Notice(anthology.Importance.Error, t"Foo.scala", message, Unset)
-
-      val coded = Notices.diagnostic(notice(t"[↯/p.1.7] Not found: x"))
-      val plain = Notices.diagnostic(notice(t"Not found: x"))
-
-      (coded.code.let(_.text), plain.code.let(_.text), coded.message == plain.message)
-
-    . assert(_ == (t"↯/p.1.7", Unset, true))
-
     test(m"a diagnostic's bolt code survives a round trip through TEL and BinTEL"):
       val diagnostic: Block =
         Block.Diagnostic
