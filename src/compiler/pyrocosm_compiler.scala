@@ -22,10 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-// Excluded from the umbrella: `Language` (cosmopolite), `Token` (harlequin), which would outrank
-// this package's own definitions, since a wildcard import beats a package member declared in
-// another file.
-import soundness.{Language as _, Token as _, *}
+// Excluded from the umbrella: `Language` (cosmopolite), which would outrank this package's own
+// definitions, since a wildcard import beats a package member declared in another file.
+import soundness.{Language as _, *}
 
 import dysasymptotics.linearSize
 
@@ -40,12 +39,12 @@ import dysasymptotics.linearSize
 // companion; they are named, at package level, for import by name.
 
 // harlequin's accents and roles are the model's, case for case.
-extension (token: harlequin.Token)
+extension (token: harlequin.SourceCode.Token)
   def model: Token =
     val accent = Token.Accent.valueOf(token.accent.toString)
 
     val role: Optional[Token.Role] =
-      token.role.let: (role: harlequin.Role) => Token.Role.valueOf(role.toString)
+      token.role.let: (role: harlequin.SourceCode.Token.Role) => Token.Role.valueOf(role.toString)
 
     Token(token.text, accent, role)
 
@@ -62,7 +61,7 @@ extension (code: SourceCode)
   // would show a string being typed in another colour until its closing quote.
   def modelLines: List[Block.Line] =
     val lines: List[List[Token]] =
-      code.lines.to[List].map: (line: List[harlequin.Token]) => line.map(_.model)
+      code.lines.to[List].map: (line: List[harlequin.SourceCode.Token]) => line.map(_.model)
 
     val joined: List[Token] = lines.indexed.bind: (line: List[Token], index: Ordinal) =>
       if index.n0 == 0 then line else Token.plain(t"\n") :: line
@@ -147,7 +146,7 @@ object Notices:
   def stripAnsi(text: Text): Text = text.sub(r"\e\[[0-9;]*m", t"")
 
   // The compiler's own summary ("3 warnings found") is no diagnostic.
-  def summary(notice: anthology.Notice): Boolean =
+  def summary(notice: anthology.Compiler.Notice): Boolean =
     r"[0-9]+ (warnings?|errors?) found".matches(notice.message.trim)
 
   // Every notice of a run as a diagnostic, the lines of each file highlighted once for the
@@ -156,7 +155,7 @@ object Notices:
   // answer both. The run's summaries and its informational notices are left out, as a tool
   // reports problems, and a file is named relative to `root` when it is beneath it.
   def diagnostics
-    ( notices: List[anthology.Notice],
+    ( notices: List[anthology.Compiler.Notice],
       sources: Text => Optional[Text],
       root:    Optional[Text]          = Unset,
       context: Int                     = 1 )
@@ -171,7 +170,7 @@ object Notices:
     def relative(file: Text): Text = root.lay(file): root =>
       if file.starts(t"$root/") then file.skip(root.length + 1) else file
 
-    def reported(notice: anthology.Notice): Boolean =
+    def reported(notice: anthology.Compiler.Notice): Boolean =
       notice.importance != anthology.Importance.Info && !summary(notice)
 
     notices.filter(reported(_)).map: notice =>
@@ -186,7 +185,7 @@ object Notices:
   // `types` renders a type marker's text: by default the compiler's own, which a caller with
   // stenography replaces by the abbreviated form.
   def diagnostic
-    ( notice:  anthology.Notice,
+    ( notice:  anthology.Compiler.Notice,
       lines:   List[Block.Line]    = Nil,
       context: Int                 = 1,
       types:   Markup.Typed => Text = _.plain )
@@ -197,9 +196,14 @@ object Notices:
       else notice.span.lay(Block.Location(notice.file)): (span: Span) =>
         Block.Location.of(notice.file, span)
 
+    // Proscala begins a message with its bolt code, `[↯/p.1.7] …`, which is taken off the
+    // message and given as the diagnostic's code.
+    val plain: Text = stripAnsi(notice.message).trim
+    val (code, length) = fulminate.Bolt.prefix(plain)
+
     val message: List[Block] =
       notice.markup.let(SemanticMessage.parse(_))
-      . lay(paragraphs(stripAnsi(notice.message).trim)): message => blocks(message.markup, types)
+      . lay(paragraphs(plain.skip(length))): message => blocks(message.markup, types)
 
     val excerpt: List[Block] =
       if lines.nil then Nil else
@@ -207,7 +211,9 @@ object Notices:
           Block.Note.of(span, style(notice.importance)).lay(Nil): (note: Block.Note) =>
             List(Block.Code.excerpt(Language.Scala, lines, List(note), context))
 
-    Block.Diagnostic(tone(notice.importance), location, message, excerpt)
+    val bolt: Optional[fulminate.Bolt] = if code.coded then code else Unset
+
+    Block.Diagnostic(tone(notice.importance), location, message, excerpt, code = bolt)
 
   // Runs of phrasing become one paragraph, broken at the message's own newlines; a code sample
   // with a newline in it becomes a code block between paragraphs.
@@ -295,7 +301,7 @@ object Notices:
 
     case _ => List(Inline.Textual(line))
 
-given noticePresentable: anthology.Notice is Presentable in Block = Notices.diagnostic(_)
+given noticePresentable: anthology.Compiler.Notice is Presentable in Block = Notices.diagnostic(_)
 
 given bytecodePresentable: mandible.Bytecode is Presentable in Block = Bytecodes.table(_)
 given tastyTreePresentable: hyperbole.Tasty.Tree is Presentable in Block =

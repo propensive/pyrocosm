@@ -56,7 +56,9 @@ object Runtimes:
 
   // The entries as the loaders name them — `loader`'s URLs, then its parents', since a
   // launcher may load a tool's libraries through a child of the loader it was given — and
-  // then `java.class.path`, in their order, each once.
+  // then `java.class.path`, in their order, each once. An entry of `java.class.path` is made
+  // absolute, as a loader's URLs are, since a JVM started with `-cp out.jar` names it relative to
+  // a directory which a process this one starts need not share.
   def classpath(loader: ClassLoader = Thread.currentThread.nn.getContextClassLoader.nn)
   :   List[Text] =
 
@@ -74,7 +76,8 @@ object Runtimes:
 
     val system: List[Text] =
       property("java.class.path").lay(Nil): path =>
-        path.cut(ji.File.pathSeparator.nn.tt).filter(_ != t"")
+        path.cut(ji.File.pathSeparator.nn.tt).filter(_ != t"").map: entry =>
+          ji.File(entry.s).getAbsolutePath.nn.tt
 
     List.from((urls(loader).stdlib ++ system.stdlib).distinct)
 

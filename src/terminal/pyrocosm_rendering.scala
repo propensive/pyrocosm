@@ -29,6 +29,6 @@ import soundness.*
 // every tool draws alike; the gauge palette comes from the terminal theme in scope, so that a
 // gauge is in the theme's colours.
 object standardRendering:
-  given tableStyle: TableStyle = tableStyles.thickTableStyle
+  given tableStyle: Table.Style = tableStyles.thickTableStyle
   given metric: Char is Measurable = textMetrics.uniformMetric
   given gaugePalette: (theme: TerminalTheme) => GaugePalette = theme.gaugePalette

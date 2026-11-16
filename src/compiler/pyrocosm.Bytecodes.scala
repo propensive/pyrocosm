@@ -22,7 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import soundness.{Language as _, Token as _, *}
+import soundness.{Language as _, *}
 
 import mandible.Bytecode
 

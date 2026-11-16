@@ -22,7 +22,7 @@
                                                                                                   */
 package pyrocosm
 
-import soundness.{Service as _, Standing as _, Status as _, Step as _, *}
+import soundness.{Channel as _, Service as _, Status as _, *}
 
 import Journal.{Event, Party}
 import codepages.utf8Codepage
@@ -30,7 +30,8 @@ import denominative.dysasymptotics.linearSize
 import httpBackends.javaNetHttp
 import internetAccess.online
 import logging.silentLogging
-import perihelion.{Message, wsClient, wsSessional}
+import perihelion.{wsClient, wsSessional}
+import perihelion.Websocket.Message
 import probates.cancelProbate
 import proscenium.List
 import strategies.throwUnsafely
@@ -509,13 +510,14 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
       . assert(_ == (List(jar.toString.tt, directory.toString.tt), 1))
 
-      test(m"the hub's classpath ends with the JVM's own"):
+      test(m"the hub's classpath ends with the JVM's own, made absolute"):
         val path: String = java.lang.System.getProperty("java.class.path").nn
 
         val parts = path.split(java.io.File.pathSeparator).nn
 
         val entries: scala.List[Text] =
-          scala.collection.immutable.ArraySeq.unsafeWrapArray(parts).toList.map(_.nn.tt)
+          scala.collection.immutable.ArraySeq.unsafeWrapArray(parts).toList.map: entry =>
+            java.io.File(entry.nn).getAbsolutePath.nn.tt
 
         val system: List[Text] = List(entries*)
 
@@ -1100,16 +1102,16 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
     suite(m"The journal"):
       test(m"entries are returned oldest first, after the one asked for"):
         val journal: Journal = Journal(10)
-        journal.record(Level.Info, moment, m"one")
-        journal.record(Level.Info, moment, m"two")
-        journal.record(Level.Info, moment, m"three")
+        journal.record(Log.Level.Info, moment, m"one")
+        journal.record(Log.Level.Info, moment, m"two")
+        journal.record(Log.Level.Info, moment, m"three")
         (journal.latest, journal.since(1L).stdlib.map(_.message.text))
 
       . assert(_ == (3L, scala.List(t"two", t"three")))
 
       test(m"only the newest entries are kept, and their numbers are not reused"):
         val journal: Journal = Journal(5)
-        (1 to 12).foreach: index => journal.record(Level.Info, moment, m"entry $index")
+        (1 to 12).foreach: index => journal.record(Log.Level.Info, moment, m"entry $index")
         val held = journal.since(0L).stdlib
         (held.map(_.sequence), held.head.message.text)
 
@@ -1117,10 +1119,10 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
       test(m"entries below a level are left out"):
         val journal: Journal = Journal(10)
-        journal.record(Level.Fine, moment, m"detail")
-        journal.record(Level.Warn, moment, m"trouble")
-        journal.record(Level.Info, moment, m"news")
-        journal.since(0L, Level.Info).stdlib.map(_.message.text)
+        journal.record(Log.Level.Fine, moment, m"detail")
+        journal.record(Log.Level.Warn, moment, m"trouble")
+        journal.record(Log.Level.Info, moment, m"news")
+        journal.since(0L, Log.Level.Info).stdlib.map(_.message.text)
 
       . assert(_ == scala.List(t"trouble", t"news"))
 
@@ -1135,7 +1137,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
         val carry: Event = Event.Received(Wire.carry(envelope(Bus.Event.Left(node))), laptop)
         (beat.level, carry.level, Event.Lost(laptop, 3.0*Second).level, Event.Appeared(node).level)
 
-      . assert(_ == (Level.Fine, Level.Fine, Level.Warn, Level.Info))
+      . assert(_ == (Log.Level.Fine, Log.Level.Fine, Log.Level.Warn, Log.Level.Info))
 
       test(m"a carried event is told by its kind and number"):
         val ended: Wire = Wire.carry(envelope(Bus.Event.Ended(node, t"run-1")))

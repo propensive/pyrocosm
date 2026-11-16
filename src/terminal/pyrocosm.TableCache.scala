@@ -46,7 +46,7 @@ class TableCache
 
   private given Text is Measurable = renderer.measurable
   private given Hyphenation = renderer.hyphenating
-  private given TableStyle = renderer.tabling
+  private given Table.Style = renderer.tabling
 
   private val scaffold: Scaffold[Block.Row, Teletype] = renderer.scaffold(columns)
   private val count: Int = columns.size

@@ -75,7 +75,8 @@ object Invitation:
       case Reason.Unwritable => m"the machine it invites to could not be recorded"
 
   case class Error(reason: Error.Reason)(using Diagnostics)
-  extends fulminate.Error(6041, reason.number)(m"the invitation was not accepted because $reason")
+  extends fulminate.Error(m"the invitation was not accepted because $reason"):
+    override def bolt: fulminate.Bolt = Bolts(Bolts.remote, 2, reason.number)
 
 // An invitation to connect to a machine: everything a tool on another machine needs to reach
 // this one and be let in, written as one word to be copied from one to the other. It names the

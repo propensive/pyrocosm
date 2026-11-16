@@ -170,7 +170,7 @@ object Hubs:
     var mark: Long = 0L
 
     while true do
-      Journal.daemon.since(mark, Level.Info).each: entry =>
+      Journal.daemon.since(mark, Log.Level.Info).each: entry =>
         mark = entry.sequence
         java.lang.System.out.nn.println(Journal.render(entry).s)
 

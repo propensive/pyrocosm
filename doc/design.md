@@ -124,7 +124,7 @@ targets; a `Row` may have one too), `Listing` (items may carry an `Action` or a 
 (lines of tokens, `Note` marks — a segment, across lines if need be, or a zero-width *caret* at a
 position, each with a style and a caption of phrasing — and `start`, the source line number of
 the first line, which numbers the lines), `Diagnostic` (a tone, a `Location`, a message, an
-excerpt and detail: what a compiler, a linter or a TEL reader reports), `Table` (columns with escritoire-style
+excerpt, detail and a bolt code: what a compiler, a linter or a TEL reader reports), `Table` (columns with escritoire-style
 `Sizing`; rows may carry a `Tone` and an `Action`, which is how master/detail is built),
 `Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Tree` (whose nodes may be collapsible, `open`), `Graph(vertices, edges)`,
 `Chart` (sparkline, bars, histogram only), `Gauge(status, caption)`, `Trace` (an exception's
@@ -786,6 +786,15 @@ The conventions the tools share, decided 2026-11-02:
   `NoUpgrade`, `UpgradeFailed`, `NoMachine`, `RemoteFailed`, `NoWeb`, `NotServing`,
   `Unimplemented`, `NoCredential`); a tool's own are `32`–`99`; `130` is a command the user
   interrupted.
+- **Error codes.** Every error and diagnostic is named by a bolt code, the scheme of all of
+  Propensive's projects: `↯/f.<subdivision>.<error>[.<variant>]` for Pyrocosm's and its tools',
+  where each module of Pyrocosm (`Bolts.harness` 1 to `Bolts.cli` 14), then of each tool, is a
+  subdivision, in the order of their dependencies. `fulminate.Error#bolt` gives an error's code,
+  and `Block.Diagnostic#code` a diagnostic's, which the renderers show after its severity
+  (`error [↯/f.8.1.3]`); a compiler notice's comes from Proscala, which writes it before the
+  message, and a TEL error's from Soundness. A code carrying another names the error reported
+  on account of it: a failed ping, `↯/f.10.1/f.8.1.3`. The registry of what every code means is
+  `f.tel` in propensive/bolt.
 - **Width.** `COLUMNS` in the invocation's environment, else the terminal's own report, else
   100; never more than 160.
 - **Durations.** One grammar, `<number>[ms|s|m|h|d]`, decimals allowed, a bare number being

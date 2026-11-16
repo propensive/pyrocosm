@@ -61,11 +61,11 @@ object Notes:
     safely(notes.toplevel()).let(Notes(_))
 
   object Error:
-    enum Reason:
-      case BadRef(refspec: Text)
-      case GitFailed(exit: Int, stderr: Text)
-      case Undecodable(kind: Text, fingerprint: Fingerprint)
-      case Diverged(remote: Text)
+    enum Reason(val number: Int):
+      case BadRef(refspec: Text)                             extends Reason(1)
+      case GitFailed(exit: Int, stderr: Text)                extends Reason(2)
+      case Undecodable(kind: Text, fingerprint: Fingerprint) extends Reason(3)
+      case Diverged(remote: Text)                            extends Reason(4)
 
     given communicable: Reason is Communicable =
       case Reason.BadRef(refspec)         => m"$refspec does not name a commit"
@@ -78,7 +78,8 @@ object Notes:
         m"the notes on $remote have diverged from the local notes"
 
   case class Error(reason: Error.Reason)(using Diagnostics)
-  extends fulminate.Error(m"the notes operation failed because $reason")
+  extends fulminate.Error(m"the notes operation failed because $reason"):
+    override def bolt: fulminate.Bolt = Bolts(Bolts.notes, 1, reason.number)
 
 class Notes(root: Text):
   import Notes.Error.Reason.*

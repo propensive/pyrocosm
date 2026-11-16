@@ -451,9 +451,9 @@ class HtmlRenderer
       Aside(`class` = List(cls(t"pyro-notice"), toneClass(tone)))
         ( Html.Fragment[Flow](heading, blocks(content)) )
 
-    // A diagnostic is an article in its tone: a header naming the place and the severity, the
-    // message, the excerpt and whatever follows.
-    case Block.Diagnostic(tone, location, message, excerpt, detail) =>
+    // A diagnostic is an article in its tone: a header naming the place, the severity and the
+    // code, the message, the excerpt and whatever follows.
+    case Block.Diagnostic(tone, location, message, excerpt, detail, code) =>
       val glyph: Glyph = tone match
         case Tone.Failure => Glyph.Cross
         case Tone.Warning => Glyph.Warning
@@ -471,6 +471,10 @@ class HtmlRenderer
         location.lay(Html.Fragment[Phrasing]()): (location: Block.Location) =>
           Code(`class` = cls(t"pyro-location"))(location.text)
 
+      val coded: Html of Phrasing =
+        code.lay(Html.Fragment[Phrasing]()): (code: fulminate.Bolt) =>
+          Code(`class` = cls(t"pyro-code"))(code.text)
+
       val rest: Html of Flow =
         if detail.nil then Html.Fragment[Flow]()
         else Div(`class` = cls(t"pyro-detail"))(blocks(detail))
@@ -479,7 +483,8 @@ class HtmlRenderer
         ( Header
             ( Span(`class` = cls(t"pyro-glyph"))(glyphText(glyph)),
               where,
-              Span(`class` = cls(t"pyro-severity"))(severity) ),
+              Span(`class` = cls(t"pyro-severity"))(severity),
+              coded ),
           Div(`class` = cls(t"pyro-message"))(blocks(message)),
           blocks(excerpt),
           rest )

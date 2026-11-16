@@ -24,11 +24,10 @@ package pyrocosm
 
 import scala.caps
 
-// Excluded from the umbrella: `Control` (coaxial), `Glyph` (phoenicia), `Language` (cosmopolite),
-// `Standing` (ultimatum), `Status` (exoskeleton), `Step` (ultimatum), `Token` (harlequin) and
-// `Tool` (anthology), which would outrank this package's own definitions, since a wildcard
-// import beats a package member declared in another file.
-import soundness.{Control as _, Language as _, Standing as _, Status as _, Step as _, Token as _, *}
+// Excluded from the umbrella: `Control` (coaxial), `Language` (cosmopolite) and `Status`
+// (exoskeleton), which would outrank this package's own definitions, since a wildcard import beats
+// a package member declared in another file.
+import soundness.{Control as _, Language as _, Status as _, *}
 
 import backstops.silentBackstop
 import dysasymptotics.{linearAccess, linearSize}

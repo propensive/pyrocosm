@@ -24,9 +24,7 @@ package pyrocosm
 
 import scala.caps
 
-// Excluded from the umbrella: `Token` (harlequin), which would outrank this package's own
-// definitions, since a wildcard import beats a package member declared in another file.
-import soundness.{Token as _, *}
+import soundness.*
 
 import dysasymptotics.{linearAccess, linearSize}
 
@@ -111,7 +109,7 @@ extends Focus, Refreshable:
 
   private def follow: Boolean = panel.hints.has[hints.Follow.type]
 
-  private def tick: Tick = Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
+  private def tick: Tui.Tick = Tui.Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
 
   // The content's actions and whether it animates, found once per content (by identity, since
   // it is immutable): a table of thousands of rows offers as many actions, and the questions
@@ -373,7 +371,7 @@ extends Refreshable:
 
     . or:
       val window: List[Block] = content.excerpt(from, until)
-      val tick = Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
+      val tick = Tui.Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
       // A window that continues committed entries is separated from them by a blank line, as
       // the entries are from each other.
       val rendered = renderer.blocks(window, width.max(1), tick, Unset)

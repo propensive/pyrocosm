@@ -435,7 +435,8 @@ object Block:
     // from, an excerpt of the lines around its span, highlighted as TEL, with the span marked.
     // A parse error carries its span itself; a validation error's is on the `Tel.Focus` accrued
     // with it, which the caller passes as `span`. Every TEL error is an error, so its tone is
-    // failure.
+    // failure, and its code is the error's own, carrying the TEL Specification's where the
+    // specification numbers the fault.
     def of
       ( error:  Tel.Error,
         path:   Optional[Text] = Unset,
@@ -451,7 +452,9 @@ object Block:
         val notes: List[Note] = Note.of(located, Note.Style.Erroneous).let(List(_)).or(Nil)
         List(Code.excerpt(Language.Tel, TelSyntax.lines(source), notes))
 
-      Diagnostic(Tone.Failure, location, message, excerpt)
+      val code: Optional[fulminate.Bolt] = if error.bolt.coded then error.bolt else Unset
+
+      Diagnostic(Tone.Failure, location, message, excerpt, code = code)
 
   // One slide of a deck: the blocks it shows at once.
   case class Leaf(content: List[Block])
@@ -654,13 +657,14 @@ enum Block:
   // what; the `excerpt` shows the lines it concerns, with the place marked — a `Code` block
   // with `start`, typed as blocks because a derived codec cannot name one variant of the sum
   // it is deriving; `detail` is whatever follows — an explanation, a suggestion, a related
-  // place.
+  // place; and `code` is its bolt code, `↯/p.1.7`, where it has one.
   case Diagnostic
     ( tone:     Tone,
       location: Optional[Block.Location],
       message:  List[Block],
-      excerpt:  List[Block] = Nil,
-      detail:   List[Block] = Nil )
+      excerpt:  List[Block]             = Nil,
+      detail:   List[Block]             = Nil,
+      code:     Optional[fulminate.Bolt] = Unset )
 
   case Group(content: List[Block])                 // a run of blocks which belong together
   // captured standard output or error, verbatim; styled by its `runs`, where it has any

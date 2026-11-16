@@ -41,12 +41,12 @@ object Boards:
   extension (board: Board)
     def show[result]
       ( grace:     Long                = 1000L,
-        occupancy: Optional[Occupancy] = Unset,
+        occupancy: Optional[Tui.Occupancy] = Unset,
         theme:     TerminalTheme       = TerminalTheme.default )
       ( work: => result )
       ( using Console, Monitor, Probate, Environment, Every[Terminal.Feature],
-              Tactic[Terminal.Error], Text is Measurable, Hyphenation, TableStyle, Gauging,
-              Gaugeable.Glyphs, InlineAnchoring, InlineGrowth, InlineShrink )
+              Tactic[Terminal.Error], Text is Measurable, Hyphenation, Table.Style, Gauging,
+              Gaugeable.Glyphs, Tui.Block.Anchoring, Tui.Block.Growth, Tui.Block.Shrink )
     :   result =
 
       val frontend: TerminalFrontend =
@@ -78,7 +78,7 @@ object Boards:
   // to the terminal, so that it is seen at once either way; and every problem is kept, for the
   // report once the board has closed, unless it was already printed as it came.
   def reporter(board: Optional[Board], width: Int, theme: TerminalTheme = TerminalTheme.default)
-    ( using Stdio, Text is Measurable, Hyphenation, TableStyle, Gauging, Gaugeable.Glyphs )
+    ( using Stdio, Text is Measurable, Hyphenation, Table.Style, Gauging, Gaugeable.Glyphs )
   :   Reporter =
 
     Reporter(board, width, TerminalRenderer(theme))

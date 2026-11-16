@@ -75,7 +75,7 @@ private class Detachable(underlying: ji.InputStream) extends ji.InputStream:
 // an inline session runs in cycles, each ending by committing a transcript's settled entries
 // to the scrollback and starting a fresh block with the rest.
 class TerminalFrontend
-  ( occupancy: Optional[Occupancy] = Unset, theme: TerminalTheme = TerminalTheme.default )
+  ( occupancy: Optional[Tui.Occupancy] = Unset, theme: TerminalTheme = TerminalTheme.default )
   ( using console:     Console,
           monitor:     Monitor,
           probate:     Probate,
@@ -84,12 +84,12 @@ class TerminalFrontend
           tactic:      Tactic[Terminal.Error],
           metric:      Text is Measurable,
           hyphenation: Hyphenation,
-          tableStyle:  TableStyle,
+          tableStyle:  Table.Style,
           gauging:     Gauging,
           glyphs:      Gaugeable.Glyphs,
-          anchoring:   InlineAnchoring,
-          growth:      InlineGrowth,
-          shrink:      InlineShrink )
+          anchoring:   Tui.Block.Anchoring,
+          growth:      Tui.Block.Growth,
+          shrink:      Tui.Block.Shrink )
 extends Frontend:
 
   // The running session's event spool, for `stop` to end; and whether `stop` has been called,
@@ -137,25 +137,27 @@ extends Frontend:
       cells.each: (cell: Live[?]) => bindings = bindings :+ (cell, fixture, panel)
       fixture
 
-    def control(control: Control): Pane = control match
+    def control(control: Control): Tui.Pane = control match
       case button: Control.Button =>
         val focus = ButtonFocus(button, renderer, dispatch, session)
         val fixture = register(focus, Unset, button.enabled)
         val width: Int = fixture.measure(0)(0)
-        val sizing = Sizing(0.0, minWidth = width, maxWidth = width, minHeight = 1, maxHeight = 1)
-        Pane.Widget(sizing, fixture)
+        val sizing =
+          Tui.Sizing(0.0, minWidth = width, maxWidth = width, minHeight = 1, maxHeight = 1)
+        Tui.Pane.Widget(sizing, fixture)
 
       case toggle: Control.Toggle =>
         val focus = ToggleFocus(toggle, renderer, dispatch, session)
         val fixture = register(focus, Unset, toggle.state)
         val width: Int = fixture.measure(0)(0)
-        val sizing = Sizing(0.0, minWidth = width, maxWidth = width, minHeight = 1, maxHeight = 1)
-        Pane.Widget(sizing, fixture)
+        val sizing =
+          Tui.Sizing(0.0, minWidth = width, maxWidth = width, minHeight = 1, maxHeight = 1)
+        Tui.Pane.Widget(sizing, fixture)
 
       case choice: Control.Choice =>
         val focus = ChoiceFocus(choice, renderer, dispatch, session)
         val fixture = register(focus, Unset, choice.current)
-        Pane.Widget(Sizing(), fixture)
+        Tui.Pane.Widget(Tui.Sizing(), fixture)
 
       case field: Control.Field =>
         val fixture =
@@ -166,7 +168,7 @@ extends Frontend:
               field.decoration,
               field.revision )
 
-        Pane.Widget(Sizing(), fixture)
+        Tui.Pane.Widget(Tui.Sizing(), fixture)
 
     // The session reads the console through a detachable stdin (see `Detachable`).
     val stdio0: Stdio =
@@ -191,21 +193,21 @@ extends Frontend:
       val rows = terminal.rows.or(24)
       val plan = TerminalArrangement.plan(interface, columns, rows)
 
-      val mode: Occupancy = interface.hints[hints.terminal.Occupancy] match
-        case hints.terminal.Occupancy.Inline     => Occupancy.Inline
-        case hints.terminal.Occupancy.Fullscreen => Occupancy.Fullscreen
+      val mode: Tui.Occupancy = interface.hints[hints.terminal.Occupancy] match
+        case hints.terminal.Occupancy.Inline     => Tui.Occupancy.Inline
+        case hints.terminal.Occupancy.Fullscreen => Tui.Occupancy.Fullscreen
 
         case _ =>
           occupancy.or:
             if interface.panels.size > 1 && interface.panels.all(_.role != Panel.Role.Transcript)
-            then Occupancy.Fullscreen
-            else Occupancy.Inline
+            then Tui.Occupancy.Fullscreen
+            else Tui.Occupancy.Inline
 
-      val inlined: Boolean = mode == Occupancy.Inline
+      val inlined: Boolean = mode == Tui.Occupancy.Inline
 
       // A panel is its content, with its own controls stacked beneath. An inline transcript is
       // passive, windowed on what is committed.
-      def widget(panel: Panel): Pane =
+      def widget(panel: Panel): Tui.Pane =
         val maxRows: Optional[Int] = panel.hints[hints.terminal.MaxRows].let(_.rows)
 
         // A prompt's content is never focused (its keys belong to its controls); an inline
@@ -223,20 +225,20 @@ extends Frontend:
           else
             register(PanelFixture(panel, renderer, dispatch, session), panel, panel.content)
 
-        val content = Pane.Widget(Sizing(maxHeight = maxRows), fixture)
+        val content = Tui.Pane.Widget(Tui.Sizing(maxHeight = maxRows), fixture)
 
         if panel.controls.nil then content
         else ultimatum.stack((content :: panel.controls.map(control).map(_.weight(0.0)))*)
 
       // The title row, in a fullscreen session only: an inline block sits in the scrollback,
       // where a title would be repeated by every commit.
-      val title: Optional[Pane] =
+      val title: Optional[Tui.Pane] =
         if inlined || interface.title.nil then Unset
         else
           val fixture = TextFixture(List(e"$Bold(${renderer.phrase(interface.title)})"))
-          Pane.Widget(Sizing(0.0, minHeight = 1, maxHeight = 1), fixture)
+          Tui.Pane.Widget(Tui.Sizing(0.0, minHeight = 1, maxHeight = 1), fixture)
 
-      val toolbar: Optional[Pane] =
+      val toolbar: Optional[Tui.Pane] =
         if interface.controls.nil then Unset
         else
           val spacer = ultimatum.panel(0.0, minWidth = 1, maxWidth = 1) { () }
@@ -248,7 +250,7 @@ extends Frontend:
 
       // The activities as a band of gauges beneath the matter, in a fullscreen session only:
       // zero rows while there are none. An inline block has no band, as a title has no row.
-      val activities: Optional[Pane] =
+      val activities: Optional[Tui.Pane] =
         if inlined then Unset
         else
           val fixture =
@@ -258,7 +260,7 @@ extends Frontend:
                 Unset,
                 interface.activities )
 
-          Pane.Widget(Sizing(0.0), fixture).weight(0.0)
+          Tui.Pane.Widget(Tui.Sizing(0.0), fixture).weight(0.0)
 
       val pane =
         TerminalArrangement.build
@@ -357,7 +359,7 @@ extends Frontend:
       // Soundness, since `Null` cannot be united with a tracked type); and each cycle's root is
       // vouched pure as it is stored, since a capability made in `cycle` may not flow out to
       // here. The resize that resets it runs on the cycle's own thread, from `events()`.
-      @volatile var inlineRoot: InlineRoot^ = null.asInstanceOf[InlineRoot^]
+      @volatile var inlineRoot: Tui.Block^ = null.asInstanceOf[Tui.Block^]
 
       // The flag as a local: the resize task below may retain the cell, but not the frontend.
       val halted: juca.AtomicBoolean = stopped
@@ -435,16 +437,16 @@ extends Frontend:
 
       try
         mode match
-          case Occupancy.Fullscreen =>
+          case Tui.Occupancy.Fullscreen =>
             caps.unsafe.unsafeAssumeSeparate:
               profanity.terminalFeatures.alternateScreenFeature:
-                val root = ScreenRoot(terminal)
+                val root = Tui.Screen(terminal)
                 root.cursor(false)
 
                 try Form(root, mode, pane, formWake, 0, 0, scheduleWake).run(events())
                 finally root.finish()
 
-          case Occupancy.Inline =>
+          case Tui.Occupancy.Inline =>
             // A cycle ends when the user leaves, `stop` is called, or a commit is due: the
             // form's last frame then holds exactly the entries to commit, the form's own
             // `finish` leaves them in the scrollback, and the next cycle starts a fresh block
@@ -453,7 +455,7 @@ extends Frontend:
             // is painted rather than deferred past it.
             def cycle(): Unit =
               inlineRoot =
-                caps.unsafe.unsafeAssumePure(InlineRoot(terminal)(using anchoring, growth, shrink))
+                caps.unsafe.unsafeAssumePure(Tui.Block(terminal)(using anchoring, growth, shrink))
 
               Form(inlineRoot, mode, pane, formWake, 0, 0, scheduleWake).run(events())
 

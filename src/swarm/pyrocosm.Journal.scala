@@ -241,18 +241,18 @@ object Journal:
     // How much each event matters: a failure or a lost link is a warning, or worse if it stops
     // this node doing what its configuration asked; the beats of a link, one a second each way,
     // and the events the bus carries are fine detail, as is the routine welcome.
-    def level: Level = this match
-      case _: ListenFailed                                        => Level.Fail
-      case _: Failed | _: Lost                                    => Level.Warn
-      case _: Unnegotiated | _: Unaccepted                        => Level.Warn
-      case _: Unread | _: Oversized                               => Level.Warn
-      case _: Unadvertised | _: Throttled                         => Level.Warn
-      case _: Welcomed                                            => Level.Fine
-      case Sent(_: Wire.Beat, _)                                  => Level.Fine
-      case Received(_: Wire.Beat, _)                              => Level.Fine
-      case Sent(message, _) if Wire.envelope(message).present     => Level.Fine
-      case Received(message, _) if Wire.envelope(message).present => Level.Fine
-      case _                                                      => Level.Info
+    def level: Log.Level = this match
+      case _: ListenFailed                                        => Log.Level.Fail
+      case _: Failed | _: Lost                                    => Log.Level.Warn
+      case _: Unnegotiated | _: Unaccepted                        => Log.Level.Warn
+      case _: Unread | _: Oversized                               => Log.Level.Warn
+      case _: Unadvertised | _: Throttled                         => Log.Level.Warn
+      case _: Welcomed                                            => Log.Level.Fine
+      case Sent(_: Wire.Beat, _)                                  => Log.Level.Fine
+      case Received(_: Wire.Beat, _)                              => Log.Level.Fine
+      case Sent(message, _) if Wire.envelope(message).present     => Log.Level.Fine
+      case Received(message, _) if Wire.envelope(message).present => Log.Level.Fine
+      case _                                                      => Log.Level.Info
 
   // An identifier, as the first eight characters by which it is told apart in a log.
   def brief(id: Uuid): Text = id.show.keep(8)
@@ -294,7 +294,7 @@ object Journal:
 
   // A logged event as the journal keeps it: numbered in the order it arrived, with its level,
   // the instant it was logged and the message it was transcribed to.
-  case class Entry(sequence: Long, level: Level, instant: Instant over Unix, message: Message)
+  case class Entry(sequence: Long, level: Log.Level, instant: Instant over Unix, message: Message)
 
   // The number of entries the daemon's journal keeps; older ones fall off the end.
   val limit: Int = 1000
@@ -312,17 +312,17 @@ object Journal:
   // something is logged, without each use of it having to be separated from the last.
   val sink: LogSink[Any, Message]^{} = scala.caps.unsafe.unsafeAssumePure:
     new LogSink[Any, Message]:
-      def accepts(level: Level): Boolean = true
+      def accepts(level: Log.Level): Boolean = true
 
-      def submit(level: Level, timestamp: Long, message: Message): Unit =
+      def submit(level: Log.Level, timestamp: Long, message: Message): Unit =
         daemon.record(level, Instant.of[Unix](timestamp), message)
 
   // Logs `event` at its own level, to whichever sinks the caller has in scope.
   def log(event: Event): Unit logs Event = event.level match
-    case Level.Fine => Log.fine(event)
-    case Level.Info => Log.info(event)
-    case Level.Warn => Log.warn(event)
-    case Level.Fail => Log.fail(event)
+    case Log.Level.Fine => Log.fine(event)
+    case Log.Level.Info => Log.info(event)
+    case Log.Level.Warn => Log.warn(event)
+    case Log.Level.Fail => Log.fail(event)
 
   // The time zone times of day are shown in: this machine's, or UTC if that cannot be had.
   lazy val timezone: Timezone =
@@ -353,13 +353,13 @@ class Journal(limit: Int):
   @scala.caps.unsafe.untrackedCaptures
   private var entries: List[Entry] = Nil
 
-  def record(level: Level, instant: Instant over Unix, message: Message): Unit = mutex:
+  def record(level: Log.Level, instant: Instant over Unix, message: Message): Unit = mutex:
     next += 1L
     entries = (Entry(next, level, instant, message) :: entries).keep(limit)
 
   // The entries recorded after the one numbered `sequence`, at `level` or above, oldest first;
   // `since(0L)` is everything still held.
-  def since(sequence: Long, level: Level = Level.Fine): List[Entry] = mutex:
+  def since(sequence: Long, level: Log.Level = Log.Level.Fine): List[Entry] = mutex:
     def wanted(entry: Entry): Boolean =
       entry.sequence > sequence && entry.level.ordinal >= level.ordinal
 

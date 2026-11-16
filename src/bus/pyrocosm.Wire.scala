@@ -157,6 +157,9 @@ object Wire:
   given mathSchematic: archimedes.Math is TelSchematic over Tels.Type =
     () => Tels.Scalar(Array.empty)
 
+  given boltSchematic: fulminate.Bolt is TelSchematic over Tels.Type =
+    () => Tels.Scalar(Array.empty)
+
   given toneSchematic: Tone is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
   given glyphSchematic: Glyph is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)
   given standingSchematic: Standing is TelSchematic over Tels.Type = () => Tels.Scalar(Array.empty)

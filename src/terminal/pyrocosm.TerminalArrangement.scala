@@ -75,15 +75,15 @@ object TerminalArrangement:
   def build
     ( interface:  Interface,
       plan:       Plan,
-      title:      Optional[Pane],
-      toolbar:    Optional[Pane],
-      activities: Optional[Pane],
-      widget:     Panel => Pane,
+      title:      Optional[Tui.Pane],
+      toolbar:    Optional[Tui.Pane],
+      activities: Optional[Tui.Pane],
+      widget:     Panel => Tui.Pane,
       hidden:     () -> Boolean = () => false,
       spaced:     Boolean       = false )
-  :   Pane =
+  :   Tui.Pane =
 
-    def framed(panel: Panel): Pane =
+    def framed(panel: Panel): Tui.Pane =
       val pane = widget(panel)
 
       panel.hints[hints.terminal.Border] match
@@ -94,7 +94,7 @@ object TerminalArrangement:
         case hints.terminal.Border.Rules   => rules(hidden)(pane)
         case _                             => border(BorderStyle.light, hidden)(pane)
 
-    def column(panels: List[Panel]): Optional[Pane] =
+    def column(panels: List[Panel]): Optional[Tui.Pane] =
       if panels.nil then Unset else stack(panels.map(framed)*)
 
     def widest(panels: List[Panel]): Optional[Int] =
@@ -105,35 +105,36 @@ object TerminalArrangement:
     val versoWidth = widest(plan.verso).or(24)
     val rectoWidth = widest(plan.recto).or(32)
 
-    val verso: Optional[Pane] = column(plan.verso).let(_.weight(0.0)).let: pane =>
+    val verso: Optional[Tui.Pane] = column(plan.verso).let(_.weight(0.0)).let: pane =>
       sized(pane, minWidth = versoWidth, maxWidth = versoWidth + 8)
 
     val centreBelow: List[Panel] = if plan.rectoBeside then Nil else plan.recto
 
-    val centre: List[Pane] =
-      column(plan.centre + centreBelow).lay(Nil: List[Pane])(List(_)) +
-        column(plan.log).lay(Nil: List[Pane])(List(_)) +
-        column(plan.prompt).lay(Nil: List[Pane]): pane =>
+    val centre: List[Tui.Pane] =
+      column(plan.centre + centreBelow).lay(Nil: List[Tui.Pane])(List(_)) +
+        column(plan.log).lay(Nil: List[Tui.Pane])(List(_)) +
+        column(plan.prompt).lay(Nil: List[Tui.Pane]): pane =>
           if spaced then List(gap(hidden), pane.weight(0.0)) else List(pane.weight(0.0))
 
-    val middle: Pane = if centre.nil then stack() else stack(centre*)
+    val middle: Tui.Pane = if centre.nil then stack() else stack(centre*)
 
-    val recto: Optional[Pane] =
+    val recto: Optional[Tui.Pane] =
       if plan.rectoBeside then
         column(plan.recto).let: pane =>
           sized(pane, minWidth = rectoWidth, maxWidth = rectoWidth + 16)
       else
         Unset
 
-    val body: Pane =
-      val panes: List[Pane] =
-        verso.lay(Nil: List[Pane])(List(_)) + List(middle) + recto.lay(Nil: List[Pane])(List(_))
+    val body: Tui.Pane =
+      val panes: List[Tui.Pane] =
+        verso.lay(Nil: List[Tui.Pane])(List(_)) + List(middle) +
+          recto.lay(Nil: List[Tui.Pane])(List(_))
 
       strip(panes*)
 
-    val rowsOf: List[Pane] =
-      title.lay(Nil: List[Pane])(List(_)) + toolbar.lay(Nil: List[Pane])(List(_)) + List(body) +
-        activities.lay(Nil: List[Pane])(List(_))
+    val rowsOf: List[Tui.Pane] =
+      title.lay(Nil: List[Tui.Pane])(List(_)) + toolbar.lay(Nil: List[Tui.Pane])(List(_)) +
+        List(body) + activities.lay(Nil: List[Tui.Pane])(List(_))
 
     stack(rowsOf*)
 
@@ -150,33 +151,33 @@ object TerminalArrangement:
         canvas.flush()
 
   // A blank row, hiding with the content beneath it, so an inline commit leaves no blank behind.
-  private def gap(hidden: () -> Boolean): Pane =
-    Pane.Widget(Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { _ => () })).weight(0.0)
+  private def gap(hidden: () -> Boolean): Tui.Pane =
+    Tui.Pane.Widget(Tui.Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { _ => () })).weight(0.0)
 
   // A low rule above and a high rule below, no sides: the frame a transcript keeps of its
   // entries, drawn here in the foreground's full strength, where the entries' are faint.
-  private def rules(hidden: () -> Boolean)(child: Pane): Pane =
-    def rule(glyph: Text): Pane =
-      Pane.Widget(Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { canvas =>
+  private def rules(hidden: () -> Boolean)(child: Tui.Pane): Tui.Pane =
+    def rule(glyph: Text): Tui.Pane =
+      Tui.Pane.Widget(Tui.Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { canvas =>
         canvas.move(Prim, Prim)
         canvas.put(Teletype(glyph*canvas.width)) })).weight(0.0)
 
     val share: Double = child match
-      case Pane.Leaf(sizing, _)      => sizing.fraction
-      case Pane.Widget(sizing, _)    => sizing.fraction
-      case Pane.Branch(sizing, _, _) => sizing.fraction
+      case Tui.Pane.Leaf(sizing, _)      => sizing.fraction
+      case Tui.Pane.Widget(sizing, _)    => sizing.fraction
+      case Tui.Pane.Branch(sizing, _, _) => sizing.fraction
 
     stack(rule(t"⎽"), child.weight(share), rule(t"⎺"))
 
   // Ultimatum's `border`, with edges that hide with the content they frame.
-  private def border(style: BorderStyle, hidden: () -> Boolean)(child: Pane): Pane =
-    def horizontalRule: Pane =
-      Pane.Widget(Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { canvas =>
+  private def border(style: BorderStyle, hidden: () -> Boolean)(child: Tui.Pane): Tui.Pane =
+    def horizontalRule: Tui.Pane =
+      Tui.Pane.Widget(Tui.Sizing(1.0, maxHeight = 1), new Edge(hidden, 0, 1, { canvas =>
         canvas.move(Prim, Prim)
         canvas.put(Teletype(style.horizontal*canvas.width)) }))
 
-    def verticalRule: Pane =
-      Pane.Widget(Sizing(0.0, maxWidth = 1), new Edge(hidden, 1, 0, { canvas =>
+    def verticalRule: Tui.Pane =
+      Tui.Pane.Widget(Tui.Sizing(0.0, maxWidth = 1), new Edge(hidden, 1, 0, { canvas =>
         var row = 0
 
         while row < canvas.height do
@@ -184,20 +185,22 @@ object TerminalArrangement:
           canvas.put(Teletype(style.vertical))
           row += 1 }))
 
-    def corner(glyph: Text): Pane =
-      Pane.Widget(Sizing(0.0, maxWidth = 1, maxHeight = 1), new Edge(hidden, 1, 1, { canvas =>
+    def corner(glyph: Text): Tui.Pane =
+      val sizing = Tui.Sizing(0.0, maxWidth = 1, maxHeight = 1)
+
+      Tui.Pane.Widget(sizing, new Edge(hidden, 1, 1, { canvas =>
         canvas.move(Prim, Prim)
         canvas.put(Teletype(glyph)) }))
 
     // The bands take no share of the stack's height (their rule's weight is for the strip's
     // width); the middle takes the child's share.
-    def band(left: Text, right: Text): Pane =
+    def band(left: Text, right: Text): Tui.Pane =
       strip(corner(left), horizontalRule, corner(right)).weight(0.0)
 
     val share: Double = child match
-      case Pane.Leaf(sizing, _)      => sizing.fraction
-      case Pane.Widget(sizing, _)    => sizing.fraction
-      case Pane.Branch(sizing, _, _) => sizing.fraction
+      case Tui.Pane.Leaf(sizing, _)      => sizing.fraction
+      case Tui.Pane.Widget(sizing, _)    => sizing.fraction
+      case Tui.Pane.Branch(sizing, _, _) => sizing.fraction
 
     stack
       ( band(style.topLeft, style.topRight),
@@ -206,10 +209,11 @@ object TerminalArrangement:
 
   // A pane held to a column band: the sizing of every leaf beneath it is left alone, and the
   // branch itself is bounded.
-  private def sized(pane: Pane, minWidth: Int, maxWidth: Int): Pane =
-    def bound(sizing: Sizing): Sizing = sizing.copy(minWidth = minWidth, maxWidth = maxWidth)
+  private def sized(pane: Tui.Pane, minWidth: Int, maxWidth: Int): Tui.Pane =
+    def bound(sizing: Tui.Sizing): Tui.Sizing =
+      sizing.copy(minWidth = minWidth, maxWidth = maxWidth)
 
     pane match
-      case Pane.Leaf(sizing, content)      => Pane.Leaf(bound(sizing), content)
-      case Pane.Widget(sizing, fixture)    => Pane.Widget(bound(sizing), fixture)
-      case Pane.Branch(sizing, arr, panes) => Pane.Branch(bound(sizing), arr, panes)
+      case Tui.Pane.Leaf(sizing, content)      => Tui.Pane.Leaf(bound(sizing), content)
+      case Tui.Pane.Widget(sizing, fixture)    => Tui.Pane.Widget(bound(sizing), fixture)
+      case Tui.Pane.Branch(sizing, arr, panes) => Tui.Pane.Branch(bound(sizing), arr, panes)

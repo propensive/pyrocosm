@@ -47,6 +47,18 @@ given keypressTelDecodable: Keypress is Tel.Decodable =
         val text = tel.primaryAtom
         Keypresses.parse(text).or(abort(Tel.Error(Tel.Error.Reason.NotScalar(text, "keypress"))))
 
+// A bolt code is a scalar too: its text, `↯/s.118.1/t.1.7`.
+given boltTelEncodable: fulminate.Bolt is Tel.Encodable =
+  Tel.Encodable(() => Morphology.Str, Tel.Nature.Scalar): bolt => Tel.scalar(bolt.text)
+
+given boltTelDecodable: fulminate.Bolt is Tel.Decodable =
+  unsafely:
+    caps.unsafe.unsafeAssumePure:
+      Tel.Decodable(() => Morphology.Str, Tel.Nature.Scalar): tel =>
+        val text = tel.primaryAtom
+        val bolt = fulminate.Bolt.parse(text)
+        if bolt.coded then bolt else abort(Tel.Error(Tel.Error.Reason.NotScalar(text, "bolt code")))
+
 // An expression outside the Ergo subset (an `<mtext>`, say) has no shorthand and encodes as
 // nothing rather than failing the whole document; the MathML tree survives in memory, only its
 // wire form is lossy.
@@ -112,7 +124,6 @@ object Codecs:
 // The block codecs, each in an object of its own, as the schemas are: a derivation inlines the
 // whole of its type, and the two beside the inline codecs exceed what one class may hold.
 private[pyrocosm] object BlockEncoder:
-  import contingency.strategies.throwUnsafely
   lazy val derived: Block is Tel.Encodable = Tel.EncodableDerivation.derived[Block]
 
 private[pyrocosm] object BlockDecoder:
@@ -178,6 +189,7 @@ private def scalarSchema[value]: value is TelSchematic over Tels.Type =
 
 given keypressTelSchematic: Keypress is TelSchematic over Tels.Type = scalarSchema
 given mathTelSchematic: archimedes.Math is TelSchematic over Tels.Type = scalarSchema
+given boltTelSchematic: fulminate.Bolt is TelSchematic over Tels.Type = scalarSchema
 given sideTelSchematic: Block.Side is TelSchematic over Tels.Type = scalarSchema
 given toneTelSchematic: Tone is TelSchematic over Tels.Type = scalarSchema
 given glyphTelSchematic: Glyph is TelSchematic over Tels.Type = scalarSchema

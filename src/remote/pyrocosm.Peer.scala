@@ -113,7 +113,8 @@ object Peer:
       case Reason.Identity               => m"this machine's identity could not be created or read"
 
   case class Error(reason: Error.Reason)(using Diagnostics)
-  extends fulminate.Error(6040, reason.number)(m"the remote connection failed because $reason")
+  extends fulminate.Error(m"the remote connection failed because $reason"):
+    override def bolt: fulminate.Bolt = Bolts(Bolts.remote, 1, reason.number)
 
   // The words a worker refuses with.
   object Refusal:

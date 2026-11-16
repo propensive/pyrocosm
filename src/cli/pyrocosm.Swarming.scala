@@ -39,10 +39,14 @@ object Swarming:
   type Connected = Exit | Tool.NoMachine.type | Tool.UsageError.type
 
   // The levels an event may be logged at, by the names `--log-level` takes.
-  private val levels: Map[Text, Level] =
-    Map(t"fine" -> Level.Fine, t"info" -> Level.Info, t"warn" -> Level.Warn, t"fail" -> Level.Fail)
+  private val levels: Map[Text, Log.Level] =
+    Map
+      ( t"fine" -> Log.Level.Fine,
+        t"info" -> Log.Level.Info,
+        t"warn" -> Log.Level.Warn,
+        t"fail" -> Log.Level.Fail )
 
-  def level(name: Optional[Text]): Level = name.let(levels.at(_)).or(Level.Info)
+  def level(name: Optional[Text]): Log.Level = name.let(levels.at(_)).or(Log.Level.Info)
 
   // A length of time as `--expires` takes it: a number and a unit, `s`, `m`, `h` or `d`.
   def lifetime(text: Text): Optional[Duration] = Timing.parse(text)
@@ -84,7 +88,7 @@ object Swarming:
         Exit.Ok
 
       def failed(): Swarmed =
-        Journal.daemon.since(mark, Level.Fail).each: entry => Err.println(entry.message.text)
+        Journal.daemon.since(mark, Log.Level.Fail).each: entry => Err.println(entry.message.text)
         Tool.RemoteFailed
 
       swarm.listening.lay[Swarmed]:
@@ -288,7 +292,7 @@ object Swarming:
         if swarm.connected(name)
         then Out.println(t"linked to $name; `${tool.name} swarm disconnect $name` closes the link")
         else
-          Journal.daemon.since(mark, Level.Warn).each: entry => Out.println(entry.message.text)
+          Journal.daemon.since(mark, Log.Level.Warn).each: entry => Out.println(entry.message.text)
           Out.println(t"not linked to $name yet; this daemon will keep trying")
 
       Exit.Ok
@@ -343,7 +347,7 @@ object Swarming:
   // `<tool> swarm log [--follow] [--log-level]`: what this node has been doing, oldest first:
   // everything logged at `info` or above, or at the given level or above. The beats of a link
   // and the events the bus carries are `fine`.
-  def log(follow: Boolean, level: Level)
+  def log(follow: Boolean, level: Log.Level)
     ( using cli: Cli, resident: Resident, stdio: Stdio, monitor: Monitor )
   :   Exit =
 

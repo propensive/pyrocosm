@@ -35,7 +35,8 @@ import htmlDoms.whatwg
 import htmlDoms.whatwg.*
 import internetAccess.online
 import logging.silentLogging
-import perihelion.{Message, wsClient, wsSessional}
+import perihelion.{wsClient, wsSessional}
+import perihelion.Websocket.Message
 import strategies.throwUnsafely
 
 object Portal:
