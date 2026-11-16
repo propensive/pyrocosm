@@ -510,13 +510,14 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
       . assert(_ == (List(jar.toString.tt, directory.toString.tt), 1))
 
-      test(m"the hub's classpath ends with the JVM's own"):
+      test(m"the hub's classpath ends with the JVM's own, made absolute"):
         val path: String = java.lang.System.getProperty("java.class.path").nn
 
         val parts = path.split(java.io.File.pathSeparator).nn
 
         val entries: scala.List[Text] =
-          scala.collection.immutable.ArraySeq.unsafeWrapArray(parts).toList.map(_.nn.tt)
+          scala.collection.immutable.ArraySeq.unsafeWrapArray(parts).toList.map: entry =>
+            java.io.File(entry.nn).getAbsolutePath.nn.tt
 
         val system: List[Text] = List(entries*)
 
