@@ -791,8 +791,9 @@ The conventions the tools share, decided 2026-11-02:
   where each module of Pyrocosm (`Bolts.harness` 1 to `Bolts.cli` 14), then of each tool, is a
   subdivision, in the order of their dependencies. `fulminate.Error#bolt` gives an error's code,
   and `Block.Diagnostic#code` a diagnostic's, which the renderers show after its severity
-  (`error [↯/f.8.1.3]`); a compiler notice's comes from Proscala, which writes it before the
-  message, and a TEL error's from Soundness. A code carrying another names the error reported
+  (`error [↯/f.8.1.3]`); a TEL error's comes from Soundness. A compiler notice has none yet:
+  Proscala gives each message a code under `-Zbolt-codes`, but anthology's `Compiler.Notice`
+  does not carry it. A code carrying another names the error reported
   on account of it: a failed ping, `↯/f.10.1/f.8.1.3`. The registry of what every code means is
   `f.tel` in propensive/bolt.
 - **Width.** `COLUMNS` in the invocation's environment, else the terminal's own report, else
