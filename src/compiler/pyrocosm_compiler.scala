@@ -196,9 +196,14 @@ object Notices:
       else notice.span.lay(Block.Location(notice.file)): (span: Span) =>
         Block.Location.of(notice.file, span)
 
+    // Proscala begins a message with its bolt code, `[↯/p.1.7] …`, which is taken off the
+    // message and given as the diagnostic's code.
+    val plain: Text = stripAnsi(notice.message).trim
+    val (code, length) = fulminate.Bolt.prefix(plain)
+
     val message: List[Block] =
       notice.markup.let(SemanticMessage.parse(_))
-      . lay(paragraphs(stripAnsi(notice.message).trim)): message => blocks(message.markup, types)
+      . lay(paragraphs(plain.skip(length))): message => blocks(message.markup, types)
 
     val excerpt: List[Block] =
       if lines.nil then Nil else
@@ -206,7 +211,9 @@ object Notices:
           Block.Note.of(span, style(notice.importance)).lay(Nil): (note: Block.Note) =>
             List(Block.Code.excerpt(Language.Scala, lines, List(note), context))
 
-    Block.Diagnostic(tone(notice.importance), location, message, excerpt)
+    val bolt: Optional[fulminate.Bolt] = if code.coded then code else Unset
+
+    Block.Diagnostic(tone(notice.importance), location, message, excerpt, code = bolt)
 
   // Runs of phrasing become one paragraph, broken at the message's own newlines; a code sample
   // with a newline in it becomes a code block between paragraphs.

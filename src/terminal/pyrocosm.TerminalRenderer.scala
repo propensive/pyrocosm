@@ -353,12 +353,13 @@ class TerminalRenderer
           blocks(content, width - 2, tick, selected).map: (line: Teletype) => bar.append(line)
 
       // A diagnostic stands behind a bar in its tone, as a notice does: a headline naming the
-      // place and the severity, in the convention of a compiler's own report, then its
-      // message, the excerpt and whatever follows, each at the width that remains.
-      case Block.Diagnostic(tone, location, message, excerpt, detail) =>
+      // place, the severity and the code, in the convention of a compiler's own report, then
+      // its message, the excerpt and whatever follows, each at the width that remains.
+      case Block.Diagnostic(tone, location, message, excerpt, detail, code) =>
         val bar = toned(tone)(Teletype(if glyphs == Gaugeable.Glyphs.Ascii then t"| " else t"▌ "))
         val mark = toned(tone)(Teletype(glyph(severityGlyph(tone))))
-        val word = toned(tone)(Teletype(severity(tone)))
+        val labelled = code.lay(severity(tone)) { code => t"${severity(tone)} ${code.label}" }
+        val word = toned(tone)(Teletype(labelled))
 
         val headline: Teletype =
           location.lay(e"$bar$mark $word"): (location: Block.Location) =>

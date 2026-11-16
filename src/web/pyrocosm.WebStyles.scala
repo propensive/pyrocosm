@@ -833,6 +833,7 @@ object WebStyles:
           }
         """ +
         css".pyro-diagnostic > header .pyro-location { font-size: 1em; font-weight: 700 }" +
+        css".pyro-diagnostic > header .pyro-code { font-size: 1em; color: var(--pyro-muted) }" +
         css".pyro-diagnostic .pyro-message p { hyphens: auto; overflow-wrap: break-word }" +
         css".pyro-diagnostic .pyro-codeblock { margin-left: 0; margin-right: 0 }" +
         css"""

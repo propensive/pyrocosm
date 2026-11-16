@@ -73,14 +73,23 @@ object Swarm:
     // Pyrocosm gives; it was made and then closed without the `pong`; it stayed open and the
     // `pong` did not come; or the two ends, having exchanged acceptances, found that one could
     // not read what the other writes.
-    enum Reason:
-      case Connection(reason: Peer.Error.Reason)
-      case Unanswered
-      case Silent
-      case Mismatched
+    //
+    // A failed connection's code carries the code of Pyrocosm's own `Peer.Error`, in place of a
+    // variant: `↯/f.10.1/f.8.1.3`. The others are the variants 2 to 4.
+    enum Reason(val number: Int):
+      case Connection(reason: Peer.Error.Reason) extends Reason(1)
+      case Unanswered                            extends Reason(2)
+      case Silent                                extends Reason(3)
+      case Mismatched                            extends Reason(4)
 
   case class Error(machine: Machine, reason: Error.Reason)(using Diagnostics)
-  extends fulminate.Error(m"the ping to ${machine.name} failed because $reason")
+  extends fulminate.Error(m"the ping to ${machine.name} failed because $reason"):
+    override def bolt: fulminate.Bolt = reason match
+      case Error.Reason.Connection(reason) =>
+        Bolts(Bolts.swarm, 1).carrying(Bolts(Bolts.remote, 1, reason.number))
+
+      case reason =>
+        Bolts(Bolts.swarm, 1, reason.number)
 
   // What a `pong` told the caller: which node answered, with which version, and how long the
   // round trip took.

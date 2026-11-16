@@ -22,46 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import java.lang as jl
-import java.util.concurrent.atomic as juca
-
-import soundness.*
-
-import probably.TestEvent
-
-// Pyrocosm's suites, run WITHOUT fume: a `Suite` has no `main` of its own (the host, normally
-// fume, drives it through `invoke`), so this is the plain-`java` entry point CI uses while no
-// fume release reads the test events of the Soundness Pyrocosm is built against. It prints one
-// line per completed test and exits with the worst status of the suites (0 = passed,
-// 1 = failures, 2 = a suite threw). `make test`, through fume, remains the full experience.
+// Pyrocosm's suites, run without fume through the harness Pyrocosm gives its tools: CI's entry
+// point while no fume release reads the test events of the Soundness Pyrocosm is built against.
+// `make test`, through fume, remains the full experience.
 @main
 def runTests(): Unit =
-  val passes = juca.AtomicInteger(0)
-  val failures = juca.AtomicInteger(0)
-  val out = jl.System.out.nn
-
-  def handle(event: TestEvent): Unit = event match
-    case TestEvent.TestCompleted(test, _, _, outcome, _, _) =>
-      if outcome.outcome == t"pass" || outcome.outcome == t"aspire-pass"
-      then passes.incrementAndGet()
-      else failures.incrementAndGet()
-
-      out.println(t"[${outcome.outcome}] ${test.path.join(t" / ")}".s)
-
-    case TestEvent.DetailMessage(_, message) =>
-      out.println(t"    $message".s)
-
-    case TestEvent.DetailCompare(_, expected, found, _) =>
-      out.println(t"    expected: $expected".s)
-      out.println(t"    found:    $found".s)
-
-    case TestEvent.RunTerminated(error, _, _) =>
-      out.println(t"suite threw: ${error.components.map(_.message).join(t"; ")}".s)
-
-    case _ => ()
-
-  val suites = scala.List(Tests, CompilerTests, ServicesTests, SwarmTests)
-  val status = suites.map(_.invoke(t"", handle)).max
-
-  out.println(t"${passes.get} passed, ${failures.get} failed".s)
-  jl.System.exit(status)
+  Harness.main(scala.Array(), Tests, CompilerTests, ServicesTests, SwarmTests)

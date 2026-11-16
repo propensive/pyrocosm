@@ -837,7 +837,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val diagnostic = Notices.diagnostic(notice, Notices.lines(t"val a = 1\nval b = x\nval c = 3"))
 
       diagnostic match
-        case Block.Diagnostic(Tone.Failure, location, _, List(excerpt), _) =>
+        case Block.Diagnostic(Tone.Failure, location, _, List(excerpt), _, _) =>
           excerpt match
             case Block.Code(_, lines, List(note), start, _, _, _, _) =>
               (location.let(_.text), lines.size, note.line, note.start, note.end, start)
@@ -868,7 +868,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val error = Tel.Error(Tel.Error.Reason.TooManyAtoms, Tel.Error.spanAt(4, 9, 4))
 
       Block.Diagnostic.of(error, t"contacts.tel", source) match
-        case Block.Diagnostic(Tone.Failure, location, _, List(excerpt), _) =>
+        case Block.Diagnostic(Tone.Failure, location, _, List(excerpt), _, _) =>
           excerpt match
             case Block.Code(Language.Tel, lines, List(note), start, _, _, _, _) =>
               (location.let(_.text), lines.size, note.line, note.start, note.end, start)
@@ -880,6 +880,55 @@ object Tests extends Suite(m"Pyrocosm tests"):
           Unset
 
     . assert(_ == (t"contacts.tel:4:9", 3, 1, 8, 12, 3))
+
+    test(m"a TEL error's diagnostic carries the error's bolt code"):
+      val error = Tel.Error(Tel.Error.Reason.TooManyAtoms, Tel.Error.spanAt(4, 9, 4))
+      Block.Diagnostic.of(error).code.let(_.text)
+
+    . assert(_ == Tel.Error(Tel.Error.Reason.TooManyAtoms).bolt.text)
+
+    test(m"a compiler notice's bolt code is taken off its message, as the diagnostic's code"):
+      def notice(message: Text): anthology.Compiler.Notice =
+        anthology.Compiler.Notice(anthology.Importance.Error, t"Foo.scala", message, Unset)
+
+      val coded = Notices.diagnostic(notice(t"[↯/p.1.7] Not found: x"))
+      val plain = Notices.diagnostic(notice(t"Not found: x"))
+
+      (coded.code.let(_.text), plain.code.let(_.text), coded.message == plain.message)
+
+    . assert(_ == (t"↯/p.1.7", Unset, true))
+
+    test(m"a diagnostic's bolt code survives a round trip through TEL and BinTEL"):
+      val diagnostic: Block =
+        Block.Diagnostic
+          ( Tone.Warning, Unset, List(Block.paragraph(t"stale")), code = Bolts(Bolts.notes, 1, 2) )
+
+      val page = Page(List(diagnostic))
+      (diagnostic.in[Tel].show.read[Tel].as[Block] == diagnostic, Pages.roundTrip(page) == page)
+
+    . assert(_ == (true, true))
+
+    test(m"a diagnostic's headline in a terminal ends with its bolt code"):
+      val diagnostic =
+        Block.Diagnostic
+          ( Tone.Failure, Block.Location(t"Foo.scala", 2), List(Block.paragraph(t"broken")),
+            code = Bolts(Bolts.remote, 1, 3) )
+
+      TerminalRenderer().block(diagnostic, 60).map(_.plain).head.or(t"")
+
+    . assert(_.ends(t"error [↯/f.8.1.3]"))
+
+    test(m"Pyrocosm's errors have bolt codes, a failed ping's carrying the connection's"):
+      val machine = Machine(t"x", List(t"127.0.0.1"), 1, Unset, Unset, Nil)
+      val unreachable = Peer.Error.Reason.Unreachable(t"x")
+
+      ( Notes.Error(Notes.Error.Reason.Diverged(t"origin")).bolt.text,
+        Peer.Error(unreachable).bolt.text,
+        Invitation.Error(Invitation.Error.Reason.Expired).bolt.text,
+        Swarm.Error(machine, Swarm.Error.Reason.Connection(unreachable)).bolt.text,
+        Swarm.Error(machine, Swarm.Error.Reason.Silent).bolt.text )
+
+    . assert(_ == (t"↯/f.7.1.4", t"↯/f.8.1.3", t"↯/f.8.2.2", t"↯/f.10.1/f.8.1.3", t"↯/f.10.1.3"))
 
     test(m"TEL highlights a compound's keyword and its numbers"):
       TelSyntax.tokens(t"  phone work 123").map(_.accent)
@@ -1719,6 +1768,15 @@ object Tests extends Suite(m"Pyrocosm tests"):
       html.block(Block.Diagnostic(Tone.Warning, location, List(Block.paragraph(t"unused")))).show
 
     . assert(_.contains(t"""<article class="pyro-diagnostic pyro-tone-warning">"""))
+
+    test(m"a diagnostic's bolt code renders in its header"):
+      val diagnostic =
+        Block.Diagnostic
+          ( Tone.Warning, Unset, List(Block.paragraph(t"unused")), code = Bolts(Bolts.notes, 1, 2) )
+
+      html.block(diagnostic).show
+
+    . assert(_.contains(t"""<code class="pyro-code">↯/f.7.1.2</code>"""))
 
     test(m"a keystroke renders as a kbd element"):
       html.phrase(List(Inline.Keystroke(Keypress.Ctrl('C')))).show
