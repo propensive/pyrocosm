@@ -19,7 +19,8 @@ profile default
   source src/**/*.scala
 
   # `package pyrocosm.hints` is public API, and Consequent Style's single-segment `package` line
-  # (F2) cannot express it: the nested `package pyrocosm` / `package hints` form fails F3 instead.
+  # (↯/c.1.2) cannot express it: the nested `package pyrocosm` / `package hints` form fails
+  # ↯/c.1.3 instead.
   exclude src/model/pyrocosm_hints.scala
 
   # The `-language` features the build compiles with, so flare parses the sources exactly as

@@ -4,10 +4,9 @@ name: CI
 # workflow — see propensive/.github for what it does and what it expects of this repository (the
 # ./mill wrapper, and the version pins in build.mill).
 #
-# The suites run under plain `java`, through `pyrocosm.runTests`, rather than through fume: a fume
-# release reads the test events only of the Soundness it was built with, and fume is built on
-# Pyrocosm, so none reads Soundness 0.76.0's until Pyrocosm has been released against it. Drop
-# `test_main` once etc/tools pins a fume which does.
+# The suites run under plain `java`, through `pyrocosm.runTests`, rather than through fume: two of
+# the swarm suite's hub-and-leaves tests fail inside fume 0.13.0's daemon, which is itself a
+# Pyrocosm tool, though they pass in a JVM of their own.
 
 on:
   pull_request:
