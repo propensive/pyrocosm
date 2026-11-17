@@ -206,7 +206,7 @@ object Notices:
           Block.Note.of(span, style(notice.importance)).lay(Nil): (note: Block.Note) =>
             List(Block.Code.excerpt(Language.Scala, lines, List(note), context))
 
-    Block.Diagnostic(tone(notice.importance), location, message, excerpt)
+    Block.Diagnostic(tone(notice.importance), location, message, excerpt, code = notice.code)
 
   // Runs of phrasing become one paragraph, broken at the message's own newlines; a code sample
   // with a newline in it becomes a code block between paragraphs.
