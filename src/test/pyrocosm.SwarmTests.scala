@@ -53,10 +53,14 @@ object Later:
     case Pong(id: Uuid, received: Instant over Unix, from: Text)
     case Request(id: Uuid, command: Text, argument: Text)
     case Reply(id: Uuid, ok: Boolean, text: Text)
-    case Snapshot(self: pyrocosm.Advert, known: List[pyrocosm.Advert])
+    case Snapshot(self: _root_.pyrocosm.Advert, known: List[_root_.pyrocosm.Advert])
 
     case Advertised
-      ( origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, advert: pyrocosm.Advert )
+      ( origin: Text,
+        sequence: Long,
+        sent:     Instant over Unix,
+        hops:     Int,
+        advert:   _root_.pyrocosm.Advert )
 
     case Left(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, node: Node)
 
@@ -90,15 +94,15 @@ object Later:
   import Channel.derivation.throwing
 
   // What a v2 build reads: its own form first, then this build's.
-  lazy val accepting: Tel.Acceptance.Typed[(Wire, pyrocosm.Wire)] =
-    Tel.Acceptance[(Wire, pyrocosm.Wire)]()
+  lazy val accepting: Tel.Acceptance.Typed[(Wire, _root_.pyrocosm.Wire)] =
+    Tel.Acceptance[(Wire, _root_.pyrocosm.Wire)]()
 
   lazy val acceptance: Tel.Acceptance = accepting.acceptance
 
   def write(message: Wire, theirs: Tel.Acceptance): Optional[Data] =
     try message.fulfil(theirs).let(_.document) catch case _: Exception => Unset
 
-  def read(data: Data): Optional[Wire | pyrocosm.Wire] =
+  def read(data: Data): Optional[Wire | _root_.pyrocosm.Wire] =
     try accepting.read(data) catch case _: Exception => Unset
 
 object Adverts:
@@ -119,16 +123,16 @@ object Adverts:
 
   lazy val later: Tel.Acceptance.Typed[Tuple1[Advert]] = Tel.Acceptance[Tuple1[Advert]]()
 
-  lazy val current: Tel.Acceptance.Typed[Tuple1[pyrocosm.Advert]] =
-    Tel.Acceptance[Tuple1[pyrocosm.Advert]]()
+  lazy val current: Tel.Acceptance.Typed[Tuple1[_root_.pyrocosm.Advert]] =
+    Tel.Acceptance[Tuple1[_root_.pyrocosm.Advert]]()
 
-  def writeAdvert(advert: pyrocosm.Advert, theirs: Tel.Acceptance): Optional[Data] =
+  def writeAdvert(advert: _root_.pyrocosm.Advert, theirs: Tel.Acceptance): Optional[Data] =
     try advert.fulfil(theirs).let(_.document) catch case _: Exception => Unset
 
   def writeAdvertV2(advert: Advert, theirs: Tel.Acceptance): Optional[Data] =
     try advert.fulfil(theirs).let(_.document) catch case _: Exception => Unset
 
-  def readAdvert(data: Data): Optional[pyrocosm.Advert] =
+  def readAdvert(data: Data): Optional[_root_.pyrocosm.Advert] =
     try current.read(data) catch case _: Exception => Unset
 
   def readAdvertV2(data: Data): Optional[Advert] =
@@ -511,7 +515,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
               ClassLoader.getPlatformClassLoader )
 
         test(m"the hub's classpath leads with the jars a URL class loader loads, each once"):
-          val entries: List[Text] = Hubs.classpath(loader)
+          val entries: List[Text] = pyrocosm.classpath(loader)
           (entries.keep(2), entries.count(_ == jar.toString.tt))
 
         . check(_ == (List(jar.toString.tt, directory.toString.tt), 1))
@@ -527,7 +531,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
           val system: List[Text] = List(entries*)
 
-          system.all(Hubs.classpath(loader).has(_))
+          system.all(pyrocosm.classpath(loader).has(_))
 
         . check(_ == true)
 
@@ -535,7 +539,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           val uri = classOf[Hub].getProtectionDomain.nn.getCodeSource.nn.getLocation.nn.toURI
           val location: Text = java.nio.file.Path.of(uri).nn.toString.tt
 
-          Hubs.classpath().has(location)
+          pyrocosm.classpath().has(location)
 
         . check(_ == true)
 
