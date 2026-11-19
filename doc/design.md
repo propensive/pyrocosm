@@ -808,7 +808,7 @@ The conventions the tools share, decided 2026-11-02:
   the text metric and the gauge palette; a gauge is in the terminal theme's colours, and a
   theme says what its ground is.
 
-Each of `Filing.temporary`, `Filing.canonical`, `Digests.tree`, `ObjectStore`, `Frames.split`,
+Each of `Filing.canonical`, `Digests.tree`, `ObjectStore`, `Frames.split`,
 `Runtimes.classpath`, `Processes.detach`, `Diversions`, `Timing`, `Tool.atoms`,
 `Classpaths.entry`/`path`, `decodables.boolean`, `interpretables.int`/`repeated` and `Harness`
 is the one place a Soundness-shaped operation is awaited; each has an issue in
