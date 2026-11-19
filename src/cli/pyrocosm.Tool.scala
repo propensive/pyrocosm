@@ -686,8 +686,7 @@ object Tool:
         safely(directory / Name[Linux](tool.name))
 
     def projectCache(root: Text)(using Environment): Optional[Path on Linux] =
-      tool.cacheDirectory.let: directory =>
-        safely(directory / Name[Linux](Digests.of(root).keep(12)))
+      Shares.cache(tool.name, root)
 
     // The cached manifest, `$XDG_CACHE_HOME/<name>/upgrade.tsv`, so that a daemon restarted
     // within a day of the last check does not fetch again.
