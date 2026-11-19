@@ -172,7 +172,7 @@ class Notes(root: Text):
 
     if excluded.nil
     then Fingerprint.unsafe(git(List(t"rev-parse", t"${commit.text}^{tree}")).trim)
-    else Filing.temporary(t"pyrocosm-notes"): directory =>
+    else Filing.temporary: directory =>
       val index: Text = t"${directory.encode}/index"
       indexed(index, Unset)(List(t"read-tree", commit.text))
       val removal: Text = excluded.map(_ + nul).join
@@ -183,7 +183,7 @@ class Notes(root: Text):
   // the work tree are untouched: the fingerprint of a set of working files, dirty or not. The
   // index sorts its entries, so the hash does not depend on the order the files arrive in.
   def tree(files: List[Text]): Fingerprint raises Notes.Error =
-    Filing.temporary(t"pyrocosm-notes"): directory =>
+    Filing.temporary: directory =>
       val index: Text = t"${directory.encode}/index"
       val listing: Text = files.map(_ + nul).join
       indexed(index, listing)(List(t"update-index", t"--add", t"-z", t"--stdin"))

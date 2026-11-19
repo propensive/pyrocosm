@@ -218,7 +218,7 @@ object ServicesTests extends Suite(m"Pyrocosm services tests"):
 
     suite(m"ObjectStore"):
       test(m"a blob is stored under its digest, verified, and pruned"):
-        Filing.temporary(t"pyrocosm-test"): directory =>
+        Filing.temporary: directory =>
           val store: ObjectStore = ObjectStore(directory, t".blob")
           val data: Data = t"content".sysData
           val digest: Text = store.put(data)
@@ -232,7 +232,7 @@ object ServicesTests extends Suite(m"Pyrocosm services tests"):
 
     suite(m"Filing"):
       test(m"a file is replaced whole, with its parents made"):
-        Filing.temporary(t"pyrocosm-test"): directory =>
+        Filing.temporary: directory =>
           val file: Path on Linux = unsafely(directory / "deep" / "file.txt")
           val first: Boolean = Filing.replace(file, t"one")
           val second: Boolean = Filing.replace(file, t"two")
@@ -241,7 +241,7 @@ object ServicesTests extends Suite(m"Pyrocosm services tests"):
       . assert(_ == (true, true, t"two"))
 
       test(m"a tree digest is stable and names its files"):
-        Filing.temporary(t"pyrocosm-test"): directory =>
+        Filing.temporary: directory =>
           Filing.replace(unsafely(directory / "a.txt"), t"a")
           Filing.replace(unsafely(directory / "b.txt"), t"b")
           val one: Text = Digests.tree(directory)

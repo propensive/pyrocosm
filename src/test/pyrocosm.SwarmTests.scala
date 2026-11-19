@@ -38,6 +38,8 @@ import strategies.throwUnsafely
 import threads.platformThreads
 import webserverErrorPages.minimalErrorPage
 
+import Fixtures.subdirectory
+
 // A later build's wire, for the acceptance tests: the same messages and one more, and an advert
 // with one more, optional, field. Derived here, in the unchecked test module, as `Wire` is in
 // `bus`; each derivation in an object of its own, as together they exceed what one class may
@@ -51,10 +53,14 @@ object Later:
     case Pong(id: Uuid, received: Instant over Unix, from: Text)
     case Request(id: Uuid, command: Text, argument: Text)
     case Reply(id: Uuid, ok: Boolean, text: Text)
-    case Snapshot(self: pyrocosm.Advert, known: List[pyrocosm.Advert])
+    case Snapshot(self: _root_.pyrocosm.Advert, known: List[_root_.pyrocosm.Advert])
 
     case Advertised
-      ( origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, advert: pyrocosm.Advert )
+      ( origin: Text,
+        sequence: Long,
+        sent:     Instant over Unix,
+        hops:     Int,
+        advert:   _root_.pyrocosm.Advert )
 
     case Left(origin: Text, sequence: Long, sent: Instant over Unix, hops: Int, node: Node)
 
@@ -88,15 +94,15 @@ object Later:
   import Channel.derivation.throwing
 
   // What a v2 build reads: its own form first, then this build's.
-  lazy val accepting: Tel.Acceptance.Typed[(Wire, pyrocosm.Wire)] =
-    Tel.Acceptance[(Wire, pyrocosm.Wire)]()
+  lazy val accepting: Tel.Acceptance.Typed[(Wire, _root_.pyrocosm.Wire)] =
+    Tel.Acceptance[(Wire, _root_.pyrocosm.Wire)]()
 
   lazy val acceptance: Tel.Acceptance = accepting.acceptance
 
   def write(message: Wire, theirs: Tel.Acceptance): Optional[Data] =
     try message.fulfil(theirs).let(_.document) catch case _: Exception => Unset
 
-  def read(data: Data): Optional[Wire | pyrocosm.Wire] =
+  def read(data: Data): Optional[Wire | _root_.pyrocosm.Wire] =
     try accepting.read(data) catch case _: Exception => Unset
 
 object Adverts:
@@ -117,16 +123,16 @@ object Adverts:
 
   lazy val later: Tel.Acceptance.Typed[Tuple1[Advert]] = Tel.Acceptance[Tuple1[Advert]]()
 
-  lazy val current: Tel.Acceptance.Typed[Tuple1[pyrocosm.Advert]] =
-    Tel.Acceptance[Tuple1[pyrocosm.Advert]]()
+  lazy val current: Tel.Acceptance.Typed[Tuple1[_root_.pyrocosm.Advert]] =
+    Tel.Acceptance[Tuple1[_root_.pyrocosm.Advert]]()
 
-  def writeAdvert(advert: pyrocosm.Advert, theirs: Tel.Acceptance): Optional[Data] =
+  def writeAdvert(advert: _root_.pyrocosm.Advert, theirs: Tel.Acceptance): Optional[Data] =
     try advert.fulfil(theirs).let(_.document) catch case _: Exception => Unset
 
   def writeAdvertV2(advert: Advert, theirs: Tel.Acceptance): Optional[Data] =
     try advert.fulfil(theirs).let(_.document) catch case _: Exception => Unset
 
-  def readAdvert(data: Data): Optional[pyrocosm.Advert] =
+  def readAdvert(data: Data): Optional[_root_.pyrocosm.Advert] =
     try current.read(data) catch case _: Exception => Unset
 
   def readAdvertV2(data: Data): Optional[Advert] =
@@ -436,112 +442,115 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
 
     suite(m"The registry"):
       // The hub's record, in a registry of the test's own, so that the machine's is untouched.
-      val runtime: Text =
-        java.nio.file.Files.createTempDirectory("pyrocosm-registry").nn.toString.tt
+      Filing.temporary: scratch =>
+        // Each test here is a `check`, which runs inline, not an `assert`, which a runner with
+        // workers may defer until after this loan has deleted its directory.
+        val runtime: Text = subdirectory(scratch, t"registry")
 
-      given Environment = name =>
-        if name == t"XDG_RUNTIME_DIR" then runtime
-        else Optional(java.lang.System.getenv(name.s)).let(_.tt)
+        given Environment = name =>
+          if name == t"XDG_RUNTIME_DIR" then runtime
+          else Optional(java.lang.System.getenv(name.s)).let(_.tt)
 
-      val registry: Registry = Registry(Registry.directory)
-      val own: Long = java.lang.ProcessHandle.current.nn.pid
-      val begun: Long = (now() - 1.0*Second).long
+        val registry: Registry = Registry(Registry.directory)
+        val own: Long = java.lang.ProcessHandle.current.nn.pid
+        val begun: Long = (now() - 1.0*Second).long
 
-      test(m"a live hub's record is read back whole, gateway port included"):
-        registry.registerHub
-          ( Registry.Record(t"pyrocosm", t"0.2.0", own, begun, 40003, t"cd"*32, 8093) )
+        test(m"a live hub's record is read back whole, gateway port included"):
+          registry.registerHub
+            ( Registry.Record(t"pyrocosm", t"0.2.0", own, begun, 40003, t"cd"*32, 8093) )
 
-        registry.hub().let: record =>
-          (record.tool, record.version, record.port, record.gateway, record.identity)
+          registry.hub().let: record =>
+            (record.tool, record.version, record.port, record.gateway, record.identity)
 
-      . assert(_ == (t"pyrocosm", t"0.2.0", 40003, 8093, t"cd"*32))
+        . check(_ == (t"pyrocosm", t"0.2.0", 40003, 8093, t"cd"*32))
 
-      test(m"a record is replaced by the next, and removed"):
-        registry.registerHub
-          ( Registry.Record(t"pyrocosm", t"0.2.0", own, begun, 40004, t"cd"*32, Unset) )
+        test(m"a record is replaced by the next, and removed"):
+          registry.registerHub
+            ( Registry.Record(t"pyrocosm", t"0.2.0", own, begun, 40004, t"cd"*32, Unset) )
 
-        val replaced: Optional[(Int, Optional[Int])] =
-          registry.hub().let: record => (record.port, record.gateway)
+          val replaced: Optional[(Int, Optional[Int])] =
+            registry.hub().let: record => (record.port, record.gateway)
 
-        registry.unregisterHub()
-        (replaced, registry.hub().present)
+          registry.unregisterHub()
+          (replaced, registry.hub().present)
 
-      . assert(_ == ((40004, Unset), false))
+        . check(_ == ((40004, Unset), false))
 
-      test(m"a dead hub's record is dropped, and deleted"):
-        registry.registerHub
-          ( Registry.Record(t"pyrocosm", t"0.1.0", 2147483646L, begun, 40002, t"ab"*32, 8093) )
+        test(m"a dead hub's record is dropped, and deleted"):
+          registry.registerHub
+            ( Registry.Record(t"pyrocosm", t"0.1.0", 2147483646L, begun, 40002, t"ab"*32, 8093) )
 
-        val found: Boolean = registry.hub().present
-        val hub = java.nio.file.Path.of(runtime.s, "pyrocosm", "swarm", "hub.tel")
-        val remaining: Boolean = java.nio.file.Files.exists(hub)
-        (found, remaining)
+          val found: Boolean = registry.hub().present
+          val hub = java.nio.file.Path.of(runtime.s, "pyrocosm", "swarm", "hub.tel")
+          val remaining: Boolean = java.nio.file.Files.exists(hub)
+          (found, remaining)
 
-      . assert(_ == (false, false))
+        . check(_ == (false, false))
 
-      test(m"the hub's lock is held by one process at a time"):
-        val first: Optional[java.nio.channels.FileLock] = registry.lockHub()
-        val second: Optional[java.nio.channels.FileLock] = registry.lockHub()
-        first.let(_.release())
-        val third: Optional[java.nio.channels.FileLock] = registry.lockHub()
-        third.let(_.release())
-        (first.present, second.present, third.present)
+        test(m"the hub's lock is held by one process at a time"):
+          val first: Optional[java.nio.channels.FileLock] = registry.lockHub()
+          val second: Optional[java.nio.channels.FileLock] = registry.lockHub()
+          first.let(_.release())
+          val third: Optional[java.nio.channels.FileLock] = registry.lockHub()
+          third.let(_.release())
+          (first.present, second.present, third.present)
 
-      . assert(_ == (true, false, true))
+        . check(_ == (true, false, true))
 
     suite(m"Starting the hub"):
       // A launcher such as Burdock's loads a tool's libraries through a URL class loader of its
       // own, from a cache, and leaves only itself on `java.class.path`; the hub must be started
       // from the libraries, which only that loader knows.
-      val directory: java.nio.file.Path =
-        java.nio.file.Files.createTempDirectory("pyrocosm-classpath").nn
+      Filing.temporary: scratch =>
+        // Each test here is a `check`, which runs inline, not an `assert`, which a runner with
+        // workers may defer until after this loan has deleted its directory.
+        val directory: java.nio.file.Path = java.nio.file.Path.of(scratch.encode.s).nn
 
-      val jar: java.nio.file.Path = directory.resolve("library.jar").nn
-      java.nio.file.Files.write(jar, scala.Array[Byte]())
+        val jar: java.nio.file.Path = directory.resolve("library.jar").nn
+        java.nio.file.Files.write(jar, scala.Array[Byte]())
 
-      val loader: java.net.URLClassLoader =
-        java.net.URLClassLoader
-          ( scala.Array(jar.toUri.nn.toURL.nn, directory.toUri.nn.toURL.nn),
-            ClassLoader.getPlatformClassLoader )
+        val loader: java.net.URLClassLoader =
+          java.net.URLClassLoader
+            ( scala.Array(jar.toUri.nn.toURL.nn, directory.toUri.nn.toURL.nn),
+              ClassLoader.getPlatformClassLoader )
 
-      test(m"the hub's classpath leads with the jars a URL class loader loads, each once"):
-        val entries: List[Text] = Hubs.classpath(loader)
-        (entries.keep(2), entries.count(_ == jar.toString.tt))
+        test(m"the hub's classpath leads with the jars a URL class loader loads, each once"):
+          val entries: List[Text] = pyrocosm.classpath(loader)
+          (entries.keep(2), entries.count(_ == jar.toString.tt))
 
-      . assert(_ == (List(jar.toString.tt, directory.toString.tt), 1))
+        . check(_ == (List(jar.toString.tt, directory.toString.tt), 1))
 
-      test(m"the hub's classpath ends with the JVM's own, made absolute"):
-        val path: String = java.lang.System.getProperty("java.class.path").nn
+        test(m"the hub's classpath ends with the JVM's own, made absolute"):
+          val path: String = java.lang.System.getProperty("java.class.path").nn
 
-        val parts = path.split(java.io.File.pathSeparator).nn
+          val parts = path.split(java.io.File.pathSeparator).nn
 
-        val entries: scala.List[Text] =
-          scala.collection.immutable.ArraySeq.unsafeWrapArray(parts).toList.map: entry =>
-            java.io.File(entry.nn).getAbsolutePath.nn.tt
+          val entries: scala.List[Text] =
+            scala.collection.immutable.ArraySeq.unsafeWrapArray(parts).toList.map: entry =>
+              java.io.File(entry.nn).getAbsolutePath.nn.tt
 
-        val system: List[Text] = List(entries*)
+          val system: List[Text] = List(entries*)
 
-        system.all(Hubs.classpath(loader).has(_))
+          system.all(pyrocosm.classpath(loader).has(_))
 
-      . assert(_ == true)
+        . check(_ == true)
 
-      test(m"the hub's classpath holds the jar the hub's own class came from"):
-        val uri = classOf[Hub].getProtectionDomain.nn.getCodeSource.nn.getLocation.nn.toURI
-        val location: Text = java.nio.file.Path.of(uri).nn.toString.tt
+        test(m"the hub's classpath holds the jar the hub's own class came from"):
+          val uri = classOf[Hub].getProtectionDomain.nn.getCodeSource.nn.getLocation.nn.toURI
+          val location: Text = java.nio.file.Path.of(uri).nn.toString.tt
 
-        Hubs.classpath().has(location)
+          pyrocosm.classpath().has(location)
 
-      . assert(_ == true)
+        . check(_ == true)
 
     suite(m"A hub and two leaves"):
       // A hub and two leaves in this JVM, as the `pyrocosm` process and two tools' daemons
       // would be on one machine, with a registry of the test's own, so that the machine's is
       // untouched; the identity is the machine's real one, as it must be for them to admit
       // each other. Each leaf links to the hub alone, and knows the other through it.
-      val hubbed: Hubbed =
+      val hubbed: Hubbed = Filing.temporary: scratch =>
         supervise:
-          val runtime: Text =
-            java.nio.file.Files.createTempDirectory("pyrocosm-hub").nn.toString.tt
+          val runtime: Text = subdirectory(scratch, t"hub")
 
           given Environment = name =>
             if name == t"XDG_RUNTIME_DIR" then runtime
@@ -664,12 +673,11 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       // a hub of its own. Machine A has two leaves, and its hub is its gateway; machines B and
       // C each have one leaf, and their hubs keep a link to A's, which relays between its own
       // machine and each of them, and between the two of them, as the hub of its spokes.
-      val relayed: Relayed =
+      val relayed: Relayed = Filing.temporary: scratch =>
         supervise:
-          def temporary(name: String): Text =
-            java.nio.file.Files.createTempDirectory(name).nn.toString.tt
+          def temporary(name: Text): Text = subdirectory(scratch, name)
 
-          val config: Text = temporary("pyrocosm-relay-config")
+          val config: Text = temporary(t"relay-config")
 
           def environment(state: Text, runtime: Text): Environment = name =>
             if name == t"XDG_STATE_HOME" then state
@@ -678,13 +686,13 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
             else Optional(java.lang.System.getenv(name.s)).let(_.tt)
 
           val envA: Environment =
-            environment(temporary("pyrocosm-a-state"), temporary("pyrocosm-a-runtime"))
+            environment(temporary(t"a-state"), temporary(t"a-runtime"))
 
           val envB: Environment =
-            environment(temporary("pyrocosm-b-state"), temporary("pyrocosm-b-runtime"))
+            environment(temporary(t"b-state"), temporary(t"b-runtime"))
 
           val envC: Environment =
-            environment(temporary("pyrocosm-c-state"), temporary("pyrocosm-c-runtime"))
+            environment(temporary(t"c-state"), temporary(t"c-runtime"))
 
           val port: Int = Port[Tcp]().number
 
@@ -802,7 +810,7 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       // test's own, so that the user's `machines.tel` is untouched; the hub advertises the
       // machine, as the leaf asks, and the joiner looks for it, over an in-memory mDNS bus, so
       // that nothing is multicast on the network.
-      val invited: Invited =
+      val invited: Invited = Filing.temporary: scratch =>
         supervise:
           val start: Long = Journal.daemon.latest
           def logged: scala.List[Text] = kinds(Journal.daemon.since(start))
@@ -815,11 +823,8 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
           val joiner: Discovery.Backend =
             Mdns.Responder: () => bus.join(dns"joiner.local", List(ip"127.0.0.2"))
 
-          val config: Text =
-            java.nio.file.Files.createTempDirectory("pyrocosm-config").nn.toString.tt
-
-          val runtime: Text =
-            java.nio.file.Files.createTempDirectory("pyrocosm-invite").nn.toString.tt
+          val config: Text = subdirectory(scratch, t"config")
+          val runtime: Text = subdirectory(scratch, t"invite")
 
           given Environment = name =>
             if name == t"XDG_CONFIG_HOME" then config
@@ -925,10 +930,9 @@ object SwarmTests extends Suite(m"Pyrocosm swarm tests"):
       // on a free port behind it, is reached at `/<tool>/` — its page, and its socket, through
       // the hub — and directly, as the same page; a tool nobody runs is not found; and the
       // origin's own page lists the tool.
-      val served: Served =
+      val served: Served = Filing.temporary: scratch =>
         supervise:
-          val runtime: Text =
-            java.nio.file.Files.createTempDirectory("pyrocosm-origin").nn.toString.tt
+          val runtime: Text = subdirectory(scratch, t"origin")
 
           given Environment = name =>
             if name == t"XDG_RUNTIME_DIR" then runtime

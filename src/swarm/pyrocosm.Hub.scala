@@ -299,7 +299,10 @@ extends Swarm(Wire.tool, version, () => Nil, capabilities, swarmPort):
 
           gateway0() = 0
           gatewayListener = Unset
-          registry.registerHub(record)
+
+          // The record, now without the gateway; but not for a hub which is stopping, whose
+          // record `retire` deletes, and which this would otherwise write again behind it.
+          if !stopping() then registry.registerHub(record)
 
   // Stops accepting other machines, hangs up on those linked, and withdraws any advertisement.
   def stopGateway()(using Monitor): Unit =

@@ -40,7 +40,7 @@ import webserverErrorPages.minimalErrorPage
 // origin, every tool's front-end under it (`Portal`), on `port` — 8090, which fume's dashboard
 // had — or, while that is taken, on a port of its own, which it advertises either way. What it
 // does is logged to a file beside the registry, since no invocation reaches its journal.
-object Hubs:
+object pyrocosm:
   // How long the hub outlives its last leaf, which also covers its start, before any has linked.
   val grace: Duration = 30.0*Second
 
@@ -104,8 +104,9 @@ object Hubs:
   // environment, its output to the log file; nothing is read from it, and it is not waited for.
   private def spawn(tool: Text, version: Text)(using environment: Environment): Unit =
     val executable: Text = t"${java.lang.System.getProperty("java.home").nn}/bin/java"
-    val classpath: Text = Hubs.classpath().join(java.io.File.pathSeparator.nn.tt)
-    val command: List[Text] = List(executable, t"-cp", classpath, t"pyrocosm.Hubs", tool, version)
+    val classpath: Text = pyrocosm.classpath().join(java.io.File.pathSeparator.nn.tt)
+    val command: List[Text] =
+      List(executable, t"-cp", classpath, t"pyrocosm.pyrocosm", tool, version)
 
     def pair(name: Text): List[(Text, Text)] =
       environment.variable(name).lay(Nil): value => List((name, value))

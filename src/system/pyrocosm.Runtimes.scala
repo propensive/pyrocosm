@@ -33,7 +33,7 @@ import soundness.*
 // from the externalized dependency jars in `~/.cache/burdock` plus the executable itself — a
 // shebang-prefixed file with no `.jar` suffix, which the compiler refuses to read, though a
 // `ZipFile` reads the archive past the shebang — so the executable is symlinked to a `.jar`
-// path once per process and the link stands in for it. Outside the launcher, the context
+// path in the cache and the link stands in for it. Outside the launcher, the context
 // loader's URLs and `java.class.path` are what there is.
 object Runtimes:
   private def property(name: String): Optional[Text] =
@@ -44,15 +44,38 @@ object Runtimes:
   private def executable: Optional[Text] = property("ethereal.script").let: script =>
     try ji.File(script.s).getCanonicalPath.nn.tt catch case _: Throwable => script
 
-  // The executable symlinked to a `.jar` path, once per process; `Unset` without a launcher,
-  // or where the link cannot be made.
+  // The executable symlinked to a `.jar` path; `Unset` without a launcher, or where the link
+  // cannot be made. The link must outlive this process — a hub started from it goes on running,
+  // and loading classes through it lazily, after the daemon which started it has exited — so it
+  // is not scratch, but stands at a stable path in the cache,
+  // `$XDG_CACHE_HOME/pyrocosm/launchers/<digest of the executable's path>.jar`, which every
+  // process of that executable shares. It is made if it is absent, or replaced if it points
+  // elsewhere, by a link made under a unique name and renamed onto it, so that two processes
+  // starting at once each find a whole, correct link there.
   private lazy val link: Optional[Text] = executable.let: real =>
-    try
-      val directory: jnf.Path = jnf.Files.createTempDirectory("pyrocosm").nn
-      val link: jnf.Path = directory.resolve("pyrocosm.jar").nn
-      jnf.Files.createSymbolicLink(link, jnf.Path.of(real.s))
-      link.toString.tt
-    catch case _: Throwable => Unset
+    import environments.javaBaseEnvironment
+    import systems.javaBaseSystem
+
+    safely(Xdg.cacheHome[Path on Linux]).let: cache =>
+      try
+        val target: jnf.Path = jnf.Path.of(real.s).nn
+        val directory: jnf.Path = jnf.Path.of(cache.encode.s, "pyrocosm", "launchers").nn
+        val link: jnf.Path = directory.resolve(s"${Digests.of(real).keep(16)}.jar").nn
+
+        def correct: Boolean =
+          jnf.Files.isSymbolicLink(link) && jnf.Files.readSymbolicLink(link) == target
+
+        if !correct then
+          jnf.Files.createDirectories(directory)
+          val staged: jnf.Path = directory.resolve(s".${java.util.UUID.randomUUID}.jar").nn
+
+          try
+            jnf.Files.createSymbolicLink(staged, target)
+            jnf.Files.move(staged, link, jnf.StandardCopyOption.ATOMIC_MOVE)
+          finally jnf.Files.deleteIfExists(staged)
+
+        link.toString.tt
+      catch case _: Throwable => Unset
 
   // The entries as the loaders name them — `loader`'s URLs, then its parents', since a
   // launcher may load a tool's libraries through a child of the loader it was given — and
