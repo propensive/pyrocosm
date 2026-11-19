@@ -42,7 +42,17 @@ import tableStyles.thickTableStyle
 import termcapDefinitions.xtermTrueColorTermcap
 import textMetrics.uniformMetric
 
+import Fixtures.subdirectory
+
 case class Person(name: Text, age: Int)
+
+object Fixtures:
+  // A directory `name` made beneath `directory`, by its path: how a suite lays out the several
+  // directories it needs inside the one scratch directory, a `Filing.temporary` loan, that holds
+  // them all and is deleted when the suite ends.
+  def subdirectory(directory: Path on Linux, name: Text): Text =
+    val path = java.nio.file.Path.of(directory.encode.s, name.s).nn
+    java.nio.file.Files.createDirectories(path).nn.toString.tt
 
 // A kind of metadata, as fume's benchmark summary will be: a record with text that has newlines
 // and non-ASCII characters in it, since the note body must survive git's own handling.
@@ -2850,217 +2860,219 @@ object Tests extends Suite(m"Pyrocosm tests"):
       // A fresh repository under a temporary directory, driven by the same `git` on the path
       // that `Notes` uses. The identity is set in the repository's own config, since `Notes`
       // itself commits (to the notes refs) and CI has no global identity.
-      val repo: Text = java.nio.file.Files.createTempDirectory("pyrocosm-notes").nn.toString.tt
-      given WorkingDirectory = () => repo
+      Filing.temporary: scratch =>
+        // Each test here is a `check`, which runs inline, not an `assert`, which a runner with
+        // workers may defer until after this loan has deleted its directory.
+        val repo: Text = subdirectory(scratch, t"repo")
+        given WorkingDirectory = () => repo
 
-      // `git` runs with this process's own environment, as it did before Soundness 0.71.0 made
-      // the environment a process inherits explicit.
-      import environments.javaBaseEnvironment
+        // `git` runs with this process's own environment, as it did before Soundness 0.71.0 made
+        // the environment a process inherits explicit.
+        import environments.javaBaseEnvironment
 
-      // The scratch repository never signs: a user's global `commit.gpgsign` would otherwise
-      // have `git commit` wait on a passphrase the test runner cannot supply.
-      def git(arguments: Text*): Text =
-        val fixed: List[Text] =
-          List(t"git", t"-C", repo, t"-c", t"commit.gpgsign=false", t"-c", t"tag.gpgsign=false")
+        // The scratch repository never signs: a user's global `commit.gpgsign` would otherwise
+        // have `git commit` wait on a passphrase the test runner cannot supply.
+        def git(arguments: Text*): Text =
+          val fixed: List[Text] =
+            List(t"git", t"-C", repo, t"-c", t"commit.gpgsign=false", t"-c", t"tag.gpgsign=false")
 
-        Command((fixed + arguments)*).exec[Text]().trim
+          Command((fixed + arguments)*).exec[Text]().trim
 
-      def put(path: Text, content: Text): Unit =
-        val file = java.nio.file.Path.of(repo.s, path.s).nn
-        java.nio.file.Files.createDirectories(file.getParent.nn)
-        java.nio.file.Files.writeString(file, content.s)
+        def put(path: Text, content: Text): Unit =
+          val file = java.nio.file.Path.of(repo.s, path.s).nn
+          java.nio.file.Files.createDirectories(file.getParent.nn)
+          java.nio.file.Files.writeString(file, content.s)
 
-      git(t"init", t"-q")
-      git(t"config", t"user.name", t"Tests")
-      git(t"config", t"user.email", t"tests@example.com")
-      put(t"src/a.scala", t"object A\n")
-      put(t"src/deep/b.scala", t"object B\n")
-      put(t"doc/readme.md", t"# Docs\n")
-      put(t"README.md", t"# Top\n")
-      put(t"out/junk", t"junk\n")
-      git(t"add", t"-A")
-      git(t"commit", t"-q", t"-m", t"first")
-      val first: Text = git(t"rev-parse", t"HEAD")
-      val firstTree: Text = git(t"rev-parse", t"HEAD^{tree}")
+        git(t"init", t"-q")
+        git(t"config", t"user.name", t"Tests")
+        git(t"config", t"user.email", t"tests@example.com")
+        put(t"src/a.scala", t"object A\n")
+        put(t"src/deep/b.scala", t"object B\n")
+        put(t"doc/readme.md", t"# Docs\n")
+        put(t"README.md", t"# Top\n")
+        put(t"out/junk", t"junk\n")
+        git(t"add", t"-A")
+        git(t"commit", t"-q", t"-m", t"first")
+        val first: Text = git(t"rev-parse", t"HEAD")
+        val firstTree: Text = git(t"rev-parse", t"HEAD^{tree}")
 
-      put(t"doc/readme.md", t"# Docs, revised\n")
-      git(t"add", t"-A")
-      git(t"commit", t"-q", t"-m", t"second")
-      val second: Text = git(t"rev-parse", t"HEAD")
+        put(t"doc/readme.md", t"# Docs, revised\n")
+        git(t"add", t"-A")
+        git(t"commit", t"-q", t"-m", t"second")
+        val second: Text = git(t"rev-parse", t"HEAD")
 
-      put(t"src/a.scala", t"object A2\n")
-      git(t"add", t"-A")
-      git(t"commit", t"-q", t"-m", t"third")
-      val third: Text = git(t"rev-parse", t"HEAD")
+        put(t"src/a.scala", t"object A2\n")
+        git(t"add", t"-A")
+        git(t"commit", t"-q", t"-m", t"third")
+        val third: Text = git(t"rev-parse", t"HEAD")
 
-      // The tree `first` has once the excluded paths are gone, made by git itself.
-      git(t"checkout", t"-q", first)
-      git(t"rm", t"-q", t"-r", t"doc", t"README.md", t"out")
-      git(t"commit", t"-q", t"-m", t"stripped")
-      val strippedTree: Text = git(t"rev-parse", t"HEAD^{tree}")
-      git(t"checkout", t"-q", t"-B", t"main", third)
+        // The tree `first` has once the excluded paths are gone, made by git itself.
+        git(t"checkout", t"-q", first)
+        git(t"rm", t"-q", t"-r", t"doc", t"README.md", t"out")
+        git(t"commit", t"-q", t"-m", t"stripped")
+        val strippedTree: Text = git(t"rev-parse", t"HEAD^{tree}")
+        git(t"checkout", t"-q", t"-B", t"main", third)
 
-      given notes: Notes = Notes(repo)
-      val filter = Filter(List(t"doc/", t"**/*.md", t"out"))
-      val bench = Bench(t"sort", 1.5, t"first line\nsecond line with ünïcode ✓")
+        given notes: Notes = Notes(repo)
+        val filter = Filter(List(t"doc/", t"**/*.md", t"out"))
+        val bench = Bench(t"sort", 1.5, t"first line\nsecond line with ünïcode ✓")
 
-      test(m"a refspec resolves to its commit"):
-        notes.commit(t"HEAD").text
+        test(m"a refspec resolves to its commit"):
+          notes.commit(t"HEAD").text
 
-      . assert(_ == third)
+        . check(_ == third)
 
-      test(m"a refspec that names nothing is an error"):
-        capture[Notes.Error](notes.commit(t"nonesuch")).reason
+        test(m"a refspec that names nothing is an error"):
+          capture[Notes.Error](notes.commit(t"nonesuch")).reason
 
-      . assert(_ == Notes.Error.Reason.BadRef(t"nonesuch"))
+        . check(_ == Notes.Error.Reason.BadRef(t"nonesuch"))
 
-      test(m"an empty filter fingerprints the commit's own tree"):
-        notes.fingerprint(Commit.unsafe(first), Filter.none).text
+        test(m"an empty filter fingerprints the commit's own tree"):
+          notes.fingerprint(Commit.unsafe(first), Filter.none).text
 
-      . assert(_ == firstTree)
+        . check(_ == firstTree)
 
-      test(m"a filter removes the excluded paths from the tree"):
-        notes.fingerprint(Commit.unsafe(first), filter).text
+        test(m"a filter removes the excluded paths from the tree"):
+          notes.fingerprint(Commit.unsafe(first), filter).text
 
-      . assert(_ == strippedTree)
+        . check(_ == strippedTree)
 
-      test(m"commits differing only in excluded files share a fingerprint"):
-        notes.fingerprint(Commit.unsafe(second), filter).text
+        test(m"commits differing only in excluded files share a fingerprint"):
+          notes.fingerprint(Commit.unsafe(second), filter).text
 
-      . assert(_ == strippedTree)
+        . check(_ == strippedTree)
 
-      test(m"commits differing in included files do not share a fingerprint"):
-        notes.fingerprint(Commit.unsafe(third), filter).text
+        test(m"commits differing in included files do not share a fingerprint"):
+          notes.fingerprint(Commit.unsafe(third), filter).text
 
-      . assert(_ != strippedTree)
+        . check(_ != strippedTree)
 
-      test(m"a bare name matches at any depth, and everything beneath it"):
-        val out = Filter(List(t"out"))
+        test(m"a bare name matches at any depth, and everything beneath it"):
+          val out = Filter(List(t"out"))
 
-        ( out.excludes(t"out"),
-          out.excludes(t"out/x"),
-          out.excludes(t"a/out/y"),
-          out.excludes(t"output/z") )
+          ( out.excludes(t"out"),
+            out.excludes(t"out/x"),
+            out.excludes(t"a/out/y"),
+            out.excludes(t"output/z") )
 
-      . assert(_ == (true, true, true, false))
+        . check(_ == (true, true, true, false))
 
-      test(m"a trailing slash matches a directory and its contents, not a prefix"):
-        val doc = Filter(List(t"doc/"))
-        (doc.excludes(t"doc/r.md"), doc.excludes(t"doc/a/b"), doc.excludes(t"docs/x"))
+        test(m"a trailing slash matches a directory and its contents, not a prefix"):
+          val doc = Filter(List(t"doc/"))
+          (doc.excludes(t"doc/r.md"), doc.excludes(t"doc/a/b"), doc.excludes(t"docs/x"))
 
-      . assert(_ == (true, true, false))
+        . check(_ == (true, true, false))
 
-      test(m"** spans segments and * stays within one"):
-        val globs = Filter(List(t"**/*.md", t"src/*.scala"))
+        test(m"** spans segments and * stays within one"):
+          val globs = Filter(List(t"**/*.md", t"src/*.scala"))
 
-        ( globs.excludes(t"README.md"),
-          globs.excludes(t"a/b/c.md"),
-          globs.excludes(t"a.mdx"),
-          globs.excludes(t"src/a.scala"),
-          globs.excludes(t"src/x/b.scala") )
+          ( globs.excludes(t"README.md"),
+            globs.excludes(t"a/b/c.md"),
+            globs.excludes(t"a.mdx"),
+            globs.excludes(t"src/a.scala"),
+            globs.excludes(t"src/x/b.scala") )
 
-      . assert(_ == (true, true, false, true, false))
+        . check(_ == (true, true, false, true, false))
 
-      test(m"an include overrides an exclude"):
-        val kept = Filter(List(t"doc/"), List(t"doc/keep.md"))
-        (kept.excludes(t"doc/keep.md"), kept.excludes(t"doc/other.md"))
+        test(m"an include overrides an exclude"):
+          val kept = Filter(List(t"doc/"), List(t"doc/keep.md"))
+          (kept.excludes(t"doc/keep.md"), kept.excludes(t"doc/other.md"))
 
-      . assert(_ == (false, true))
+        . check(_ == (false, true))
 
-      test(m"a filter round-trips as TEL text"):
-        filter.in[Tel].show.read[Tel].as[Filter]
+        test(m"a filter round-trips as TEL text"):
+          filter.in[Tel].show.read[Tel].as[Filter]
 
-      . assert(_ == filter)
+        . check(_ == filter)
 
-      val fingerprint: Fingerprint = notes.fingerprint(Commit.unsafe(first), filter)
+        val fingerprint: Fingerprint = notes.fingerprint(Commit.unsafe(first), filter)
 
-      test(m"a record is absent before it is written"):
-        notes.read[Bench](fingerprint)
+        test(m"a record is absent before it is written"):
+          notes.read[Bench](fingerprint)
 
-      . assert(_ == Unset)
+        . check(_ == Unset)
 
-      test(m"a record round-trips through a note, newlines and non-ASCII intact"):
-        notes.write[Bench](fingerprint, bench)
-        notes.read[Bench](fingerprint)
+        test(m"a record round-trips through a note, newlines and non-ASCII intact"):
+          notes.write[Bench](fingerprint, bench)
+          notes.read[Bench](fingerprint)
 
-      . assert(_ == bench)
+        . check(_ == bench)
 
-      test(m"binding twice leaves one index line"):
-        notes.bind(Commit.unsafe(first), fingerprint)
-        notes.bind(Commit.unsafe(first), fingerprint)
-        notes.fingerprints(Commit.unsafe(first))
+        test(m"binding twice leaves one index line"):
+          notes.bind(Commit.unsafe(first), fingerprint)
+          notes.bind(Commit.unsafe(first), fingerprint)
+          notes.fingerprints(Commit.unsafe(first))
 
-      . assert(_ == List(fingerprint))
+        . check(_ == List(fingerprint))
 
-      test(m"a commit's record is found through its index"):
-        Commit.unsafe(first).record[Bench]
+        test(m"a commit's record is found through its index"):
+          Commit.unsafe(first).record[Bench]
 
-      . assert(_ == bench)
+        . check(_ == bench)
 
-      test(m"a commit with no index has no record"):
-        Commit.unsafe(third).record[Bench]
+        test(m"a commit with no index has no record"):
+          Commit.unsafe(third).record[Bench]
 
-      . assert(_ == Unset)
+        . check(_ == Unset)
 
-      test(m"recording through a filter writes, binds and returns the fingerprint"):
-        Commit.unsafe(second).record[Bench](filter, bench)
+        test(m"recording through a filter writes, binds and returns the fingerprint"):
+          Commit.unsafe(second).record[Bench](filter, bench)
 
-      . assert(_ == fingerprint)
+        . check(_ == fingerprint)
 
-      test(m"a second commit bound to the same fingerprint reads the same record"):
-        Commit.unsafe(second).record[Bench]
+        test(m"a second commit bound to the same fingerprint reads the same record"):
+          Commit.unsafe(second).record[Bench]
 
-      . assert(_ == bench)
+        . check(_ == bench)
 
-      test(m"the reverse index lists every commit bound to a fingerprint"):
-        notes.commits(fingerprint).map(_.text)
+        test(m"the reverse index lists every commit bound to a fingerprint"):
+          notes.commits(fingerprint).map(_.text)
 
-      . assert: commits =>
-          commits.has(first) && commits.has(second) && !commits.has(third)
+        . assert: commits =>
+            commits.has(first) && commits.has(second) && !commits.has(third)
 
-      val otherFingerprint = Fingerprint.unsafe(t"0123456789abcdef0123456789abcdef01234567")
-      val newerBench = Bench(t"sort", 2.5, t"newer")
+        val otherFingerprint = Fingerprint.unsafe(t"0123456789abcdef0123456789abcdef01234567")
+        val newerBench = Bench(t"sort", 2.5, t"newer")
 
-      test(m"the newest fingerprint of a commit is tried first"):
-        val other = Fingerprint.unsafe(t"0123456789abcdef0123456789abcdef01234567")
-        val newer = Bench(t"sort", 2.5, t"newer")
-        Commit.unsafe(first).record[Bench](other, newer)
+        test(m"the newest fingerprint of a commit is tried first"):
+          val other = Fingerprint.unsafe(t"0123456789abcdef0123456789abcdef01234567")
+          val newer = Bench(t"sort", 2.5, t"newer")
+          Commit.unsafe(first).record[Bench](other, newer)
 
-        ( notes.fingerprints(Commit.unsafe(first)),
-          Commit.unsafe(first).record[Bench],
-          Commit.unsafe(first).recordings[Bench] )
+          ( notes.fingerprints(Commit.unsafe(first)),
+            Commit.unsafe(first).record[Bench],
+            Commit.unsafe(first).recordings[Bench] )
 
-      . assert(_ == (List(otherFingerprint, fingerprint), newerBench, List(newerBench, bench)))
+        . check(_ == (List(otherFingerprint, fingerprint), newerBench, List(newerBench, bench)))
 
-      test(m"a note on a hash with no local object can be written and read"):
-        val absent = Fingerprint.unsafe(t"fedcba9876543210fedcba9876543210fedcba98")
-        notes.write[Bench](absent, bench)
-        notes.read[Bench](absent)
+        test(m"a note on a hash with no local object can be written and read"):
+          val absent = Fingerprint.unsafe(t"fedcba9876543210fedcba9876543210fedcba98")
+          notes.write[Bench](absent, bench)
+          notes.read[Bench](absent)
 
-      . assert(_ == bench)
+        . check(_ == bench)
 
-      test(m"history walks back from a refspec, newest first"):
-        notes.history(t"main", 2).map(_.text)
+        test(m"history walks back from a refspec, newest first"):
+          notes.history(t"main", 2).map(_.text)
 
-      . assert(_ == List(third, second))
+        . check(_ == List(third, second))
 
-      test(m"published notes are fetched and read by a clone"):
-        val remote: Text = java.nio.file.Files.createTempDirectory("pyrocosm-remote").nn.toString.tt
-        val clone: Text = java.nio.file.Files.createTempDirectory("pyrocosm-clone").nn.toString.tt
-        java.nio.file.Files.delete(java.nio.file.Path.of(clone.s))
-        Command(t"git", t"init", t"-q", t"--bare", remote).exec[Text]()
-        git(t"remote", t"add", t"origin", remote)
-        git(t"push", t"-q", t"origin", t"main")
-        notes.publish()
-        Command(t"git", t"clone", t"-q", remote, clone).exec[Text]()
-        val cloned = Notes(clone)
-        cloned.fetch()
+        test(m"published notes are fetched and read by a clone"):
+          val remote: Text = subdirectory(scratch, t"remote")
+          val clone: Text = t"${scratch.encode}/clone"
+          Command(t"git", t"init", t"-q", t"--bare", remote).exec[Text]()
+          git(t"remote", t"add", t"origin", remote)
+          git(t"push", t"-q", t"origin", t"main")
+          notes.publish()
+          Command(t"git", t"clone", t"-q", remote, clone).exec[Text]()
+          val cloned = Notes(clone)
+          cloned.fetch()
 
-        cloned.fingerprints(cloned.commit(second)) match
-          case fingerprint :: _ => cloned.read[Bench](fingerprint)
-          case _                => Unset
+          cloned.fingerprints(cloned.commit(second)) match
+            case fingerprint :: _ => cloned.read[Bench](fingerprint)
+            case _                => Unset
 
-      . assert(_ == bench)
+        . check(_ == bench)
 
     // ── The standard command line ─────────────────────────────────────────────────────────
 
@@ -3068,94 +3080,97 @@ object Tests extends Suite(m"Pyrocosm tests"):
       // A project directory with a `.pyrocosm/demo/config.tel` at its root, a nested directory
       // to invoke from, and a home for the user's `~/.config/demo/config.tel`, reached through
       // `XDG_CONFIG_HOME` in an environment built for the test.
-      val project: Text = java.nio.file.Files.createTempDirectory("pyrocosm-tool").nn.toString.tt
-      val home: Text = java.nio.file.Files.createTempDirectory("pyrocosm-config").nn.toString.tt
+      Filing.temporary: scratch =>
+        // Each test here is a `check`, which runs inline, not an `assert`, which a runner with
+        // workers may defer until after this loan has deleted its directory.
+        val project: Text = subdirectory(scratch, t"tool")
+        val home: Text = subdirectory(scratch, t"config")
 
-      def put(root: Text, path: Text, content: Text): Unit =
-        val file = java.nio.file.Path.of(root.s, path.s).nn
-        java.nio.file.Files.createDirectories(file.getParent.nn)
-        java.nio.file.Files.writeString(file, content.s)
+        def put(root: Text, path: Text, content: Text): Unit =
+          val file = java.nio.file.Path.of(root.s, path.s).nn
+          java.nio.file.Files.createDirectories(file.getParent.nn)
+          java.nio.file.Files.writeString(file, content.s)
 
-      given Environment = name => if name == t"XDG_CONFIG_HOME" then home else Unset
+        given Environment = name => if name == t"XDG_CONFIG_HOME" then home else Unset
 
-      val demo: Tool = Tool(t"demo", prose = t"A tool.")
-      val nested: Text = t"$project/sub/dir"
-      java.nio.file.Files.createDirectories(java.nio.file.Path.of(nested.s))
+        val demo: Tool = Tool(t"demo", prose = t"A tool.")
+        val nested: Text = t"$project/sub/dir"
+        java.nio.file.Files.createDirectories(java.nio.file.Path.of(nested.s))
 
-      test(m"no configuration file is found in an unconfigured project"):
-        demo.repoFile(nested)
+        test(m"no configuration file is found in an unconfigured project"):
+          demo.repoFile(nested)
 
-      . assert(_ == Unset)
+        . check(_ == Unset)
 
-      test(m"another tool's configuration does not end the search"):
-        put(project, t".pyrocosm/other/config.tel", t"tel 1.0\n")
-        demo.repoFile(nested)
+        test(m"another tool's configuration does not end the search"):
+          put(project, t".pyrocosm/other/config.tel", t"tel 1.0\n")
+          demo.repoFile(nested)
 
-      . assert(_ == Unset)
+        . check(_ == Unset)
 
-      test(m"the repository's configuration is found from a nested directory"):
-        put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 1\nquiet\npath a\npath b\n")
-        demo.repoFile(nested).let(_.encode)
+        test(m"the repository's configuration is found from a nested directory"):
+          put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 1\nquiet\npath a\npath b\n")
+          demo.repoFile(nested).let(_.encode)
 
-      . assert(_ == t"$project/.pyrocosm/demo/config.tel")
+        . check(_ == t"$project/.pyrocosm/demo/config.tel")
 
-      test(m"the user's configuration file is under XDG_CONFIG_HOME"):
-        demo.userFile.let(_.encode)
+        test(m"the user's configuration file is under XDG_CONFIG_HOME"):
+          demo.userFile.let(_.encode)
 
-      . assert(_ == t"$home/demo/config.tel")
+        . check(_ == t"$home/demo/config.tel")
 
-      test(m"a setting reads from the repository's configuration"):
-        demo.configurator(nested).read(t"port")
+        test(m"a setting reads from the repository's configuration"):
+          demo.configurator(nested).read(t"port")
 
-      . assert(_ == t"1")
+        . check(_ == t"1")
 
-      test(m"a bare keyword reads as true"):
-        demo.configurator(nested).read(t"quiet")
+        test(m"a bare keyword reads as true"):
+          demo.configurator(nested).read(t"quiet")
 
-      . assert(_ == t"true")
+        . check(_ == t"true")
 
-      test(m"a repeated keyword joins its atoms"):
-        demo.configurator(nested).read(t"path")
+        test(m"a repeated keyword joins its atoms"):
+          demo.configurator(nested).read(t"path")
 
-      . assert(_ == t"a:b")
+        . check(_ == t"a:b")
 
-      test(m"an absent keyword is unset"):
-        demo.configurator(nested).read(t"missing")
+        test(m"an absent keyword is unset"):
+          demo.configurator(nested).read(t"missing")
 
-      . assert(_ == Unset)
+        . check(_ == Unset)
 
-      test(m"a camelCase setting name reads its kebab-case keyword"):
-        put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 1\nfail-fast\n")
-        demo.configurator(nested).read(t"failFast")
+        test(m"a camelCase setting name reads its kebab-case keyword"):
+          put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 1\nfail-fast\n")
+          demo.configurator(nested).read(t"failFast")
 
-      . assert(_ == t"true")
+        . check(_ == t"true")
 
-      test(m"the user's configuration supplies what the repository's does not"):
-        put(home, t"demo/config.tel", t"tel 1.0\nport 2\nserve\n")
-        demo.configurator(nested).read(t"serve")
+        test(m"the user's configuration supplies what the repository's does not"):
+          put(home, t"demo/config.tel", t"tel 1.0\nport 2\nserve\n")
+          demo.configurator(nested).read(t"serve")
 
-      . assert(_ == t"true")
+        . check(_ == t"true")
 
-      test(m"the repository's configuration takes priority over the user's"):
-        demo.configurator(nested).read(t"port")
+        test(m"the repository's configuration takes priority over the user's"):
+          demo.configurator(nested).read(t"port")
 
-      . assert(_ == t"1")
+        . check(_ == t"1")
 
-      test(m"the user's configuration alone is read outside any project"):
-        demo.configurator(home).read(t"port")
+        test(m"the user's configuration alone is read outside any project"):
+          demo.configurator(home).read(t"port")
 
-      . assert(_ == t"2")
+        . check(_ == t"2")
 
-      test(m"an edit to a configuration file is honoured by the next read"):
-        put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 3000\n")
-        demo.configurator(nested).read(t"port")
+        test(m"an edit to a configuration file is honoured by the next read"):
+          put(project, t".pyrocosm/demo/config.tel", t"tel 1.0\nport 3000\n")
+          demo.configurator(nested).read(t"port")
 
-      . assert(_ == t"3000")
+        . check(_ == t"3000")
 
-      test(m"a build that wrote no version resource has an unknown version"):
-        demo.version
+        test(m"a build that wrote no version resource has an unknown version"):
+          demo.version
 
-      . assert(_ == t"unknown")
+        . check(_ == t"unknown")
 
     suite(m"Release"):
       val manifest: Text = t"""# the newest release
@@ -3212,14 +3227,17 @@ windows-x64\thttps://example.com/fume-windows-x64.exe\tcccc
     // ── Remote machines ───────────────────────────────────────────────────────────────────
 
     suite(m"Credential"):
-      val home: Text =
-        java.nio.file.Files.createTempDirectory("pyrocosm-credentials").nn.toString.tt
+      Filing.temporary: scratch =>
+        // Each test here is a `check`, which runs inline, not an `assert`, which a runner with
+        // workers may defer until after this loan has deleted its directory.
+        val home: Text = subdirectory(scratch, t"credentials")
 
-      val keyFile = java.nio.file.Files.createTempFile("pyrocosm-key", "").nn
-      java.nio.file.Files.writeString(keyFile, "  sk-from-file\n")
-      val empty = java.nio.file.Files.createTempFile("pyrocosm-empty", "").nn
+        val keyFile = java.nio.file.Path.of(home.s, "key").nn
+        java.nio.file.Files.writeString(keyFile, "  sk-from-file\n")
+        val empty = java.nio.file.Path.of(home.s, "empty").nn
+        java.nio.file.Files.writeString(empty, "")
 
-      val document: Tel = unsafely(t"""tel 1.0
+        val document: Tel = unsafely(t"""tel 1.0
 
 credential anthropic
   env ANTHROPIC_API_KEY
@@ -3233,80 +3251,80 @@ credential nameless
   env NOTHING
 """.read[Tel])
 
-      given WorkingDirectory = () => home
-      given Environment = name => if name == t"ANTHROPIC_API_KEY" then t"sk-from-env" else Unset
+        given WorkingDirectory = () => home
+        given Environment = name => if name == t"ANTHROPIC_API_KEY" then t"sk-from-env" else Unset
 
-      test(m"credential blocks parse with their sources in order"):
-        Credential.parse(document).map: credential =>
-          (credential.name, credential.sources.size)
+        test(m"credential blocks parse with their sources in order"):
+          Credential.parse(document).map: credential =>
+            (credential.name, credential.sources.size)
 
-      . assert(_ == List((t"anthropic", 3), (t"empty", 1), (t"nameless", 1)))
+        . check(_ == List((t"anthropic", 3), (t"empty", 1), (t"nameless", 1)))
 
-      test(m"the first source that yields a value wins"):
-        Credential.parse(document).head.let(_.obtain())
+        test(m"the first source that yields a value wins"):
+          Credential.parse(document).head.let(_.obtain())
 
-      . assert(_ == t"sk-from-env")
+        . check(_ == t"sk-from-env")
 
-      test(m"an unset variable falls through to the file"):
-        given Environment = _ => Unset
-        Credential.parse(document).head.let(_.obtain())
+        test(m"an unset variable falls through to the file"):
+          given Environment = _ => Unset
+          Credential.parse(document).head.let(_.obtain())
 
-      . assert(_ == t"sk-from-file")
+        . check(_ == t"sk-from-file")
 
-      test(m"an empty file falls through to the command"):
-        given Environment = _ => Unset
-        val command = Credential.Source.Command(List(t"echo", t"sk-from-command"))
-        val sources = List(Credential.Source.File(empty.toString.tt), command)
-        Credential(t"x", sources).obtain()
+        test(m"an empty file falls through to the command"):
+          given Environment = _ => Unset
+          val command = Credential.Source.Command(List(t"echo", t"sk-from-command"))
+          val sources = List(Credential.Source.File(empty.toString.tt), command)
+          Credential(t"x", sources).obtain()
 
-      . assert(_ == t"sk-from-command")
+        . check(_ == t"sk-from-command")
 
-      test(m"a failing command yields nothing"):
-        Credential(t"x", List(Credential.Source.Command(List(t"false")))).obtain()
+        test(m"a failing command yields nothing"):
+          Credential(t"x", List(Credential.Source.Command(List(t"false")))).obtain()
 
-      . assert(_ == Unset)
+        . check(_ == Unset)
 
-      test(m"an empty file yields nothing"):
-        Credential.parse(document).at(Prim + 1).let(_.obtain())
+        test(m"an empty file yields nothing"):
+          Credential.parse(document).at(Prim + 1).let(_.obtain())
 
-      . assert(_ == Unset)
+        . check(_ == Unset)
 
-      test(m"an earlier document overrides a later one by name"):
-        val override0: Tel =
-          unsafely(t"tel 1.0\n\ncredential anthropic\n  env OTHER_KEY\n".read[Tel])
+        test(m"an earlier document overrides a later one by name"):
+          val override0: Tel =
+            unsafely(t"tel 1.0\n\ncredential anthropic\n  env OTHER_KEY\n".read[Tel])
 
-        Credential.resolve(List(override0, document)).map: credential =>
-          (credential.name, credential.sources.size)
+          Credential.resolve(List(override0, document)).map: credential =>
+            (credential.name, credential.sources.size)
 
-      . assert(_ == List((t"anthropic", 1), (t"empty", 1), (t"nameless", 1)))
+        . check(_ == List((t"anthropic", 1), (t"empty", 1), (t"nameless", 1)))
 
-      test(m"a tool resolves a well-known credential by default"):
-        val demo: Tool = Tool(t"demo", prose = t"A tool.")
+        test(m"a tool resolves a well-known credential by default"):
+          val demo: Tool = Tool(t"demo", prose = t"A tool.")
 
-        given Environment = name =>
-          if name == t"ANTHROPIC_API_KEY" then t"sk-default"
-          else if name == t"XDG_CONFIG_HOME" then home
-          else Unset
+          given Environment = name =>
+            if name == t"ANTHROPIC_API_KEY" then t"sk-default"
+            else if name == t"XDG_CONFIG_HOME" then home
+            else Unset
 
-        demo.credential(t"anthropic", home)
+          demo.credential(t"anthropic", home)
 
-      . assert(_ == t"sk-default")
+        . check(_ == t"sk-default")
 
-      test(m"a tool prefers the shared credentials file to the default"):
-        val demo: Tool = Tool(t"demo", prose = t"A tool.")
-        val shared = java.nio.file.Path.of(home.s, "pyrocosm", "credentials.tel").nn
-        java.nio.file.Files.createDirectories(shared.getParent.nn)
-        val credentials = s"tel 1.0\n\ncredential anthropic\n  file ${keyFile.toString}\n"
-        java.nio.file.Files.writeString(shared, credentials)
+        test(m"a tool prefers the shared credentials file to the default"):
+          val demo: Tool = Tool(t"demo", prose = t"A tool.")
+          val shared = java.nio.file.Path.of(home.s, "pyrocosm", "credentials.tel").nn
+          java.nio.file.Files.createDirectories(shared.getParent.nn)
+          val credentials = s"tel 1.0\n\ncredential anthropic\n  file ${keyFile.toString}\n"
+          java.nio.file.Files.writeString(shared, credentials)
 
-        given Environment = name =>
-          if name == t"ANTHROPIC_API_KEY" then t"sk-default"
-          else if name == t"XDG_CONFIG_HOME" then home
-          else Unset
+          given Environment = name =>
+            if name == t"ANTHROPIC_API_KEY" then t"sk-default"
+            else if name == t"XDG_CONFIG_HOME" then home
+            else Unset
 
-        demo.credential(t"anthropic", home)
+          demo.credential(t"anthropic", home)
 
-      . assert(_ == t"sk-from-file")
+        . check(_ == t"sk-from-file")
 
     suite(m"Remote"):
       import probates.cancelProbate
@@ -3404,74 +3422,77 @@ credential nameless
         . assert(_ == Channel.Frame.Closed)
 
       suite(m"Blobs"):
-        val root: Text = java.nio.file.Files.createTempDirectory("pyrocosm-blobs").nn.toString.tt
+        Filing.temporary: scratch =>
+          // Each test here is a `check`, which runs inline, not an `assert`, which a runner with
+          // workers may defer until after this loan has deleted its directory.
+          val root: Text = subdirectory(scratch, t"blobs")
 
-        def put(path: Text, content: Text): Unit =
-          val file = java.nio.file.Path.of(root.s, path.s).nn
-          java.nio.file.Files.createDirectories(file.getParent.nn)
-          java.nio.file.Files.writeString(file, content.s)
+          def put(path: Text, content: Text): Unit =
+            val file = java.nio.file.Path.of(root.s, path.s).nn
+            java.nio.file.Files.createDirectories(file.getParent.nn)
+            java.nio.file.Files.writeString(file, content.s)
 
-        put(t"classes/a/One.class", t"one")
-        put(t"classes/b/Two.class", t"two")
-        put(t"copy/b/Two.class", t"two")
-        put(t"copy/a/One.class", t"one")
-        put(t"lib.jar", t"not really a jar")
+          put(t"classes/a/One.class", t"one")
+          put(t"classes/b/Two.class", t"two")
+          put(t"copy/b/Two.class", t"two")
+          put(t"copy/a/One.class", t"one")
+          put(t"lib.jar", t"not really a jar")
 
-        def path(relative: Text): Path on Linux = unsafely(t"$root/$relative".as[Path on Linux])
+          def path(relative: Text): Path on Linux = unsafely(t"$root/$relative".as[Path on Linux])
 
-        test(m"digests are Blake3, as 64 hex characters"):
-          Blobs.digest(ascii(t"abc"))
+          test(m"digests are Blake3, as 64 hex characters"):
+            Blobs.digest(ascii(t"abc"))
 
-        . assert(_ == t"6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85")
+          . check(_ == t"6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85")
 
-        test(m"a directory bundles deterministically whatever the order it was written"):
-          val (first, _) = unsafely(Blobs.prepare(path(t"classes"), t"classes"))
-          val (second, _) = unsafely(Blobs.prepare(path(t"copy"), t"copy"))
-          (first.digest == second.digest, first.directory)
+          test(m"a directory bundles deterministically whatever the order it was written"):
+            val (first, _) = unsafely(Blobs.prepare(path(t"classes"), t"classes"))
+            val (second, _) = unsafely(Blobs.prepare(path(t"copy"), t"copy"))
+            (first.digest == second.digest, first.directory)
 
-        . assert(_ == (true, true))
+          . check(_ == (true, true))
 
-        test(m"a bundle contains every file under its relative path"):
-          val (_, data) = unsafely(Blobs.prepare(path(t"classes"), t"classes"))
-          val zipfile = unsafely(Zipfile.read(data))
-          zipfile.entries.map(_.ref.encode.s.stripPrefix("/")).stdlib.sorted.to(List)
+          test(m"a bundle contains every file under its relative path"):
+            val (_, data) = unsafely(Blobs.prepare(path(t"classes"), t"classes"))
+            val zipfile = unsafely(Zipfile.read(data))
+            zipfile.entries.map(_.ref.encode.s.stripPrefix("/")).stdlib.sorted.to(List)
 
-        . assert(_ == List("a/One.class", "b/Two.class"))
+          . check(_ == List("a/One.class", "b/Two.class"))
 
-        test(m"a jar is digested as it is"):
-          val (entry, data) = unsafely(Blobs.prepare(path(t"lib.jar"), t"lib.jar"))
-          (entry.directory, entry.digest == Blobs.digest(ascii(t"not really a jar")), data.length)
+          test(m"a jar is digested as it is"):
+            val (entry, data) = unsafely(Blobs.prepare(path(t"lib.jar"), t"lib.jar"))
+            (entry.directory, entry.digest == Blobs.digest(ascii(t"not really a jar")), data.length)
 
-        . assert(_ == (false, true, 16))
+          . check(_ == (false, true, 16))
 
-        test(m"chunks partition the data and an empty blob is one chunk"):
-          val data: Data = Data.fill(Blobs.chunk*2 + 5): i => i.toByte
-          val chunks = Blobs.chunks(data)
-          (chunks.map(_(0)), chunks.map(_(1).length), Blobs.chunks(Data()).size)
+          test(m"chunks partition the data and an empty blob is one chunk"):
+            val data: Data = Data.fill(Blobs.chunk*2 + 5): i => i.toByte
+            val chunks = Blobs.chunks(data)
+            (chunks.map(_(0)), chunks.map(_(1).length), Blobs.chunks(Data()).size)
 
-        . assert(_ == (List(0, Blobs.chunk, Blobs.chunk*2), List(Blobs.chunk, Blobs.chunk, 5), 1))
+          . check(_ == (List(0, Blobs.chunk, Blobs.chunk*2), List(Blobs.chunk, Blobs.chunk, 5), 1))
 
-        test(m"a store keeps what it is given under its digest, and rejects a lie"):
-          java.nio.file.Files.createDirectories(java.nio.file.Path.of(root.s, "store"))
-          val store = ObjectStore(path(t"store"), t".jar")
-          val data = ascii(t"blob")
-          val digest = Blobs.digest(data)
-          val stored = store.put(digest, data)
-          val lied = store.put(t"0"*64, data)
-          (stored, lied, store.has(digest), store.missing(List(digest, t"0"*64)))
+          test(m"a store keeps what it is given under its digest, and rejects a lie"):
+            java.nio.file.Files.createDirectories(java.nio.file.Path.of(root.s, "store"))
+            val store = ObjectStore(path(t"store"), t".jar")
+            val data = ascii(t"blob")
+            val digest = Blobs.digest(data)
+            val stored = store.put(digest, data)
+            val lied = store.put(t"0"*64, data)
+            (stored, lied, store.has(digest), store.missing(List(digest, t"0"*64)))
 
-        . assert(_ == (true, false, true, List(t"0"*64)))
+          . check(_ == (true, false, true, List(t"0"*64)))
 
-        test(m"an assembly stores a blob once its last chunk arrives"):
-          val store = ObjectStore(path(t"store"), t".jar")
-          val data: Data = Data.fill(3000): i => (i*7).toByte
-          val digest = Blobs.digest(data)
-          val assembly = Blobs.Assembly(store)
-          val first = assembly.receive(digest, Frames.slice(data, 0, 1000), false)
-          val second = assembly.receive(digest, Frames.slice(data, 1000, 3000), true)
-          (first, second, store.has(digest))
+          test(m"an assembly stores a blob once its last chunk arrives"):
+            val store = ObjectStore(path(t"store"), t".jar")
+            val data: Data = Data.fill(3000): i => (i*7).toByte
+            val digest = Blobs.digest(data)
+            val assembly = Blobs.Assembly(store)
+            val first = assembly.receive(digest, Frames.slice(data, 0, 1000), false)
+            val second = assembly.receive(digest, Frames.slice(data, 1000, 3000), true)
+            (first, second, store.has(digest))
 
-        . assert(_ == (Unset, true, true))
+          . check(_ == (Unset, true, true))
 
       suite(m"Machine"):
         val document: Tel = unsafely(t"""tel 1.0
@@ -3560,9 +3581,10 @@ machine mac-mini
         . assert(_ == t"not-a-file")
 
         test(m"a token that names a file is the file's trimmed content"):
-          val file = java.nio.file.Files.createTempFile("pyrocosm-token", "").nn
-          java.nio.file.Files.writeString(file, "  s3cret\n")
-          Machine.secret(file.toString.tt)
+          Filing.temporary: scratch =>
+            val file = java.nio.file.Path.of(scratch.encode.s, "token").nn
+            java.nio.file.Files.writeString(file, "  s3cret\n")
+            Machine.secret(file.toString.tt)
 
         . assert(_ == t"s3cret")
 
@@ -3577,299 +3599,303 @@ machine mac-mini
         . assert(_ == List(false, false, false, false, true))
 
       suite(m"Peer"):
-        val state: Text = java.nio.file.Files.createTempDirectory("pyrocosm-state").nn.toString.tt
-        val config: Text = java.nio.file.Files.createTempDirectory("pyrocosm-config").nn.toString.tt
-
-        given Environment = name =>
-          if name == t"XDG_STATE_HOME" then state
-          else if name == t"XDG_CONFIG_HOME" then config
-          else Unset
-
-        val identity: Peer.Identity = unsafely(Peer.identity)
-        val token: Text = Peer.token.or(t"")
-
-        test(m"an identity is generated once and read back thereafter"):
-          val again = unsafely(Peer.identity)
-
-          ( identity.fingerprint.length,
-            Channel.same(again.fingerprint, identity.fingerprint),
-            token.s.length )
-
-        . assert(_ == (32, true, 64))
-
-        // A worker that echoes each message's text back, reversed, until the client closes.
-        def echo(session: Peer.Session[Ping]): Unit =
-          def recur(): Unit = session.receive() match
-            case Channel.Frame.Message(Ping.Hello(text, count)) =>
-              session.send(Ping.Hello(text.s.reverse.tt, count + 1))
-              recur()
-
-            case Channel.Frame.Raw(data) =>
-              session.sendRaw(data)
-              recur()
-
-            case _ =>
-              ()
-
-          recur()
-
-        val idle: () => Optional[Text] = () => Unset
-        val busy: () => Optional[Text] = () => Peer.Refusal.busy
-
-        def worker(gate: () => Optional[Text]): Peer.Listener[Ping] =
-          Peer.Listener(t"demo", t"1.0", codec, token, identity, List(t"quiet"), gate)(echo)
-
-        def machine(fingerprint: Data, secret: Text, port: Int): Machine =
-          Machine(t"worker", List(t"127.0.0.1"), port, fingerprint, secret, Nil)
-
-        def serving[result](listener: Peer.Listener[Ping])(block: Int => result): result =
-          import threads.platformThreads
-
-          supervise:
-            val port: Int = Port[Tcp]().number
-            val task = async(listener.serve(port))
-
-            // Until the listener has bound its port: a fixed pause races the bind on a loaded
-            // machine, and a caller arriving first is told `unreachable`, not `refused`.
-            def bound(attempts: Int): Unit =
-              val accepted: Boolean =
-                try
-                  val socket = java.net.Socket("127.0.0.1", port)
-                  socket.close()
-                  true
-                catch case _: Exception => false
-
-              if !accepted && attempts > 0 then
-                Thread.sleep(100)
-                bound(attempts - 1)
-
-            bound(50)
-
-            try block(port) finally
-              listener.stop()
-              safely(task.await())
-
-        test(m"a pinned client with the right token is welcomed and exchanges messages"):
-          serving(worker(idle)): port =>
-            unsafely:
-              val target = machine(identity.fingerprint, token, port)
-
-              Peer.connect(target, t"demo", t"1.0", codec, 1): session =>
-                session.send(Ping.Hello(t"abc", 1))
-                val reply = session.receive()
-                session.sendRaw(ascii(t"raw"))
-
-                val echoed = session.receive() match
-                  case Channel.Frame.Raw(data) => bytes(data)
-                  case _                       => Nil
-
-                ( reply,
-                  echoed,
-                  session.peer.tool,
-                  session.peer.capabilities,
-                  session.peer.identity.cores > 0 )
-
-        . assert: result =>
-            result ==
-              ( Channel.Frame.Message(Ping.Hello(t"cba", 2)),
-                bytes(ascii(t"raw")),
-                t"demo",
-                List(t"quiet"),
-                true )
-
-        test(m"a wrong token is refused"):
-          serving(worker(idle)): port =>
-            try
-              val target = machine(identity.fingerprint, t"wrong", port)
-              unsafely(Peer.connect(target, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
-            catch case error: Peer.Error => error.reason match
-              case Peer.Error.Reason.Refused(reason) => reason
-              case other                             => other.toString.tt
-
-        . assert(_ == Peer.Refusal.token)
-
-        test(m"a busy worker refuses"):
-          serving(worker(busy)): port =>
-            try
-              val target = machine(identity.fingerprint, token, port)
-              unsafely(Peer.connect(target, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
-            catch case error: Peer.Error => error.reason match
-              case Peer.Error.Reason.Refused(reason) => reason
-              case other                             => other.toString.tt
-
-        . assert(_ == Peer.Refusal.busy)
-
-        test(m"another tool's protocol is refused"):
-          serving(worker(idle)): port =>
-            try
-              val target = machine(identity.fingerprint, token, port)
-              val pong = pongCodec(t"pong")
-              unsafely(Peer.connect(target, t"demo", t"1.0", pong, 1) { _ => t"welcomed" })
-            catch case error: Peer.Error => error.reason match
-              case Peer.Error.Reason.Refused(reason) => reason
-              case other                             => other.toString.tt
-
-        . assert(_ == Peer.Refusal.protocol)
-
-        test(m"a client pinning the wrong identity cannot connect"):
-          serving(worker(idle)): port =>
-            val wrong: Data = Data.fill(32): i => i.toByte
-
-            val target = machine(wrong, token, port)
-
-            try unsafely(Peer.connect(target, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
-            catch case error: Peer.Error => error.reason match
-              case Peer.Error.Reason.Unreachable(_) => t"unreachable"
-              case other                            => other.toString.tt
-
-        . assert(_ == t"unreachable")
-
-        test(m"a machine declaring no identity is refused before connecting"):
-          try
-            val target = Machine(t"x", List(t"127.0.0.1"), 1, Unset, token, Nil)
-            unsafely(Peer.connect(target, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
-          catch case error: Peer.Error => error.reason match
-            case Peer.Error.Reason.NoIdentity(name) => name
-            case other                              => other.toString.tt
-
-        . assert(_ == t"x")
-
-        // An address in TEST-NET-1 (RFC 5737), which nothing answers, listed first and on a
-        // private network, so that it is tried first: the connection is made to the next.
-        test(m"an address which never answers does not keep the connection from the next"):
-          serving(worker(idle)): port =>
-            val hosts = List(t"10.255.255.1", t"127.0.0.1")
-            val machine = Machine(t"worker", hosts, port, identity.fingerprint, token, Nil)
-            val started: Instant over Unix = now()
-            val address = unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1)(_.address))
-            (address, now() - started < 5.0*Second)
-
-        . assert(_ == (t"127.0.0.1", true))
-
-        test(m"a machine none of whose addresses answers is unreachable"):
-          val port: Int = Port[Tcp]().number
-
-          val machine =
-            Machine(t"nowhere", List(t"127.0.0.1"), port, identity.fingerprint, token, Nil)
-
-          try unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
-          catch case error: Peer.Error => error.reason match
-            case Peer.Error.Reason.Unreachable(name) => name
-            case other                               => other.toString.tt
-
-        . assert(_ == t"nowhere")
-
-        def invitation(lifetime: Duration = 60.0*Second, tool: Text = t"demo"): Invitation =
-          unsafely(Peer.invite(tool, 1, lifetime))
-
-        test(m"an invitation survives being written as one word"):
-          val original = invitation()
-          val word = Invitation.encode(original)
-          val read = unsafely(Invitation.parse(word))
-
-          // A fingerprint is bytes, which compare by reference, so the rest are compared alone.
-          val none: Data = Data()
-
-          val same: Boolean =
-            read.copy(identity = none) == original.copy(identity = none) &&
-              Channel.same(read.identity, original.identity)
-
-          (same, word.cut(t" ").stdlib.length, word.length < 400)
-
-        . assert(_ == (true, 1, true))
-
-        test(m"an invitation names this machine, its addresses and its certificate"):
-          val made = invitation()
-
-          ( made.name,
-            made.hosts == Machine.addresses,
-            Channel.same(made.identity, identity.fingerprint),
-            made.token.length )
-
-        . assert(_ == (Machine.Identity.local.hostname, true, true, 64))
-
-        test(m"a word which is not an invitation is refused"):
-          capture[Invitation.Error](Invitation.parse(t"hello")).reason
-
-        . assert(_ == Invitation.Error.Reason.Malformed)
-
-        test(m"an expired invitation is refused"):
-          val word = Invitation.encode(invitation(lifetime = -1.0*Second))
-          capture[Invitation.Error](Invitation.parse(word)).reason
-
-        . assert(_ == Invitation.Error.Reason.Expired)
-
-        // Joining over a real connection: the token the invitation carried admits the joiner once,
-        // and is exchanged for one of its own, which goes on admitting it until it is revoked.
-        def joining(name: Text, made: Invitation, port: Int): Optional[Machine] =
-          val machine = made.copy(port = port, hosts = List(t"127.0.0.1"))
-          safely(unsafely(Peer.join(machine, name, t"demo", t"1.0", codec) { _ => () })(0))
-
-        test(m"an invitation admits its bearer once, and is exchanged for a token of its own"):
-          serving(worker(idle)): port =>
-            val made = invitation()
-            val joined: Optional[Machine] = joining(t"inviter", made, port)
-            val again: Optional[Machine] = joining(t"inviter2", made, port)
-
-            val reconnected: Optional[Text] = joined.let: machine =>
-              safely:
-                unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
-
-            val exchanged: Boolean = joined.let(_.token).let(Machine.secret(_)) != made.token
-            (joined.present, again.absent, reconnected, exchanged)
-
-        . assert(_ == (true, true, t"welcomed", true))
-
-        test(m"an invitation used already is refused as used"):
-          serving(worker(idle)): port =>
-            val made = invitation().copy(port = port, hosts = List(t"127.0.0.1"))
-            joining(t"first", made, port)
-
-            capture[Invitation.Error]:
-              Peer.join(made, t"second", t"demo", t"1.0", codec) { _ => () }
-
-            . reason
-
-        . assert(_ == Invitation.Error.Reason.Used)
-
-        test(m"a joined machine is declared in the shared file, with all its hosts"):
-          val shared: Optional[Tel] = Machine.shared
-          shared.let(Machine.parse(_).filter(_.name == t"inviter").map(_.hosts))
-
-        . assert(_ == List(List(t"127.0.0.1")))
-
-        test(m"joining again under the same name replaces the declaration"):
-          serving(worker(idle)): port =>
-            joining(t"inviter", invitation(), port)
-            Machine.shared.let(Machine.parse(_).stdlib.count(_.name == t"inviter"))
-
-        . assert(_ == 1)
-
-        test(m"an invitation to another tool is refused before connecting"):
-          val made = invitation(tool = t"other")
-
-          capture[Invitation.Error]:
-            Peer.join(made, t"x", t"demo", t"1.0", codec) { _ => () }
-
-          . reason
-
-        . assert(_ == Invitation.Error.Reason.Tool(t"other"))
-
-        test(m"a machine admitted by invitation is listed, and once revoked is refused"):
-          serving(worker(idle)): port =>
-            val joined: Optional[Machine] = joining(t"revocable", invitation(), port)
-            val listed: Boolean = Peer.peers.exists(_(1) == t"demo")
-            val revoked: Int = Peer.revoke(Machine.Identity.local.hostname, t"demo")
-
-            val after: Text = joined.lay(t"not joined"): machine =>
-              try unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
+        Filing.temporary: scratch =>
+          // Each test here is a `check`, which runs inline, not an `assert`, which a runner with
+          // workers may defer until after this loan has deleted its directory.
+          val state: Text = subdirectory(scratch, t"state")
+          val config: Text = subdirectory(scratch, t"config")
+
+          given Environment = name =>
+            if name == t"XDG_STATE_HOME" then state
+            else if name == t"XDG_CONFIG_HOME" then config
+            else Unset
+
+          val identity: Peer.Identity = unsafely(Peer.identity)
+          val token: Text = Peer.token.or(t"")
+
+          test(m"an identity is generated once and read back thereafter"):
+            val again = unsafely(Peer.identity)
+
+            ( identity.fingerprint.length,
+              Channel.same(again.fingerprint, identity.fingerprint),
+              token.s.length )
+
+          . check(_ == (32, true, 64))
+
+          // A worker that echoes each message's text back, reversed, until the client closes.
+          def echo(session: Peer.Session[Ping]): Unit =
+            def recur(): Unit = session.receive() match
+              case Channel.Frame.Message(Ping.Hello(text, count)) =>
+                session.send(Ping.Hello(text.s.reverse.tt, count + 1))
+                recur()
+
+              case Channel.Frame.Raw(data) =>
+                session.sendRaw(data)
+                recur()
+
+              case _ =>
+                ()
+
+            recur()
+
+          val idle: () => Optional[Text] = () => Unset
+          val busy: () => Optional[Text] = () => Peer.Refusal.busy
+
+          def worker(gate: () => Optional[Text]): Peer.Listener[Ping] =
+            Peer.Listener(t"demo", t"1.0", codec, token, identity, List(t"quiet"), gate)(echo)
+
+          def machine(fingerprint: Data, secret: Text, port: Int): Machine =
+            Machine(t"worker", List(t"127.0.0.1"), port, fingerprint, secret, Nil)
+
+          def serving[result](listener: Peer.Listener[Ping])(block: Int => result): result =
+            import threads.platformThreads
+
+            supervise:
+              val port: Int = Port[Tcp]().number
+              val task = async(listener.serve(port))
+
+              // Until the listener has bound its port: a fixed pause races the bind on a loaded
+              // machine, and a caller arriving first is told `unreachable`, not `refused`.
+              def bound(attempts: Int): Unit =
+                val accepted: Boolean =
+                  try
+                    val socket = java.net.Socket("127.0.0.1", port)
+                    socket.close()
+                    true
+                  catch case _: Exception => false
+
+                if !accepted && attempts > 0 then
+                  Thread.sleep(100)
+                  bound(attempts - 1)
+
+              bound(50)
+
+              try block(port) finally
+                listener.stop()
+                safely(task.await())
+
+          test(m"a pinned client with the right token is welcomed and exchanges messages"):
+            serving(worker(idle)): port =>
+              unsafely:
+                val target = machine(identity.fingerprint, token, port)
+
+                Peer.connect(target, t"demo", t"1.0", codec, 1): session =>
+                  session.send(Ping.Hello(t"abc", 1))
+                  val reply = session.receive()
+                  session.sendRaw(ascii(t"raw"))
+
+                  val echoed = session.receive() match
+                    case Channel.Frame.Raw(data) => bytes(data)
+                    case _                       => Nil
+
+                  ( reply,
+                    echoed,
+                    session.peer.tool,
+                    session.peer.capabilities,
+                    session.peer.identity.cores > 0 )
+
+          . assert: result =>
+              result ==
+                ( Channel.Frame.Message(Ping.Hello(t"cba", 2)),
+                  bytes(ascii(t"raw")),
+                  t"demo",
+                  List(t"quiet"),
+                  true )
+
+          test(m"a wrong token is refused"):
+            serving(worker(idle)): port =>
+              try
+                val target = machine(identity.fingerprint, t"wrong", port)
+                unsafely(Peer.connect(target, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
               catch case error: Peer.Error => error.reason match
                 case Peer.Error.Reason.Refused(reason) => reason
                 case other                             => other.toString.tt
 
-            (listed, revoked >= 1, after)
+          . check(_ == Peer.Refusal.token)
 
-        . assert(_ == (true, true, Peer.Refusal.token))
+          test(m"a busy worker refuses"):
+            serving(worker(busy)): port =>
+              try
+                val target = machine(identity.fingerprint, token, port)
+                unsafely(Peer.connect(target, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
+              catch case error: Peer.Error => error.reason match
+                case Peer.Error.Reason.Refused(reason) => reason
+                case other                             => other.toString.tt
+
+          . check(_ == Peer.Refusal.busy)
+
+          test(m"another tool's protocol is refused"):
+            serving(worker(idle)): port =>
+              try
+                val target = machine(identity.fingerprint, token, port)
+                val pong = pongCodec(t"pong")
+                unsafely(Peer.connect(target, t"demo", t"1.0", pong, 1) { _ => t"welcomed" })
+              catch case error: Peer.Error => error.reason match
+                case Peer.Error.Reason.Refused(reason) => reason
+                case other                             => other.toString.tt
+
+          . check(_ == Peer.Refusal.protocol)
+
+          test(m"a client pinning the wrong identity cannot connect"):
+            serving(worker(idle)): port =>
+              val wrong: Data = Data.fill(32): i => i.toByte
+
+              val target = machine(wrong, token, port)
+
+              try unsafely(Peer.connect(target, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
+              catch case error: Peer.Error => error.reason match
+                case Peer.Error.Reason.Unreachable(_) => t"unreachable"
+                case other                            => other.toString.tt
+
+          . check(_ == t"unreachable")
+
+          test(m"a machine declaring no identity is refused before connecting"):
+            try
+              val target = Machine(t"x", List(t"127.0.0.1"), 1, Unset, token, Nil)
+              unsafely(Peer.connect(target, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
+            catch case error: Peer.Error => error.reason match
+              case Peer.Error.Reason.NoIdentity(name) => name
+              case other                              => other.toString.tt
+
+          . check(_ == t"x")
+
+          // An address in TEST-NET-1 (RFC 5737), which nothing answers, listed first and on a
+          // private network, so that it is tried first: the connection is made to the next.
+          test(m"an address which never answers does not keep the connection from the next"):
+            serving(worker(idle)): port =>
+              val hosts = List(t"10.255.255.1", t"127.0.0.1")
+              val machine = Machine(t"worker", hosts, port, identity.fingerprint, token, Nil)
+              val started: Instant over Unix = now()
+              val address = unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1)(_.address))
+              (address, now() - started < 5.0*Second)
+
+          . check(_ == (t"127.0.0.1", true))
+
+          test(m"a machine none of whose addresses answers is unreachable"):
+            val port: Int = Port[Tcp]().number
+
+            val machine =
+              Machine(t"nowhere", List(t"127.0.0.1"), port, identity.fingerprint, token, Nil)
+
+            try unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
+            catch case error: Peer.Error => error.reason match
+              case Peer.Error.Reason.Unreachable(name) => name
+              case other                               => other.toString.tt
+
+          . check(_ == t"nowhere")
+
+          def invitation(lifetime: Duration = 60.0*Second, tool: Text = t"demo"): Invitation =
+            unsafely(Peer.invite(tool, 1, lifetime))
+
+          test(m"an invitation survives being written as one word"):
+            val original = invitation()
+            val word = Invitation.encode(original)
+            val read = unsafely(Invitation.parse(word))
+
+            // A fingerprint is bytes, which compare by reference, so the rest are compared alone.
+            val none: Data = Data()
+
+            val same: Boolean =
+              read.copy(identity = none) == original.copy(identity = none) &&
+                Channel.same(read.identity, original.identity)
+
+            (same, word.cut(t" ").stdlib.length, word.length < 400)
+
+          . check(_ == (true, 1, true))
+
+          test(m"an invitation names this machine, its addresses and its certificate"):
+            val made = invitation()
+
+            ( made.name,
+              made.hosts == Machine.addresses,
+              Channel.same(made.identity, identity.fingerprint),
+              made.token.length )
+
+          . check(_ == (Machine.Identity.local.hostname, true, true, 64))
+
+          test(m"a word which is not an invitation is refused"):
+            capture[Invitation.Error](Invitation.parse(t"hello")).reason
+
+          . check(_ == Invitation.Error.Reason.Malformed)
+
+          test(m"an expired invitation is refused"):
+            val word = Invitation.encode(invitation(lifetime = -1.0*Second))
+            capture[Invitation.Error](Invitation.parse(word)).reason
+
+          . check(_ == Invitation.Error.Reason.Expired)
+
+          // Joining over a real connection: the token the invitation carried admits the joiner
+          // once, and is exchanged for one of its own, which goes on admitting it until it is
+          // revoked.
+          def joining(name: Text, made: Invitation, port: Int): Optional[Machine] =
+            val machine = made.copy(port = port, hosts = List(t"127.0.0.1"))
+            safely(unsafely(Peer.join(machine, name, t"demo", t"1.0", codec) { _ => () })(0))
+
+          test(m"an invitation admits its bearer once, and is exchanged for a token of its own"):
+            serving(worker(idle)): port =>
+              val made = invitation()
+              val joined: Optional[Machine] = joining(t"inviter", made, port)
+              val again: Optional[Machine] = joining(t"inviter2", made, port)
+
+              val reconnected: Optional[Text] = joined.let: machine =>
+                safely:
+                  unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
+
+              val exchanged: Boolean = joined.let(_.token).let(Machine.secret(_)) != made.token
+              (joined.present, again.absent, reconnected, exchanged)
+
+          . check(_ == (true, true, t"welcomed", true))
+
+          test(m"an invitation used already is refused as used"):
+            serving(worker(idle)): port =>
+              val made = invitation().copy(port = port, hosts = List(t"127.0.0.1"))
+              joining(t"first", made, port)
+
+              capture[Invitation.Error]:
+                Peer.join(made, t"second", t"demo", t"1.0", codec) { _ => () }
+
+              . reason
+
+          . check(_ == Invitation.Error.Reason.Used)
+
+          test(m"a joined machine is declared in the shared file, with all its hosts"):
+            val shared: Optional[Tel] = Machine.shared
+            shared.let(Machine.parse(_).filter(_.name == t"inviter").map(_.hosts))
+
+          . check(_ == List(List(t"127.0.0.1")))
+
+          test(m"joining again under the same name replaces the declaration"):
+            serving(worker(idle)): port =>
+              joining(t"inviter", invitation(), port)
+              Machine.shared.let(Machine.parse(_).stdlib.count(_.name == t"inviter"))
+
+          . check(_ == 1)
+
+          test(m"an invitation to another tool is refused before connecting"):
+            val made = invitation(tool = t"other")
+
+            capture[Invitation.Error]:
+              Peer.join(made, t"x", t"demo", t"1.0", codec) { _ => () }
+
+            . reason
+
+          . check(_ == Invitation.Error.Reason.Tool(t"other"))
+
+          test(m"a machine admitted by invitation is listed, and once revoked is refused"):
+            serving(worker(idle)): port =>
+              val joined: Optional[Machine] = joining(t"revocable", invitation(), port)
+              val listed: Boolean = Peer.peers.exists(_(1) == t"demo")
+              val revoked: Int = Peer.revoke(Machine.Identity.local.hostname, t"demo")
+
+              val after: Text = joined.lay(t"not joined"): machine =>
+                try unsafely(Peer.connect(machine, t"demo", t"1.0", codec, 1) { _ => t"welcomed" })
+                catch case error: Peer.Error => error.reason match
+                  case Peer.Error.Reason.Refused(reason) => reason
+                  case other                             => other.toString.tt
+
+              (listed, revoked >= 1, after)
+
+          . check(_ == (true, true, Peer.Refusal.token))
 
 // Counts the outcomes for the summary line. A class rather than local `var's, because the event
 // sink is a pure `TestEvent -> Unit` and may capture nothing tracked.

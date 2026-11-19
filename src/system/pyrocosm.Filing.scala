@@ -37,8 +37,8 @@ import textSanitizers.skipSanitizer
 // written: a file replaced whole (authored beside the target and moved onto it, so a reader
 // never sees half of one), a file's text, the regular files beneath a directory, a directory
 // emptied, a scratch directory for the length of a block, and a path's canonical form.
-// `temporary` and `canonical` are the two operations galilei does not yet offer; each is a
-// Soundness issue, and will go when it lands.
+// `canonical` is the operation galilei does not yet offer; it is a Soundness issue, and will go
+// when it lands.
 object Filing:
   // Replaces `path` with `data`, creating its parents; `false` if it could not be written.
   def replace(path: Path on Linux, data: Data): Boolean =
@@ -71,12 +71,16 @@ object Filing:
   def directory(path: Path on Linux): Boolean =
     safely(path.entry() == Directory).or(false)
 
-  // A fresh, empty directory for the duration of `block`, deleted afterwards.
-  def temporary[result](prefix: Text)(block: Path on Linux => result): result =
-    val directory: jnf.Path = jnf.Files.createTempDirectory(prefix.s).nn
-    val path: Path on Linux = unsafely(directory.toString.tt.as[Path on Linux])
+  // A fresh, empty directory under the JVM's temporary directory for the duration of `block`:
+  // a galilei `Scratch` loan, so it and everything in it are deleted when `block` ends, however
+  // it ends. Nothing here makes temporary storage through the JDK, whose files outlive a
+  // long-lived JVM.
+  def temporary[result](block: Path on Linux => result): result =
+    import temporaryDirectories.javaBaseTemporaryDirectory
 
-    try block(path) finally wipe(path)
+    unsafely:
+      temporaryDirectory[Path on Linux].open[Scratch](Read & Write): handle ?=>
+        block(handle.stem)
 
   // `path` with `root/` removed from its front, if it is beneath it: how a tool names a file
   // of a project to its user.

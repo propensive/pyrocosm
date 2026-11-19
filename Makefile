@@ -9,6 +9,12 @@ test:
 	./mill pyrocosm.test.assembly
 	fume run -c out/pyrocosm/test/assembly.dest/out.jar $(TESTS)
 
+# Refuse temporary storage made through the JDK. A temporary file or directory is a galilei
+# `Scratch` loan (`Filing.temporary`), deleted when its scope ends, however it ends; one the JDK
+# makes outlives a long-lived JVM, and `deleteOnExit` waits for an exit a daemon rarely makes.
+check-scratch:
+	! grep -rnE --include='*.scala' 'createTemp(File|Directory)|deleteOnExit' src
+
 # The gallery as an Ethereal executable, packaged by the pinned `xek` builder (fetched into
 # dist/xek and verified against etc/xek.tsv) exactly as fume, flame and flare are; then
 # run interactively in the terminal, or once, statically, at a width.
@@ -90,4 +96,4 @@ release:
 dev:
 	./mill -w pyrocosm.model.compile
 
-.PHONY: check build test gallery xek-fetch demo static serve publishLocal stage tools snapshot snapshot-prune release dev
+.PHONY: check check-scratch build test gallery xek-fetch demo static serve publishLocal stage tools snapshot snapshot-prune release dev
