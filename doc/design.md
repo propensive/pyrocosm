@@ -374,9 +374,9 @@ Fury's: links kept honest by a heartbeat, invitations advertised over mDNS, a pr
 by BinTEL acceptances. It moved here, generalised, once it was clear that every tool needed it.
 
 **On one machine**, every tool's node is a LEAF of the machine's one HUB: the `pyrocosm`
-process, which the first tool's daemon to find none starts from its own classpath (`Hubs.ensure`,
-a `java -cp` of the daemon's own jars, so that nothing need be installed), and which ends half a
-minute after its last leaf has gone. The hub takes a lock beside the registry
+process, which the first tool's daemon to find none starts from its own classpath
+(`pyrocosm.ensure`, a `java -cp` of the daemon's own jars, so that nothing need be installed), and
+which ends half a minute after its last leaf has gone. The hub takes a lock beside the registry
 (`$XDG_RUNTIME_DIR/pyrocosm/swarm/hub.lock`), so two daemons starting one at once leave one, and
 registers itself in `hub.tel` (its pid, start, the port of its loopback listener, the machine's
 certificate fingerprint, and the gateway port when it holds one), written whole and moved into

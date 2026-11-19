@@ -2635,7 +2635,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
           ( Input(t"code"), Control.Field.Kind.Line, value = Live(value),
             decoration = Live(Control.Field.Decoration(prompt = prompt)) )
 
-      CodeField(field, renderer, (_: Event) => (), pyrocosm.Session())
+      CodeField(field, renderer, (_: Event) => (), _root_.pyrocosm.Session())
 
     val arrow: List[Inline] = List(Inline.Toned(Tone.Accent, Inline.text(t"\ue0b0 ")))
     val chevron: List[Inline] = Inline.text(t"> ")
@@ -2808,7 +2808,8 @@ object Tests extends Suite(m"Pyrocosm tests"):
             notification = Control.Field.Notify.Keystrokes )
 
       val fixture =
-        CodeField(field, renderer, (event: Event) => events = event :: events, pyrocosm.Session())
+        CodeField
+          ( field, renderer, (event: Event) => events = event :: events, _root_.pyrocosm.Session() )
 
       (field, fixture, () => events.reverse)
 

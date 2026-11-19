@@ -396,7 +396,7 @@ object pyrocosm extends Project:
   // the first tool's daemon from its own classpath. `dev.propensive:pyrocosm-hub`.
   object hub extends Component(swarm, web), Publishing:
     def mvnDeps = Task(settings.hubDeps(deps.soundness()))
-    def finalMainClass = "pyrocosm.Hubs"
+    def finalMainClass = "pyrocosm.pyrocosm"
 
     // Unchecked like `remote`: the proxy lends a browser's socket and a tool's to each other
     // across tasks, which the capture checker has no words for yet.

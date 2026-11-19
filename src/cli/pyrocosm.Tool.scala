@@ -261,11 +261,12 @@ object Tool:
   private val ports: juc.ConcurrentHashMap[Text, Int] = juc.ConcurrentHashMap()
 
   // What this daemon serves, as the swarm advertises it.
-  private def offered(tool: Tool): List[pyrocosm.Service] =
+  private def offered(tool: Tool): List[_root_.pyrocosm.Service] =
     val prefix: Text = t"${tool.name}/"
 
     (ports: ju.Map[Text, Int]).to[List].bind: (key, port) =>
-      if key.starts(prefix) then List(pyrocosm.Service(key.skip(prefix.length), port)) else Nil
+      if !key.starts(prefix) then Nil
+      else List(_root_.pyrocosm.Service(key.skip(prefix.length), port))
 
   // The two services every tool's daemon asks of the machine's hub through its node: being the
   // machine's gateway (`swarm` in a config, on `swarm-port`, with `swarm-token` as the secret
@@ -606,13 +607,13 @@ object Tool:
           // swarm, a leaf of it, started with the first invocation: it advertises whatever
           // services this daemon has launched. The leaf starts a hub again should the hub go.
           Presence.shared.prefix() = t"/${tool.name}"
-          Hubs.ensure(tool.name, tool.version)
+          pyrocosm.ensure(tool.name, tool.version)
 
           Swarm.start
             ( tool.name,
               tool.version,
               () => Tool.offered(tool),
-              revive = () => Hubs.ensure(tool.name, tool.version) )
+              revive = () => pyrocosm.ensure(tool.name, tool.version) )
 
           tool.allServices.each: (service: Service) =>
             val wanted: Boolean = configurator.read(service.keyword).present
@@ -790,7 +791,7 @@ object Tool:
     // Where the web front-end on `port` is found: under the machine's hub for a port of 0,
     // which the hub holds, and at the port itself otherwise.
     def address(port: Int): Text =
-      if port == 0 then t"http://localhost:${Hubs.port.toString.tt}/${tool.name}/"
+      if port == 0 then t"http://localhost:${pyrocosm.port.toString.tt}/${tool.name}/"
       else t"http://localhost:${port.toString.tt}/"
 
     // Starts the web front-end in the daemon, on the port asked for, else the configured one,
