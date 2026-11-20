@@ -860,6 +860,16 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == (t"Foo.scala:2:5", 3, 1, 4, 5, 1))
 
+    test(m"a compiler notice's bolt code is its diagnostic's"):
+      val notice =
+        anthology.Compiler.Notice
+          ( anthology.Importance.Error, t"Foo.scala", t"Not found: x", Unset,
+            code = fulminate.Bolt('c', 7, 3) )
+
+      Notices.diagnostic(notice).code.let(_.text)
+
+    . assert(_ == t"↯/c.7.3")
+
     test(m"a multi-line code sample in a message becomes a code block"):
       val markup: List[Markup] =
         List

@@ -29,10 +29,11 @@ import soundness.*
 // minus a build's own choices of warnings and checks, which code written at a prompt should
 // not have to satisfy.
 object ScalacOptions:
-  // The fork's repairs, which reading Soundness's TASTy needs, and the language features
-  // Soundness idioms use.
+  // The fork's repairs, which reading Soundness's TASTy needs, its bolt code on every notice,
+  // and the language features Soundness idioms use.
   val houseOptions: List[Text] = List(
     t"-Zalias-captures",
+    t"-Zbolt-codes",
     t"-Zdiagnostic-givens",
     t"-Zgiven-prefixes",
     t"-Zinline-source-maps",
