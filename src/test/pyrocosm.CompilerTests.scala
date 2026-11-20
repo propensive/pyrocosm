@@ -67,8 +67,9 @@ object CompilerTests extends Suite(m"Pyrocosm compiler tests"):
       given Classloader = Classloader[Sample]
 
       val table: Optional[Block.Table] =
-        Classfile[Sample].let: classfile =>
-          classfile.methods.seek(_.name == t"add").let(_.bytecode).let(Bytecodes.table(_))
+        safely:
+          Classfile[Sample].let: classfile =>
+            classfile.methods.seek(_.name == t"add").let(_.bytecode).let(Bytecodes.table(_))
 
       test(m"a method's bytecode has a row per instruction, each of four cells"):
         table.let { table => !table.rows.nil && table.rows.all(_.cells.size == 4) }.or(false)
