@@ -22,11 +22,11 @@
                                                                                                   */
 package pyrocosm
 
-// Excluded from the umbrella: `Channel` (anticipation), `Control` (coaxial), `Glyph` (phoenicia),
-// `Language` (cosmopolite) and `Published` (galilei), which would outrank this package's own
-// definitions, since a wildcard import beats a package member declared in another file.
+// Excluded from the umbrella: `Channel` (anticipation), `Control` (coaxial), `Glyph` (phoenicia)
+// and `Language` (cosmopolite), which would outrank this package's own definitions, since a
+// wildcard import beats a package member declared in another file.
 import soundness.{Channel as _, Control as _, Filter as _, Glyph as _, Language as _, Origin as _,
-  Published as _, Status as _, *}
+  Status as _, *}
 
 import codepages.utf8Codepage
 import discriminables.jsonByKindDiscriminable

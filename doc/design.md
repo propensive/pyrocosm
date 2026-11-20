@@ -769,7 +769,8 @@ services — `Filing` (a file replaced whole, a scratch directory, a canonical p
 (Blake3, of bytes, parts, trees and classpaths), `ObjectStore` (content-addressed blobs),
 `Frames` (length-prefixed records), `Runtimes` (the process's classpath under Burdock),
 `Processes` (a detached process), `Diversions` (per-thread `System.out`), `Memo` (a value
-kept until its file changes) and `Timing` (durations) — and `pyrocosm-harness` the plain-`java`
+kept until its file changes), `Shares` (data one tool publishes for the others, below) and
+`Timing` (durations) — and `pyrocosm-harness` the plain-`java`
 runner of a tool's own suite. The `cli` module holds the rest: `ambient` (the execute wrapper
 every dispatch arm uses), `Tool.usage` (generated from the subcommands), `Tool.columns`,
 `Tool.project` (root, resolution, entries, atoms), `Tool.cacheDirectory`/`stateDirectory`/
@@ -779,6 +780,23 @@ and the `decodables`/`interpretables` givens. The model has `Markdowns` (the one
 conversion, with hooks), `Progress` and `Tels.headed`; the terminal `standardRendering`,
 `TerminalRenderer.print` and `Boards.reporter`; the compiler `Classpaths` and
 `Notices.diagnostics`; the notes a byte-bodied `Recordable` and the operations a census needs.
+
+**Shares.** What one tool knows and another wants — Fuel's line about each entity of an API,
+which Flame shows beside a completion — is exchanged as a file, not a conversation: the
+publisher writes a RaTEL image (Soundness's random-access encoding of TEL) and every other
+tool maps it into memory, so that finding one record by its key reads that record and nothing
+else, from pages the processes share. `Shares.publish(path, value)` writes the image of a
+value's type beside the file and moves it onto it, under the name's lock, and does nothing
+when the value is what is already there; `Shares.Reader(path).read(…)` lends the mapped image,
+asking the filesystem first — one `stat`, at most every 50ms — whether a newer file has been
+published, and mapping that instead. So a reader is always current without being told of a
+change, needs neither the swarm nor the publisher's daemon, and has the last publication from
+its first moment. A share is `$XDG_CACHE_HOME/<tool>/<project digest>/share/<name>.ratel`
+(`Shares.path`), in the cache the publishing tool keeps for its project, which a reader finds
+from its own directory with `Shares.root`. The image carries its schema: a reader asks for
+members by keyword and repeats none of the publisher's types, so a publisher may add members
+freely; the member marked `@key` is the one `find` descends an index for. The bus remains for
+what is small and momentary; a peer connection for what is asked of a running tool.
 
 The conventions the tools share, decided 2026-11-02:
 
