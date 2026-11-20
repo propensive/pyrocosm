@@ -23,12 +23,19 @@
 package pyrocosm
 
 import java.io as ji
+import java.nio.file as jnf
+import java.nio.file.attribute as jnfa
+import java.util.concurrent.atomic as juca
 
 import soundness.*
 
 // The shared services: what every tool now calls instead of its own copy, each pinned by a
 // test so that a change to its behaviour changes every tool at once, knowingly.
 object ServicesTests extends Suite(m"Pyrocosm services tests"):
+  // A value shared between tools: its lines, each found by its name.
+  case class Line(@key name: Text, info: Text)
+  case class Lines(line: List[Line])
+
   def run(): Unit =
     suite(m"Timing"):
       test(m"a bare number is seconds"):
@@ -249,6 +256,153 @@ object ServicesTests extends Suite(m"Pyrocosm services tests"):
           (one == Digests.tree(directory), one.length)
 
       . assert(_ == (false, 64))
+
+    suite(m"Shared"):
+      val first: Lines = Lines(List(Line(t"alpha", t"First letter"), Line(t"beta", t"Second")))
+      val second: Lines = Lines(List(Line(t"beta", t"Second letter"), Line(t"gamma", t"Third")))
+
+      def info(reader: Shares.Reader, name: Text): Optional[Text] =
+        reader.read((ratel.root / t"line").find(name).let(_.text(t"info")))
+
+      // What tells one published file from another: a file moved onto the name is a new one.
+      def key(file: Path on Linux): AnyRef =
+        jnf.Files.readAttributes(jnf.Path.of(file.encode.s), classOf[jnfa.BasicFileAttributes])
+        . nn.fileKey().nn
+
+      test(m"a published value is found by its key, with its parents made"):
+        Filing.temporary: directory =>
+          val file: Path on Linux = unsafely(directory / "deep" / "lines.ratel")
+          val published: Boolean = Shares.publish(file, first)
+          val reader: Shares.Reader = Shares.Reader(file, 0L)
+
+          try (published, info(reader, t"beta"), info(reader, t"gamma")) finally reader.close()
+
+      . assert(_ == (true, t"Second", Unset))
+
+      test(m"a reader made before anything is published reads what is published later"):
+        Filing.temporary: directory =>
+          val file: Path on Linux = unsafely(directory / "lines.ratel")
+          val reader: Shares.Reader = Shares.Reader(file, 0L)
+
+          try
+            val before: Optional[Text] = info(reader, t"alpha")
+            Shares.publish(file, first)
+            (before, reader.attached, info(reader, t"alpha"))
+          finally reader.close()
+
+      . assert(_ == (Unset, false, t"First letter"))
+
+      test(m"a reader sees a newer edition at its next read"):
+        Filing.temporary: directory =>
+          val file: Path on Linux = unsafely(directory / "lines.ratel")
+          Shares.publish(file, first)
+          val reader: Shares.Reader = Shares.Reader(file, 0L)
+
+          try
+            val before: List[Optional[Text]] = List(t"alpha", t"beta").map(info(reader, _))
+            Shares.publish(file, second)
+            (before, List(t"alpha", t"beta", t"gamma").map(info(reader, _)))
+          finally reader.close()
+
+      . assert(_ == (List(t"First letter", t"Second"), List(Unset, t"Second letter", t"Third")))
+
+      test(m"a reader does not look for a newer edition within its interval"):
+        Filing.temporary: directory =>
+          val file: Path on Linux = unsafely(directory / "lines.ratel")
+          Shares.publish(file, first)
+          val reader: Shares.Reader = Shares.Reader(file, 3600000L)
+
+          try
+            val before: Optional[Text] = info(reader, t"alpha")
+            Shares.publish(file, second)
+            (before, info(reader, t"alpha"))
+          finally reader.close()
+
+      . assert(_ == (t"First letter", t"First letter"))
+
+      test(m"a value which is already published is not written again"):
+        Filing.temporary: directory =>
+          val file: Path on Linux = unsafely(directory / "lines.ratel")
+          Shares.publish(file, first)
+          val one: AnyRef = key(file)
+          val again: Boolean = Shares.publish(file, first)
+          val same: Boolean = key(file) == one
+          Shares.publish(file, second)
+          (again, same, key(file) == one)
+
+      . assert(_ == (true, true, false))
+
+      test(m"a file which is not an image is read as nothing, and replaced by a publication"):
+        Filing.temporary: directory =>
+          val file: Path on Linux = unsafely(directory / "lines.ratel")
+          Filing.replace(file, t"Two households, both alike in dignity")
+          val reader: Shares.Reader = Shares.Reader(file, 0L)
+
+          try
+            val before: Optional[Text] = info(reader, t"alpha")
+            (before, Shares.publish(file, first), info(reader, t"alpha"))
+          finally reader.close()
+
+      . assert(_ == (Unset, true, t"First letter"))
+
+      test(m"a closed reader reads nothing"):
+        Filing.temporary: directory =>
+          val file: Path on Linux = unsafely(directory / "lines.ratel")
+          Shares.publish(file, first)
+          val reader: Shares.Reader = Shares.Reader(file, 0L)
+          val before: Optional[Text] = info(reader, t"alpha")
+          reader.close()
+          (before, info(reader, t"alpha"), reader.attached)
+
+      . assert(_ == (t"First letter", Unset, false))
+
+      test(m"readers on many threads read while a publisher replaces the file"):
+        Filing.temporary: directory =>
+          val file: Path on Linux = unsafely(directory / "lines.ratel")
+          Shares.publish(file, first)
+          val reader: Shares.Reader = Shares.Reader(file, 0L)
+          val wrong: juca.AtomicInteger = juca.AtomicInteger(0)
+
+          // `beta` is in both editions, so every read finds one or the other, whole.
+          val threads: List[Thread] =
+            List(1, 2, 3, 4).map: _ =>
+              Thread(new Runnable:
+                def run(): Unit =
+                  List.range(0, 200).each: _ =>
+                    val read: Optional[Text] = info(reader, t"beta")
+                    if read != t"Second" && read != t"Second letter" then wrong.incrementAndGet())
+
+          try
+            threads.each(_.start())
+
+            List.range(0, 20).each: turn =>
+              Shares.publish(file, if turn%2 == 0 then second else first)
+
+            threads.each(_.join())
+            wrong.get
+          finally reader.close()
+
+      . assert(_ == 0)
+
+      test(m"a share is a file under the tool's cache for the project, one for each project"):
+        import environments.javaBaseEnvironment
+        val one: Optional[Text] = Shares.path(t"fuel", t"/work/one", t"help").let(_.encode)
+        val two: Optional[Text] = Shares.path(t"fuel", t"/work/two", t"help").let(_.encode)
+        val cache: Optional[Text] = Shares.cache(t"fuel", t"/work/one").let(_.encode)
+        (one != two, one.lay(t"")(_.skip(cache.or(t"").length)))
+
+      . assert(_ == (true, t"/share/help.ratel"))
+
+      test(m"a tool's project is found above a directory, which is its own root without one"):
+        Filing.temporary: directory =>
+          val root: Text = directory.encode
+          Filing.replace(unsafely(directory / ".pyrocosm" / "fuel" / "config.tel"), t"")
+          Filing.replace(unsafely(directory / "src" / "main" / "x.scala"), t"")
+
+          ( Shares.root(t"fuel", t"$root/src/main") == root, Shares.root(t"fuel", root) == root,
+            Shares.root(t"flame", t"$root/src/main") == t"$root/src/main" )
+
+      . assert(_ == (true, true, true))
 
     suite(m"Project"):
       test(m"an entry resolves under the root unless absolute"):
