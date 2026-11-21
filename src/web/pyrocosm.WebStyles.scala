@@ -33,22 +33,38 @@ import strategies.throwUnsafely
 // properties too, declared in a `:root` block of their own, so a rule names a step of the
 // scale rather than a length.
 //
-// Type: Marcellus for titles, Yantramanav for prose, and Roboto Mono for code and for the small
-// tracked capitals of labels and buttons; fetched from Google Fonts by the `@import` that heads
-// the sheet, with system fallbacks. Text is one size, but for labels and code (a little smaller,
+// Type: Propensity for titles, Yantramanav for prose, and Roboto Mono for code and for the small
+// tracked capitals of labels and buttons. The last two are fetched from Google Fonts by the
+// `@import` that heads the sheet, and Propensity from propensive.dev by the `@font-face` that
+// follows it; each has system fallbacks. Text is one size, but for labels and code (a little smaller,
 // as monospace reads larger). Layout: the masthead and toolbar span the page; the matter beneath
 // is centred within a measure, wider when a side column is present, and every column stacks on
 // a narrow viewport.
 object WebStyles:
-  // The Google Fonts stylesheet declaring the three typefaces' `@font-face` rules; one node
-  // built by hand, as cataclysm's typeface provisions would import it once per typeface.
+  // The Google Fonts stylesheet declaring the prose and code typefaces' `@font-face` rules; one
+  // node built by hand, as cataclysm's typeface provisions would import it once per typeface.
   val fontsUrl: Text =
-    t"https://fonts.googleapis.com/css2?family=Yantramanav:wght@300;400;500;700&family=Marcellus" +
+    t"https://fonts.googleapis.com/css2?family=Yantramanav:wght@300;400;500;700" +
       t"&family=Roboto+Mono:wght@400;500;600;700&display=swap"
 
+  // The titles' typeface, a single file that no font service declares, so the sheet declares
+  // it itself.
+  val propensityUrl: Text = t"https://propensive.dev/propensity.woff2"
+
   // The `@import` of the fonts' stylesheet, which must precede every other rule, so a page
-  // that prepends other rules (graffiti's own) puts this before them: `fonts + … + rules`.
-  val fonts: Css = Css(List(Css.Node.At(t"import", t"url(\"$fontsUrl\")", Unset)))
+  // that prepends other rules (graffiti's own) puts this before them: `fonts + … + rules`;
+  // then the `@font-face` of the titles' typeface, built by hand as the import is.
+  val fonts: Css =
+    val propensity: List[Css.Node] =
+      List
+        ( Css.Node.Declaration(t"font-family", t"\"Propensity\""),
+          Css.Node.Declaration(t"src", t"url(\"$propensityUrl\") format(\"woff2\")"),
+          Css.Node.Declaration(t"font-display", t"swap") )
+
+    Css
+      ( List
+          ( Css.Node.At(t"import", t"url(\"$fontsUrl\")", Unset),
+            Css.Node.At(t"font-face", t"", propensity) ) )
 
   // The whole sheet: the fonts' import, then the rules.
   def css(theme: WebTheme): Css = fonts + rules(theme)
@@ -94,7 +110,7 @@ object WebStyles:
       List
         ( t":root {",
           t"--pyro-font-body: \"Yantramanav\", system-ui, -apple-system, \"Segoe UI\", sans-serif;",
-          t"--pyro-font-title: \"Marcellus\", Georgia, \"Times New Roman\", serif;",
+          t"--pyro-font-title: \"Propensity\", Georgia, \"Times New Roman\", serif;",
           t"--pyro-font-mono: \"Roboto Mono\", ui-monospace, SFMono-Regular, Menlo, monospace;",
           t"--pyro-font-label: \"Roboto Mono\", ui-monospace, SFMono-Regular, Menlo, monospace;",
           t"--pyro-rule: color-mix(in srgb, var(--pyro-fg) 10%, transparent);",

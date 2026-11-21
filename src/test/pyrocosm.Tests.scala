@@ -1825,9 +1825,15 @@ object Tests extends Suite(m"Pyrocosm tests"):
       val gstatic: Text =
         t"""<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">"""
 
-      (page.contains(viewport), page.contains(googleapis), page.contains(gstatic))
+      val propensive: Text =
+        t"""<link rel="preconnect" href="https://propensive.dev" crossorigin="anonymous">"""
 
-    . assert(_ == (true, true, true))
+      ( page.contains(viewport),
+        page.contains(googleapis),
+        page.contains(gstatic),
+        page.contains(propensive) )
+
+    . assert(_ == (true, true, true, true))
 
     test(m"a menu bar with the wordmark and the configuration link precedes the masthead"):
       val nav = page.s.indexOf("<nav class=\"graffiti-top-menu pyro-menubar\">")
@@ -2532,13 +2538,25 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     test(m"the stylesheet begins by importing the fonts, and names all three"):
       ( stylesheet.starts(t"@import url(\"https://fonts.googleapis.com/css2?family=Yantramanav"),
-        stylesheet.contains(t"\"Marcellus\""),
+        stylesheet.contains(t"\"Propensity\""),
         stylesheet.contains(t"\"Yantramanav\""),
         stylesheet.contains(t"\"Roboto Mono\""),
+        stylesheet.contains(t"Marcellus"),
         stylesheet.contains(t"Sono"),
         stylesheet.contains(t"font-variation-settings") )
 
-    . assert(_ == (true, true, true, true, false, false))
+    . assert(_ == (true, true, true, true, false, false, false))
+
+    test(m"the titles' typeface is declared by a font-face, after the import"):
+      val face = stylesheet.s.indexOf("@font-face")
+      val root = stylesheet.s.indexOf(":root")
+
+      ( face > 0,
+        face < root,
+        stylesheet.contains(t"https://propensive.dev/propensity.woff2"),
+        stylesheet.contains(t"woff2") )
+
+    . assert(_ == (true, true, true, true))
 
     test(m"the page's whole sheet, graffiti's rules included, still begins with the import"):
       PyrocosmPage(repl, html, WebTheme.default).css.show.starts(t"@import url(")
@@ -2575,8 +2593,10 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == false)
 
-    test(m"the stylesheet reads back as CSS"):
-      try stylesheet.read[Css].rules.size
+    // The rules alone: cataclysm validates every declaration as a property, so it rejects the
+    // `src` and `font-display` descriptors of the fonts' `@font-face`, which are not properties.
+    test(m"the stylesheet's rules read back as CSS"):
+      try WebStyles.rules(WebTheme.default).show.read[Css].rules.size
       catch case errors: Css.Errors =>
         val described = errors.errors.map: e => s"${e.reason} at ${e.line}:${e.column}"
         java.lang.System.err.nn.println(s"CSS ERRORS: $described")

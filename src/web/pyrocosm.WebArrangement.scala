@@ -441,7 +441,9 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
       Html.Fragment[Metadata]
         ( Link.Preconnect(href = t"https://fonts.googleapis.com"),
           Link.Preconnect
-            ( href = t"https://fonts.gstatic.com", crossorigin = Crossorigin.Anonymous ) )
+            ( href = t"https://fonts.gstatic.com", crossorigin = Crossorigin.Anonymous ),
+          Link.Preconnect
+            ( href = t"https://propensive.dev", crossorigin = Crossorigin.Anonymous ) )
 
     // The mode the reader chose (or the system's, failing one) is set before the first
     // paint, so a dark page does not flash light.
