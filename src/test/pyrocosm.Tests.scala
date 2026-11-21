@@ -2537,15 +2537,30 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert(_ == true)
 
     test(m"the stylesheet begins by importing the fonts, and names all three"):
-      ( stylesheet.starts(t"@import url(\"https://fonts.googleapis.com/css2?family=Yantramanav"),
+      ( stylesheet.starts(t"@import url(\"https://fonts.googleapis.com/css2?family=Arimo"),
         stylesheet.contains(t"\"Propensity\""),
-        stylesheet.contains(t"\"Yantramanav\""),
+        stylesheet.contains(t"\"Arimo\""),
         stylesheet.contains(t"\"Roboto Mono\""),
-        stylesheet.contains(t"Marcellus"),
+        stylesheet.contains(t"Marcellus") || stylesheet.contains(t"Yantramanav"),
         stylesheet.contains(t"Sono"),
         stylesheet.contains(t"font-variation-settings") )
 
     . assert(_ == (true, true, true, true, false, false, false))
+
+    test(m"Japanese has typefaces of its own, chosen by language and imported with the rest"):
+      val japanese = stylesheet.s.indexOf(":lang(ja)")
+
+      val rule: Text =
+        if japanese < 0 then t""
+        else stylesheet.s.substring(japanese, stylesheet.s.indexOf("}", japanese)).nn.tt
+
+      ( rule.contains(t"--pyro-font-body: \"Noto Sans JP\""),
+        rule.contains(t"--pyro-font-title: \"Noto Serif JP\""),
+        rule.contains(t"Propensity") || rule.contains(t"Arimo"),
+        WebStyles.fontsUrl.contains(t"family=Noto+Sans+JP"),
+        WebStyles.fontsUrl.contains(t"family=Noto+Serif+JP") )
+
+    . assert(_ == (true, true, false, true, true))
 
     test(m"the titles' typeface is declared by a font-face, after the import"):
       val face = stylesheet.s.indexOf("@font-face")
