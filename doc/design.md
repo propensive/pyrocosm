@@ -232,8 +232,10 @@ terminal *drops* at narrow widths the web *collapses*.
 
 One stylesheet, with the palette as CSS custom properties: `WebTheme.Ember` (the default: a
 light, warm page with flame accents) or `WebTheme.SolarizedDark`, the terminal's colours. The
-type is Marcellus for titles, Yantramanav for text and Roboto Mono for code and labels, from Google Fonts with
-system fallbacks; text is one size but for small tracked labels and code. The spacing, radii,
+type is Propensity for titles, served from propensive.dev, and Arimo for text and Roboto Mono
+for code and labels, from Google Fonts, with system fallbacks; a Japanese page (`:lang(ja)`)
+has Noto Serif JP for titles and Noto Sans JP for text instead. Text is one size but for
+small tracked labels and code. The spacing, radii,
 measures and shadows are custom properties too (`--pyro-space-*`, `--pyro-measure`), so every
 rule names a step of the scale. The masthead and its toolbar of global controls span the page;
 the matter is centred within a measure, wider when a side column is present; a side column is

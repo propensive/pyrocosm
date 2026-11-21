@@ -324,7 +324,7 @@ object Samples:
     List
       ( Block.Heading(1, Inline.text(t"Typography")),
         Block.paragraph
-          ( t"Titles are set in Marcellus, prose in Yantramanav, and code and labels in Sono: " +
+          ( t"Titles are set in Propensity, prose in Arimo, and code and labels in Sono: " +
             t"at fixed width for code, at variable width for the small tracked capitals of " +
             t"labels and buttons." ),
         Block.Heading(2, Inline.text(t"A second-level heading")),
