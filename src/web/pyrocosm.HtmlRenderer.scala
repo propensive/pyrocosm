@@ -63,6 +63,12 @@ object HtmlRenderer:
   // script keeps the open state a reader gave it across repaints of its panel.
   given nodePath: ("data-node" is Attribute of Whatwg.Textual in Whatwg) = Whatwg.globalAttribute()
 
+  // `data-serial="7"` on a panel's content: the number of the assignment of its cell which the
+  // content is of, by which the script knows whether a change to it is a change from what it
+  // shows.
+  given dataSerial: ("data-serial" is Attribute of Whatwg.Textual in Whatwg) =
+    Whatwg.globalAttribute()
+
   // A class list, omitted when it is empty: honeycomb's own writes `class=""`.
   given classes: List[Name[CssClass]] is Attributive to Whatwg.CssClassList =
     (key, value) => if value.nil then Unset else (key, value.join(t" "))
@@ -650,7 +656,10 @@ class HtmlRenderer
 
   // A collapsible node (one with `open` and children) is a `<details>` whose summary is its
   // label, named by its path for the script; any other node is its label and its children.
-  private def treeNode(node: Block.TreeNode, path: Text): Html of "li" =
+  //
+  // A `hollow` node is the node alone: its list of children is there, and empty, for the
+  // script to put in it the children the page already shows (`Graft`).
+  def treeNode(node: Block.TreeNode, path: Text, hollow: Boolean = false): Html of "li" =
     val toned: Html of Phrasing =
       node.tone.lay(phrase(node.label)): tone => Span(`class` = toneClass(tone))(phrase(node.label))
 
@@ -660,6 +669,7 @@ class HtmlRenderer
 
     val children: Html of Flow =
       if node.children.nil then Html.Fragment[Flow]()
+      else if hollow then Ul()
       else
         val nodes = node.children.indexed.map: (child: Block.TreeNode, index: Ordinal) =>
           treeNode(child, t"$path.${index.n0}")
