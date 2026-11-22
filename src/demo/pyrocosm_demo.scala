@@ -616,6 +616,11 @@ object Samples:
             t"for standard output, failure for standard error." ),
         Block.Output(t"compiling 3 sources\ndone in 1.2 s\n"),
         Block.Output(t"warning: unused import legacy.*\n", error = true),
+        Block.paragraph
+          ( t"Output directly after the code which printed it is the lower part of the code's " +
+            t"own block on the web, beneath a line and without the gutter." ),
+        Block.Code(Language.Scala, List(call, imported), Nil, 1),
+        Block.Output(t"fetched 3 pages\ndone in 1.2 s\n"),
         Block.Heading(2, Inline.text(t"Stack traces")),
         Block.paragraph
           ( t"A stack trace is laid out as Soundness lays one out in a terminal: each package " +

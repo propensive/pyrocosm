@@ -73,6 +73,40 @@ object WebStyles:
   // The whole sheet: the fonts' import, then the rules.
   def css(theme: WebTheme): Css = fonts + rules(theme)
 
+  // Code with what it printed when it ran: the output is the lower part of the block, on its
+  // ground and beneath a line as the header's is, at the size of the line numbers; without a
+  // gutter, standard error is told apart by its colour. Where a code block keeps within its
+  // container, so does this. (Apart from `rules`, which is as large as a method may be.)
+  private def ran: Css =
+    css"""
+      .pyro-code-ran {
+        margin: 0 calc(-1 * var(--pyro-space-4)) var(--pyro-space-4) calc(-1 * var(--pyro-space-4))
+      }
+    """ +
+    css".pyro-code-ran:last-child { margin-bottom: 0 }" +
+    css".pyro-code-ran > .pyro-codeblock, .pyro-code-ran > .pyro-code-group { margin: 0 }" +
+    css"""
+      .pyro-code-ran > .pyro-codeblock, .pyro-code-ran > .pyro-code-group .pyro-codeblock {
+        border-bottom-left-radius: 0; border-bottom-right-radius: 0
+      }
+    """ +
+    css"""
+      .pyro-code-ran > .pyro-output {
+        background-color: var(--pyro-code-bg); color: var(--pyro-code-fg); margin: 0;
+        padding: var(--pyro-space-2) var(--pyro-space-4);
+        font-size: calc(0.75 * var(--pyro-text-mono));
+        border-top: 1px solid color-mix(in srgb, var(--pyro-code-fg) 18%, transparent)
+      }
+    """ +
+    css"""
+      .pyro-code-ran > .pyro-output:last-child {
+        border-radius: 0 0 var(--pyro-radius) var(--pyro-radius)
+      }
+    """ +
+    css".pyro-code-ran > .pyro-output-stderr { color: var(--pyro-tone-failure) }" +
+    css".pyro-diagnostic .pyro-code-ran { margin-left: 0; margin-right: 0 }" +
+    css".pyro-role-transcript .pyro-code-ran { margin-left: 0; margin-right: 0 }"
+
   def rules(theme: WebTheme): Css =
     // A tone's colour, its notice's edge and tint, and a tinted row; an accent's colour. These
     // rules are generated per case, so they are read from text like the theme's `:root`
@@ -1606,5 +1640,5 @@ object WebStyles:
     val traceAccents: Css = (1 to 5).foldLeft(Css(Nil)): (acc, index) => acc + traceAccent(index)
 
     theme.variables + scale + stage + base + layout + menubar + masthead + phrasing + label + flow +
-      trace + charts + panels + controls + purview + responsive + tones + shares + accents +
+      ran + trace + charts + panels + controls + purview + responsive + tones + shares + accents +
       traceAccents

@@ -398,7 +398,34 @@ class HtmlRenderer
 
   // ── Blocks ────────────────────────────────────────────────────────────────────────────────
 
-  def blocks(blocks: List[Block]): Html of Flow = Html.Fragment(blocks.map(block)*)
+  // Blocks in order, but for code which is directly followed by captured output: what it
+  // printed when it ran, which is shown as the lower part of the code's own block, beneath a
+  // line, and not behind a gutter. Plain text is not code that ran, so is not joined to the
+  // output after it.
+  def blocks(blocks: List[Block]): Html of Flow =
+    // The output at the head of `todo`, rendered without a gutter, and what follows it.
+    def printed(todo: List[Block], done: List[Html of Flow]): (List[Html of Flow], List[Block]) =
+      todo match
+        case Block.Output(text, error, runs) :: tail =>
+          printed(tail, output(text, error, runs, false) :: done)
+
+        case _ =>
+          (done.reverse, todo)
+
+    def recur(todo: List[Block], done: List[Html of Flow]): List[Html of Flow] = todo match
+      case Nil =>
+        done.reverse
+
+      case (code: Block.Code) :: (rest @ ((_: Block.Output) :: _))
+        if code.language != pyrocosm.Language.Plain =>
+          val (outputs, tail) = printed(rest, Nil)
+          val ran: Html of Flow = Div(`class` = cls(t"pyro-code-ran"))((block(code) :: outputs)*)
+          recur(tail, ran :: done)
+
+      case head :: tail =>
+        recur(tail, block(head) :: done)
+
+    Html.Fragment(recur(blocks, Nil)*)
 
   def block(block: Block): Html of Flow = block match
     case Block.Paragraph(content) => P(`class` = solitaryClass(content))(phrase(content))
@@ -552,48 +579,55 @@ class HtmlRenderer
     case Block.Trace(stacks)          => trace(stacks)
     case Block.Group(content)         => Div(`class` = cls(t"pyro-group"))(blocks(content))
 
-    // Captured output, verbatim, each line behind a gutter naming its stream, and each run of
-    // it in its style: a colour is set inline, since the output chose it and no theme can name
-    // it, and the attributes are classes; a run with neither is bare text.
-    case Block.Output(text, error, runs) =>
-      val gutter = cls(t"pyro-gutter")
-      val lines: List[List[(Text, Block.Run)]] = Block.Run.lines(text, runs)
-      val count = lines.size
+    case Block.Output(text, error, runs) => output(text, error, runs, true)
 
-      def hex(rgb: Block.Rgb): Text = f"#${rgb.red}%02x${rgb.green}%02x${rgb.blue}%02x".tt
+  // Captured output, verbatim, each line behind a gutter naming its stream (but for output
+  // joined to the code which printed it, which has none), and each run of it in its style: a
+  // colour is set inline, since the output chose it and no theme can name it, and the
+  // attributes are classes; a run with neither is bare text.
+  private def output(text: Text, error: Boolean, runs: List[Block.Run], gutter: Boolean)
+  :   Html of Flow =
 
-      def piece(slice: Text, run: Block.Run): Html of Phrasing =
-        val flags: List[(Boolean, Text)] =
-          List
-            ( (run.bold, t"bold"), (run.faint, t"faint"), (run.italic, t"italic"),
-              (run.underline, t"underline"), (run.strike, t"strike"), (run.reverse, t"reverse") )
+    val margin: List[Html of Phrasing] =
+      if gutter then List(Span(`class` = cls(t"pyro-gutter"))(t"░ ")) else Nil
 
-        val classes: List[Name[CssClass]] =
-          flags.filter(_(0)).map: (flag: (Boolean, Text)) => cls(t"pyro-ansi-${flag(1)}")
+    val lines: List[List[(Text, Block.Run)]] = Block.Run.lines(text, runs)
+    val count = lines.size
 
-        val foreground: List[Text] = run.foreground.let(c => List(t"color:${hex(c)}")).or(Nil)
-        val background: List[Text] =
-          run.background.let(c => List(t"background-color:${hex(c)}")).or(Nil)
+    def hex(rgb: Block.Rgb): Text = f"#${rgb.red}%02x${rgb.green}%02x${rgb.blue}%02x".tt
 
-        val style: Text = (foreground + background).join(t";")
+    def piece(slice: Text, run: Block.Run): Html of Phrasing =
+      val flags: List[(Boolean, Text)] =
+        List
+          ( (run.bold, t"bold"), (run.faint, t"faint"), (run.italic, t"italic"),
+            (run.underline, t"underline"), (run.strike, t"strike"), (run.reverse, t"reverse") )
 
-        if classes.nil && style == t"" then Html.Fragment[Phrasing](slice)
-        else if style == t"" then Span(`class` = classes)(slice)
-        else Span(`class` = classes, style = style)(slice)
+      val classes: List[Name[CssClass]] =
+        flags.filter(_(0)).map: (flag: (Boolean, Text)) => cls(t"pyro-ansi-${flag(1)}")
 
-      def pieces(line: List[(Text, Block.Run)]): Html of Phrasing =
-        val styled: List[Html of Phrasing] = line.map: (pair: (Text, Block.Run)) =>
-          piece(pair(0), pair(1))
+      val foreground: List[Text] = run.foreground.let(c => List(t"color:${hex(c)}")).or(Nil)
+      val background: List[Text] =
+        run.background.let(c => List(t"background-color:${hex(c)}")).or(Nil)
 
-        Html.Fragment[Phrasing](styled*)
+      val style: Text = (foreground + background).join(t";")
 
-      val rows: List[Html of Phrasing] =
-        lines.indexed.map: (line: List[(Text, Block.Run)], index: Ordinal) =>
-          val end: Text = if index.n0 == count - 1 then t"" else t"\n"
-          Html.Fragment[Phrasing](Span(`class` = gutter)(t"░ "), pieces(line), end)
+      if classes.nil && style == t"" then Html.Fragment[Phrasing](slice)
+      else if style == t"" then Span(`class` = classes)(slice)
+      else Span(`class` = classes, style = style)(slice)
 
-      val stream = if error then cls(t"pyro-output-stderr") else cls(t"pyro-output-stdout")
-      Pre(`class` = List(cls(t"pyro-output"), stream))(rows*)
+    def pieces(line: List[(Text, Block.Run)]): Html of Phrasing =
+      val styled: List[Html of Phrasing] = line.map: (pair: (Text, Block.Run)) =>
+        piece(pair(0), pair(1))
+
+      Html.Fragment[Phrasing](styled*)
+
+    val rows: List[Html of Phrasing] =
+      lines.indexed.map: (line: List[(Text, Block.Run)], index: Ordinal) =>
+        val end: Text = if index.n0 == count - 1 then t"" else t"\n"
+        Html.Fragment[Phrasing]((margin + List[Html of Phrasing](pieces(line), end))*)
+
+    val stream = if error then cls(t"pyro-output-stderr") else cls(t"pyro-output-stdout")
+    Pre(`class` = List(cls(t"pyro-output"), stream))(rows*)
 
   // An item with a destination and no action is a real link (which opens in a new tab as a
   // link does): the anchor wraps its one paragraph's phrasing, since an anchor cannot hold
