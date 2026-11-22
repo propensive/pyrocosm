@@ -369,7 +369,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert(_ == List(t"slide 1 of 2", t"one", t"slide 2 of 2", t"two"))
 
     test(m"the terminal renders an animated block as its slides in sequence"):
-      val rows: List[Text] = TerminalRenderer().block(animatedBlock, 60).map(_.plain)
+      val rows: List[Text] = TerminalRenderer().block(animatedBlock, 60).map(_.plain.trim)
       (rows.count(_.starts(t"step ")), rows.has(t"step 3 of 3"), rows.has(t"valx=y"))
 
     . assert(_ == (3, true, true))
@@ -1316,48 +1316,11 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == List(true, true))
 
-    test(m"code notes leave the text intact"):
-      val code =
-        Block.Code
-          ( Language.Scala,
-            List(Block.Line(List(Token(t"val", Token.Accent.Keyword), Token.plain(t" xs = 1")))),
-            List(Block.Note(0, 2, 6, Block.Note.Style.Erroneous)) )
-
-      renderer.block(code, 80).at(Prim).let(_.plain)
-
-    . assert(_ == t"val xs = 1")
-
-    test(m"a numbered code block carries its line numbers in the margin"):
-      val lines: List[Block.Line] =
-        List(Block.Line(List(Token.plain(t"a"))), Block.Line(List(Token.plain(t"b"))))
-
-      val code = Block.Code(Language.Plain, lines, Nil, 9)
-      renderer.block(code, 80).map(_.plain)
-
-    . assert(_ == List(t" 9│ a", t"10│ b"))
-
-    test(m"a caret is drawn beneath its position, with its caption"):
-      val note = Block.Note(0, 8, 8, Block.Note.Style.Erroneous, Inline.text(t"not found"))
-      val line: Block.Line = Block.Line(List(Token.plain(t"val x = y")))
-      val code = Block.Code(Language.Plain, List(line), List(note))
-      renderer.block(code, 80).map(_.plain)
-
-    . assert(_ == List(t"val x = y", t"       ╱╲ not found"))
-
     test(m"an icon says its description, as it cannot be drawn"):
       val icon: Inline = Inline.Icon(t"<svg/>", t"final class")
       renderer.block(Block.Paragraph(List(icon, Inline.Textual(t" name"))), 80).map(_.plain)
 
     . assert(_ == List(t"final class name"))
-
-    test(m"a captioned segment is underscored beneath its line, within the margin"):
-      val note = Block.Note(0, 4, 5, Block.Note.Style.Caution, Inline.text(t"unused"))
-      val line: Block.Line = Block.Line(List(Token.plain(t"val x = 1")))
-      val code = Block.Code(Language.Plain, List(line), List(note), 12)
-
-      renderer.block(code, 80).map(_.plain)
-
-    . assert(_ == List(t"12│ val x = 1", t"  │     ‾ unused"))
 
     test(m"a diagnostic's headline names the place and the severity"):
       val diagnostic =

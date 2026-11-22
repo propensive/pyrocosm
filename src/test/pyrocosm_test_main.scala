@@ -27,4 +27,5 @@ package pyrocosm
 // `make test`, through fume, remains the full experience.
 @main
 def runTests(): Unit =
-  Harness.main(scala.Array(), Tests, CompilerTests, ServicesTests, SwarmTests, GraftTests)
+  Harness.main
+    ( scala.Array(), Tests, CompilerTests, ServicesTests, SwarmTests, GraftTests, CodeThemeTests )
