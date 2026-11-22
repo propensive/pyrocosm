@@ -332,8 +332,25 @@ class HtmlRenderer
     flush()
     done.reverse
 
+  // Text, but for the Powerline triangle (U+E0B0) a prompt is marked with: it is a private-use
+  // character which a terminal's font has and a page's does not, so it is drawn as a shape, a
+  // character wide and a line high, in the colour of the text around it.
+  private def textual(text: Text): Html of Phrasing =
+    if !text.contains(t"\ue0b0") then text else
+      val arrow: Html of Phrasing = Span(`class` = cls(t"pyro-powerline"))()
+
+      val pieces: List[Html of Phrasing] = text.cut(t"\ue0b0") match
+        case head :: tail =>
+          (head: Html of Phrasing) :: tail.flatMap: (part: Text) =>
+            List[Html of Phrasing](arrow, part)
+
+        case _ =>
+          Nil
+
+      Html.Fragment[Phrasing](pieces*)
+
   private def inline1(node: Inline): Html of Phrasing = node match
-    case Inline.Textual(text)        => text
+    case Inline.Textual(text)        => textual(text)
     case Inline.Phrase(content)      => phrase(content)
     case Inline.Emphasis(content)    => Em(phrase(content))
     case Inline.Strong(content)      => Strong(phrase(content))

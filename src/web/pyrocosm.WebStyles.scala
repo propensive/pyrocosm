@@ -108,6 +108,37 @@ object WebStyles:
     css".pyro-diagnostic .pyro-code-ran { margin-left: 0; margin-right: 0 }" +
     css".pyro-role-transcript .pyro-code-ran { margin-left: 0; margin-right: 0 }"
 
+  // A field's prompt is laid over the start of its first row, in the field's own type: the
+  // group is what it is positioned in, and the first row of the text, and the placeholder
+  // which stands for it, start past it by its width, which the script measures
+  // (`--pyro-prompt-width`). The offsets are the field's padding and border. (Apart from
+  // `rules`, as `ran` is.)
+  private def fieldPrompt: Css =
+    css"""
+      .pyro-decoration > .pyro-prompt {
+        position: absolute; top: calc(var(--pyro-space-3) + 1px);
+        left: calc(var(--pyro-space-3) + 1px); pointer-events: none; user-select: none;
+        font-family: var(--pyro-font-mono); font-size: var(--pyro-text-mono);
+        line-height: 1.5; white-space: pre
+      }
+    """ +
+    css".pyro-editor { text-indent: var(--pyro-prompt-width, 0px) }" +
+    // The Powerline triangle, which no web font has, as a shape: a character wide and a line
+    // high, pointing right, in the colour of its text. It is all border: the left one, which
+    // the transparent borders above and below cut to a point.
+    css"""
+      .pyro-powerline {
+        display: inline-block; width: 0; height: 0; vertical-align: top;
+        border-top: 0.5lh solid transparent; border-bottom: 0.5lh solid transparent;
+        border-left: 1ch solid currentColor
+      }
+    """ +
+    css"""
+      .pyro-field-group > .pyro-placeholder {
+        left: calc(var(--pyro-space-3) + var(--pyro-prompt-width, 0px))
+      }
+    """
+
   def rules(theme: WebTheme): Css =
     // A tone's colour, its notice's edge and tint, and a tinted row; an accent's colour. These
     // rules are generated per case, so they are read from text like the theme's `:root`
@@ -1644,5 +1675,5 @@ object WebStyles:
     val traceAccents: Css = (1 to 5).foldLeft(Css(Nil)): (acc, index) => acc + traceAccent(index)
 
     theme.variables + scale + stage + base + layout + menubar + masthead + phrasing + label + flow +
-      ran + trace + charts + panels + controls + purview + responsive + tones + shares + accents +
+      ran + fieldPrompt + trace + charts + panels + controls + purview + responsive + tones + shares + accents +
       traceAccents

@@ -629,7 +629,8 @@
       if (child && child.getBoundingClientRect) return child.getBoundingClientRect();
     }
     var box = editor.getBoundingClientRect(), style = getComputedStyle(editor);
-    var left = box.left + parseFloat(style.paddingLeft), top = box.top + parseFloat(style.paddingTop);
+    // An empty editor's caret stands past the prompt, where its first character will.
+    var left = box.left + parseFloat(style.paddingLeft) + (parseFloat(style.textIndent) || 0), top = box.top + parseFloat(style.paddingTop);
     return { left: left, top: top, height: parseFloat(style.lineHeight) || box.height };
   }
 
@@ -672,6 +673,29 @@
     if (wanted && !existing) { var br = document.createElement("br"); br.className = "pyro-break"; editor.appendChild(br); }
     else if (!wanted && existing) existing.remove();
   }
+
+  // The prompt the decoration shows over the start of the field's first row: the text, and
+  // the placeholder which stands for it, start past it by its width, measured since a prompt
+  // is whatever the application made it.
+  function indent(editor, decoration) {
+    var group = editor.parentNode, prompt = decoration.querySelector(".pyro-prompt");
+    if (!group || !group.classList.contains("pyro-field-group")) return;
+    var width = prompt ? prompt.getBoundingClientRect().width : 0;
+    if (width > 0) group.style.setProperty("--pyro-prompt-width", width + "px");
+    else group.style.removeProperty("--pyro-prompt-width");
+  }
+
+  // Measured again when the type it is set in may have changed: a font which has just loaded,
+  // or a window resized.
+  function indents() {
+    document.querySelectorAll(".pyro-editor").forEach(function (editor) {
+      var decoration = document.getElementById(editor.id + "-decoration");
+      if (decoration) { indent(editor, decoration); drawCaret(editor); }
+    });
+  }
+
+  window.addEventListener("resize", indents);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(indents);
 
   function emptiness(editor) {
     var holder = editor.parentNode;
@@ -747,6 +771,7 @@
   // which sets the field's class when the version is the current one. Nothing is repainted
   // in the middle of an IME composition, which a repaint would break off.
   function decorate(editor, decoration) {
+    indent(editor, decoration);
     var state = decoration.querySelector(".pyro-state");
     var given = state ? parseInt(state.getAttribute("data-version"), 10) || 0 : 0;
     var current = versionOf(editor);
