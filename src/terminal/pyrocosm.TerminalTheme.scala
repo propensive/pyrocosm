@@ -25,10 +25,13 @@ package pyrocosm
 import soundness.*
 
 object TerminalTheme:
-  given default: TerminalTheme = Solarized
+  given default: TerminalTheme = Ember
 
   // An iridescence colour as the packed form a theme is written in.
   def chroma(color: Color in Srgb): Chroma = color.chroma
+
+  // The model's colour as a theme's.
+  def chroma(colour: Block.Rgb): Chroma = Chroma(colour.red, colour.green, colour.blue)
 
   // Solarized dark, the scheme fume's reports have always used, in iridescence's own values;
   // the syntax accents follow flame's editor palette where solarized has no equivalent.
@@ -84,6 +87,25 @@ object TerminalTheme:
       case Token.Accent.Comment  => green
       case Token.Accent.Substitute => base0
 
+  // Solarized for everything but code, which is set in the colours, and on the ground, that the
+  // web's default theme sets it in: the same code reads the same in a terminal as on a page.
+  object Ember extends TerminalTheme:
+    def background: Chroma = Solarized.background
+    def foreground: Chroma = Solarized.foreground
+    def muted: Chroma = Solarized.muted
+    def key: Chroma = Solarized.key
+    def reference: Chroma = Solarized.reference
+    def figure: Chroma = Solarized.figure
+    def units: Chroma = Solarized.units
+    def link: Chroma = Solarized.link
+    def selection: Chroma = Solarized.selection
+    def tone(tone: Tone): Chroma = Solarized.tone(tone)
+    def accent(accent: Token.Accent): Chroma = Solarized.accent(accent)
+    override def codeAccent(accent: Token.Accent): Chroma =
+      chroma(CodeTheme.Ember.accent(accent))
+    override def codeForeground: Chroma = chroma(CodeTheme.Ember.foreground)
+    override def codeBackground: Optional[Chroma] = chroma(CodeTheme.Ember.background)
+
 // The terminal's colours, by role. A theme answers for every tone, every syntax accent and the
 // handful of other roles the renderer distinguishes, so that no colour literal appears in the
 // renderer and a theme can be swapped by import.
@@ -98,6 +120,13 @@ trait TerminalTheme:
   def units: Chroma        // the units after an amount
   def link: Chroma
   def selection: Chroma    // the background of a focused, selected row
+
+  // Code's colours: each token's, by its accent, wherever code is set; and for a block of code,
+  // the text between its tokens and the ground it is painted on. A theme with no ground of its
+  // own for code leaves a block on the terminal's.
+  def codeAccent(accent: Token.Accent): Chroma = this.accent(accent)
+  def codeForeground: Chroma = foreground
+  def codeBackground: Optional[Chroma] = Unset
 
   // The ground a subdued colour fades toward: what a repeated class or file name and a plumbing
   // frame of a stack trace recede into. Every theme says what its ground is, since a theme on

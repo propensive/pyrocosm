@@ -36,6 +36,9 @@ object WebTheme:
   case class ChartColours
     ( background: Chroma, foreground: Chroma, grid: Chroma, series: List[Chroma] )
 
+  // The model's colour as a theme's.
+  def chroma(colour: Block.Rgb): Chroma = Chroma(colour.red, colour.green, colour.blue)
+
   def hex(chroma: Chroma): Text =
     def channel(value: Int): Text =
       val digits = java.lang.Integer.toHexString(value&255).nn
@@ -133,22 +136,11 @@ object WebTheme:
     private val leaf = Chroma(0x3f7d3a)
     private val olive = Chroma(0x6b7d16)
 
-    // Code on its dark ground takes the Zed colours Flame's terminal highlights with, so code
-    // reads the same in a browser as in a Flame session; in the light mode it sits on a pale
+    // Code on its dark ground takes the colours a terminal sets it in (`CodeTheme.Ember`), so
+    // code reads the same in a browser as in a terminal; in the light mode it sits on a pale
     // teal, with the same hues deepened to read there.
     private val night = Chroma(0x16131f)
-    private val plum = Chroma(0x1b0121)
     private val lagoon = Chroma(0xbce0dc)
-    private val codeText = Chroma(0xd4be98)
-    private val codeKeyword = Chroma(0xff6633)
-    private val codeString = Chroma(0x99ffff)
-    private val codeNumber = Chroma(0xcc3366)
-    private val codeTerm = Chroma(0xffcc99)
-    private val codeType = Chroma(0x00cc99)
-    private val codeComment = Chroma(0x9fb83a)
-    private val codeSymbol = Chroma(0xcc6699)
-    private val codeParens = Chroma(0xf28534)
-    private val codeError = Chroma(0xea6962)
 
     def background: Chroma = mist
     def surface: Chroma = white
@@ -191,8 +183,8 @@ object WebTheme:
       case Token.Accent.Comment    => olive
       case Token.Accent.Substitute => smoke
 
-    override def codeBackground: Chroma = plum
-    override def codeForeground: Chroma = codeText
+    override def codeBackground: Chroma = chroma(CodeTheme.Ember.background)
+    override def codeForeground: Chroma = chroma(CodeTheme.Ember.foreground)
     override def lightCodeBackground: Chroma = lagoon
     override def lightCodeForeground: Chroma = soot
     override def dark: WebTheme = Night
@@ -204,20 +196,8 @@ object WebTheme:
     override def traceLine: Chroma = Chroma(0x1e8f8a)
     override def traceAccents: List[Chroma] = List(crimson, rust, gold, amber, leaf)
 
-    override def codeAccent(accent: Token.Accent): Chroma = accent match
-      case Token.Accent.Keyword  => codeKeyword
-      case Token.Accent.Modifier => codeKeyword
-      case Token.Accent.Command  => codeKeyword
-      case Token.Accent.Comment    => codeComment
-      case Token.Accent.Substitute => codeText
-      case Token.Accent.String   => codeString
-      case Token.Accent.Number   => codeNumber
-      case Token.Accent.Term     => codeTerm
-      case Token.Accent.Typal    => codeType
-      case Token.Accent.Symbol   => codeSymbol
-      case Token.Accent.Parens   => codeParens
-      case Token.Accent.Error    => codeError
-      case Token.Accent.Unparsed => codeText
+    override def codeAccent(accent: Token.Accent): Chroma =
+      chroma(CodeTheme.Ember.accent(accent))
 
   // Ember's dark mode: the same accents, brightened, on a deep blue page, with code on black.
   object Night extends WebTheme:
