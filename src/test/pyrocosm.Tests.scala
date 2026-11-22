@@ -2555,11 +2555,11 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert(_ == true)
 
     test(m"the stylesheet begins by importing the fonts, and names all three"):
-      ( stylesheet.starts(t"@import url(\"https://fonts.googleapis.com/css2?family=Arimo"),
+      ( stylesheet.starts(t"@import url(\"https://fonts.googleapis.com/css2?family=Roboto:wdth,wght@90,"),
         stylesheet.contains(t"\"Propensity\""),
-        stylesheet.contains(t"\"Arimo\""),
+        stylesheet.contains(t"\"Roboto\""),
         stylesheet.contains(t"\"Roboto Mono\""),
-        stylesheet.contains(t"Marcellus") || stylesheet.contains(t"Yantramanav"),
+        stylesheet.contains(t"Marcellus") || stylesheet.contains(t"Arimo"),
         stylesheet.contains(t"Sono"),
         stylesheet.contains(t"font-variation-settings") )
 
@@ -2574,11 +2574,20 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
       ( rule.contains(t"--pyro-font-body: \"Noto Sans JP\""),
         rule.contains(t"--pyro-font-title: \"Noto Serif JP\""),
-        rule.contains(t"Propensity") || rule.contains(t"Arimo"),
+        rule.contains(t"Propensity") || rule.contains(t"\"Roboto\""),
         WebStyles.fontsUrl.contains(t"family=Noto+Sans+JP"),
         WebStyles.fontsUrl.contains(t"family=Noto+Serif+JP") )
 
     . assert(_ == (true, true, false, true, true))
+
+    test(m"prose is narrowed to nine tenths of its width, but not in Japanese"):
+      val japanese = stylesheet.s.indexOf(":lang(ja)")
+
+      ( stylesheet.s.indexOf("--pyro-stretch-body: 90%") < japanese,
+        stylesheet.s.indexOf("--pyro-stretch-body: 100%") > japanese,
+        stylesheet.contains(t"font-stretch: var(--pyro-stretch-body)") )
+
+    . assert(_ == (true, true, true))
 
     test(m"the titles' typeface is declared by a font-face, after the import"):
       val face = stylesheet.s.indexOf("@font-face")

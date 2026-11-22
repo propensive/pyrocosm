@@ -33,9 +33,10 @@ import strategies.throwUnsafely
 // properties too, declared in a `:root` block of their own, so a rule names a step of the
 // scale rather than a length.
 //
-// Type: Propensity for titles, Arimo for prose, and Roboto Mono for code and for the small
-// tracked capitals of labels and buttons; in Japanese, Noto Serif JP for titles and Noto Sans JP
-// for prose, chosen by a `:lang(ja)` rule that redefines the two font properties. All but
+// Type: Propensity for titles, Roboto for prose (at nine tenths of its width, and its regular
+// weight), and Roboto Mono for code and for the small tracked capitals of labels and buttons;
+// in Japanese, Noto Serif JP for titles and Noto Sans JP for prose, chosen by a `:lang(ja)`
+// rule that redefines the two font properties, and the width, which is whole again. All but
 // Propensity are fetched from Google Fonts by the `@import` that heads the sheet, and Propensity
 // from propensive.dev by the `@font-face` that follows it; each has system fallbacks. Text is
 // one size, but for labels and code (a little smaller, as monospace reads larger). Layout: the
@@ -47,7 +48,7 @@ object WebStyles:
   // typeface. The Japanese faces are served in subsets by `unicode-range`, so a page with no
   // Japanese text fetches none of them.
   val fontsUrl: Text =
-    t"https://fonts.googleapis.com/css2?family=Arimo:wght@400..700" +
+    t"https://fonts.googleapis.com/css2?family=Roboto:wdth,wght@90,400..700" +
       t"&family=Noto+Sans+JP:wght@400..700&family=Noto+Serif+JP" +
       t"&family=Roboto+Mono:wght@400;500;600;700&display=swap"
 
@@ -149,7 +150,8 @@ object WebStyles:
     val scale: Css =
       List
         ( t":root {",
-          t"--pyro-font-body: \"Arimo\", system-ui, -apple-system, \"Segoe UI\", sans-serif;",
+          t"--pyro-font-body: \"Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif;",
+          t"--pyro-stretch-body: 90%;",
           t"--pyro-font-title: \"Propensity\", Georgia, \"Times New Roman\", serif;",
           t"--pyro-font-mono: \"Roboto Mono\", ui-monospace, SFMono-Regular, Menlo, monospace;",
           t"--pyro-font-label: \"Roboto Mono\", ui-monospace, SFMono-Regular, Menlo, monospace;",
@@ -179,6 +181,7 @@ object WebStyles:
           t":lang(ja) {",
           t"--pyro-font-body: \"Noto Sans JP\", system-ui, -apple-system, \"Segoe UI\",",
           t"sans-serif;",
+          t"--pyro-stretch-body: 100%;",
           t"--pyro-font-title: \"Noto Serif JP\", Georgia, \"Times New Roman\", serif }" )
 
       . join(t" ")
@@ -225,7 +228,8 @@ object WebStyles:
             margin: 0; min-height: 100vh; background-color: var(--pyro-bg);
             background-image: var(--pyro-page-face); background-repeat: no-repeat;
             color: var(--pyro-fg); font-family: var(--pyro-font-body);
-            font-size: var(--pyro-text-body); font-weight: 400; line-height: 1.55
+            font-size: var(--pyro-text-body); font-weight: 400;
+            font-stretch: var(--pyro-stretch-body); line-height: 1.55
           }
         """ +
         css"""
