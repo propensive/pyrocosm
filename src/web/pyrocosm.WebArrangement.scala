@@ -274,7 +274,9 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
   // What the script reads to decorate a field: its state (the version of the text it is for,
   // and whether that is incomplete), the highlighting tokens (hidden; the script paints an
   // editor with them, rebased through any edits since that version), the note, and the
-  // completions, which the script also turns into suggestion text.
+  // completions, which the script also turns into suggestion text. The prompt is not read but
+  // shown: it is laid over the start of the field's first row, which the script indents by
+  // the prompt's width, so that the text starts past it.
   def decoration(field: Control.Field): Html of Flow =
     val decoration0 = field.decoration()
 
@@ -285,6 +287,10 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
           `data-version` = decoration0.version.toString.tt,
           `data-incomplete` = (if decoration0.incomplete then t"true" else t"false") )
         ()
+
+    val prompt: Html of Flow =
+      if decoration0.prompt.nil then Html.Fragment[Flow]()
+      else Span(`class` = cls(t"pyro-prompt"))(renderer.phrase(decoration0.prompt))
 
     // The tokens as code lines, so the decoration's marks lay over them as a code block's notes.
     val tokens: Html of Flow =
@@ -323,7 +329,7 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
         Ul(`class` = cls(t"pyro-completions"))(items*)
 
-    Html.Fragment(state, tokens, detail, list)
+    Html.Fragment(state, prompt, tokens, detail, list)
 
   def panelContent(panel: Panel): Html of Flow =
     val (content, serial) = panel.content.versioned

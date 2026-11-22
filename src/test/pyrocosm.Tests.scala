@@ -2311,7 +2311,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_.contains(t"""href="/fume/doc/intro#usage""""))
 
-    test(m"a decoration carries its tokens, note, marker, marks and completions"):
+    test(m"a decoration carries its tokens, note, marker, marks, prompt and completions"):
       val completions =
         List
           ( Control.Field.Completion(t"println", t"term", t"…", info = t"prints a line"),
@@ -2323,7 +2323,8 @@ object Tests extends Suite(m"Pyrocosm tests"):
             completions,
             incomplete = true,
             detail = List(Block.paragraph(t"reads as code")),
-            marks = List(Block.Note(0, 0, 3, Block.Note.Style.Erroneous)) )
+            marks = List(Block.Note(0, 0, 3, Block.Note.Style.Erroneous)),
+            prompt = List(Inline.Toned(Tone.Accent, Inline.text(t"$$ "))) )
 
       val decoration = PyrocosmPage(repl, html, WebTheme.default).decoration(prompt).show
 
@@ -2335,7 +2336,8 @@ object Tests extends Suite(m"Pyrocosm tests"):
           t"""<span class="pyro-info">prints a line</span>""",
           t"reads as code",
           t"""<li class="pyro-replacement">""",
-          t"pyro-note-erroneous" )
+          t"pyro-note-erroneous",
+          t"""<span class="pyro-prompt"><span class="pyro-tone-accent">$$ </span></span>""" )
 
       . all(decoration.contains(_))
 
