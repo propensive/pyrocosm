@@ -2355,6 +2355,24 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert: (plain, page) =>
         plain == t"░ one\n░ two" && page.contains(t"pyro-output-stderr") && page.contains(t"one\n")
 
+    test(m"output directly after code is joined to it, without a gutter"):
+      val code = Block.Code(Language.Scala, List(Block.Line(List(Token.plain(t"run()")))))
+      val printed = List(Block.Output(t"one\n"), Block.Output(t"two\n", error = true))
+      html.blocks(code :: printed + List(Block.paragraph(t"after"))).show
+
+    . assert: (page: Text) =>
+        page.cut(t"pyro-code-ran").size == 2 && !page.contains(t"pyro-gutter")
+        && page.contains(t"""<pre class="pyro-output pyro-output-stdout">one</pre>""")
+        && page.contains(t"""<pre class="pyro-output pyro-output-stderr">two</pre></div>""")
+
+    test(m"output after plain text, or after no code, keeps its gutter"):
+      val plain = Block.Code(Language.Plain, List(Block.Line(List(Token.plain(t"a message")))))
+      val output = Block.Output(t"one\n")
+      val pages = List(List(plain, output), List(Block.paragraph(t"before"), output))
+      pages.map(html.blocks(_).show)
+
+    . assert(_.all { (page: Text) => page.contains(t"pyro-gutter") && !page.contains(t"pyro-code-ran") })
+
     val captured: Block = Block.Output(t"one\ntwo\n", error = true)
 
     test(m"captured output round-trips as TEL"):
