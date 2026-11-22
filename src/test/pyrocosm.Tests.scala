@@ -2324,7 +2324,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
             incomplete = true,
             detail = List(Block.paragraph(t"reads as code")),
             marks = List(Block.Note(0, 0, 3, Block.Note.Style.Erroneous)),
-            prompt = List(Inline.Toned(Tone.Accent, Inline.text(t"$$ "))) )
+            prompt = List(Inline.Toned(Tone.Accent, Inline.text(t"\ue0b0 "))) )
 
       val decoration = PyrocosmPage(repl, html, WebTheme.default).decoration(prompt).show
 
@@ -2337,7 +2337,8 @@ object Tests extends Suite(m"Pyrocosm tests"):
           t"reads as code",
           t"""<li class="pyro-replacement">""",
           t"pyro-note-erroneous",
-          t"""<span class="pyro-prompt"><span class="pyro-tone-accent">$$ </span></span>""" )
+          t"""<span class="pyro-prompt"><span class="pyro-tone-accent">""" +
+            t"""<span class="pyro-powerline"></span> </span></span>""" )
 
       . all(decoration.contains(_))
 

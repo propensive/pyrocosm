@@ -123,6 +123,16 @@ object WebStyles:
       }
     """ +
     css".pyro-editor { text-indent: var(--pyro-prompt-width, 0px) }" +
+    // The Powerline triangle, which no web font has, as a shape: a character wide and a line
+    // high, pointing right, in the colour of its text. It is all border: the left one, which
+    // the transparent borders above and below cut to a point.
+    css"""
+      .pyro-powerline {
+        display: inline-block; width: 0; height: 0; vertical-align: top;
+        border-top: 0.5lh solid transparent; border-bottom: 0.5lh solid transparent;
+        border-left: 1ch solid currentColor
+      }
+    """ +
     css"""
       .pyro-field-group > .pyro-placeholder {
         left: calc(var(--pyro-space-3) + var(--pyro-prompt-width, 0px))
