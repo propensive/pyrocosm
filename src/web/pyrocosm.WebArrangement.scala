@@ -151,6 +151,7 @@ class PyrocosmPage
     presence: Presence = Presence.shared, prefix: Text = t"" )
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
   import HtmlRenderer.{cls, panelId, classes, ariaLabel}
+  import HtmlRenderer.given
   // The attribute givens are imported wholesale: a macro summons them, which `-Wunused` does not
   // see, so it would call any of them imported by name unused.
   import PyrocosmPage.given
@@ -325,8 +326,11 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     Html.Fragment(state, tokens, detail, list)
 
   def panelContent(panel: Panel): Html of Flow =
-    Div(id = t"${panelId(panel)}-content", `class` = cls(t"pyro-panel-content"))
-      ( renderer.blocks(panel.content()) )
+    val (content, serial) = panel.content.versioned
+    val id: Text = t"${panelId(panel)}-content"
+
+    Div(id = id, `class` = cls(t"pyro-panel-content"), `data-serial` = serial.show)
+      ( renderer.blocks(content) )
 
   def card(panel: Panel): Html of Flow =
     val classes =

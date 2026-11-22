@@ -60,12 +60,23 @@ class Live[value](initial: value):
   private[pyrocosm] def unbindWake(wake: () -> Unit): Unit = synchronized:
     wakes = wakes.filter(_ ne wake)
 
+  // How many times the cell has been assigned.
+  @caps.unsafe.untrackedCaptures
+  private var count: Int = 0
+
   def apply(): value = current
+
+  // The value with the number of the assignment which gave it, read together: what a frontend
+  // which sends only what changed says its change is from, and to.
+  def versioned: (value, Int) = synchronized((current, count))
 
   // Paired with `apply`, this gives assignment syntax: `progress() = Status.Fraction(0.42)`.
   def update(value: value): Unit =
-    current = caps.unsafe.unsafeAssumePure(value)
-    val current0 = synchronized(wakes)
+    val current0 = synchronized:
+      current = caps.unsafe.unsafeAssumePure(value)
+      count += 1
+      wakes
+
     current0.each(_())
 
   // Atomic: a frontend's thread and the application's may both amend.

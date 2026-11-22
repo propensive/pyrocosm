@@ -181,6 +181,77 @@
     });
   }
 
+  // A tree's nodes shown again where they are (see `Graft`). A tree is one of those at the top
+  // of its panel's content, by its place among them; a node is at a path within it, each step
+  // the index of an item in the list beneath the last, which is the item's own or, where the
+  // item is collapsible, its `<details>`'s.
+  function childList(item) {
+    for (var i = 0; i < item.children.length; i++) {
+      var child = item.children[i];
+      if (child.tagName === "UL") return child;
+      if (child.tagName !== "DETAILS") continue;
+      for (var j = 0; j < child.children.length; j++) if (child.children[j].tagName === "UL") return child.children[j];
+    }
+    return null;
+  }
+
+  function collapsible(item) {
+    for (var i = 0; i < item.children.length; i++) if (item.children[i].tagName === "DETAILS") return item.children[i];
+    return null;
+  }
+
+  function nodeAt(content, tree, path) {
+    var trees = Array.prototype.filter.call(content.children, function (child) { return child.classList.contains("pyro-tree"); });
+    var list = trees[tree];
+    var item = null;
+    var steps = path.split(".");
+    for (var i = 0; i < steps.length; i++) {
+      if (!list) return null;
+      item = list.children[+steps[i]];
+      if (!item) return null;
+      list = childList(item);
+    }
+    return item;
+  }
+
+  // One node: the new one takes the place of the old. One which is not whole is the node
+  // alone, and takes the children the old one has, as they are; it is open if the application
+  // now says so, or if its reader had it so. False if the page has no such node.
+  function graftNode(content, graft) {
+    var item = nodeAt(content, graft.tree, graft.path);
+    if (!item) return false;
+    var scratch = document.createElement("ul");
+    scratch.innerHTML = graft.html;
+    var fresh = scratch.firstElementChild;
+    if (!fresh) return false;
+    wire(fresh);
+    if (!graft.whole) {
+      var kept = childList(item);
+      var slot = childList(fresh);
+      if (kept && slot) slot.replaceWith(kept);
+      var was = collapsible(item);
+      var now = collapsible(fresh);
+      if (was && now && was.open) now.open = true;
+    }
+    item.replaceWith(fresh);
+    return true;
+  }
+
+  // A change to a panel's content is a change from the content of one serial, which is the one
+  // the page shows, or the page asks for the whole of what it should — once, until it has it.
+  function graftContent(element, patch) {
+    var grafts = null;
+    try { grafts = JSON.parse(patch.html); } catch (error) { console.error(error); }
+    var current = +(element.dataset.serial || 0) === patch.base;
+    if (grafts && current && grafts.every(function (graft) { return graftNode(element, graft); })) {
+      element.dataset.serial = patch.version;
+      return;
+    }
+    if (element.dataset.pyroRepainting) return;
+    element.dataset.pyroRepainting = "1";
+    send({ kind: "repaint", id: element.id });
+  }
+
   function parseSvg(html) {
     var scratch = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     scratch.innerHTML = html;
@@ -254,6 +325,7 @@
         var drawings = keepDrawings(element);
         var nodes = keepNodes(element);
         element.innerHTML = patch.html;
+        if (patch.version && element.classList.contains("pyro-panel-content")) { element.dataset.serial = patch.version; delete element.dataset.pyroRepainting; }
         restoreDrawings(element, drawings);
         restoreNodes(element, nodes);
         if (follow) element.scrollTop = element.scrollHeight;
@@ -264,6 +336,7 @@
           if (editor && editor.classList.contains("pyro-editor")) decorate(editor, element);
         }
         break;
+      case "graft": graftContent(element, patch); settle(); break;
       // Another tab's text, or the application's: adopted whole, with its version.
       case "value":
         if (element.classList.contains("pyro-editor")) {

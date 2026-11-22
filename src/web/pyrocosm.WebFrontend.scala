@@ -43,7 +43,12 @@ import strategies.throwUnsafely
 // names a handle by id. A field's text is versioned by the script that edits it (see
 // `Control.Field`): an `edit`, `submit` or `enter` says which version it is of, and a `value`
 // passed on to another tab carries the version with it, so every tab numbers the text alike.
-case class Patch(kind: Text, id: Text, html: Text = t"", version: Int = 0)
+//
+// A panel's content is numbered too, by the assignments of its cell: a `replace` of it says
+// which it is, as the page it was first sent in does, and a `graft` — the nodes of its trees
+// which changed, and no more — says which it is a change from (`base`), so that a tab which
+// shows another asks for the whole of it (`repaint`) and is not left with a tree nobody drew.
+case class Patch(kind: Text, id: Text, html: Text = t"", version: Int = 0, base: Int = 0)
 
 case class Incoming
   ( kind:    Text,
@@ -258,10 +263,7 @@ extends pyrocosm.Frontend:
     private def refresh(): Unit =
       val renderer0: HtmlRenderer = renderer
 
-      interface.panels.each: panel =>
-        val html: Text = renderer0.blocks(panel.content()).show
-        broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", html))
-
+      interface.panels.each(paint(_, true))
       broadcast(Patch(t"replace", t"pyro-purview", renderer0.purviewPanel.show))
       broadcast(Patch(t"cookie", t"", WebFrontend.cookie(purview)))
 
@@ -366,6 +368,46 @@ extends pyrocosm.Frontend:
           figure.revision.bindWake: () =>
             figure.revision().let: revision => broadcast(figurePatch(figure, revision))
 
+    // What the tabs were last sent of each panel's content, with the number of the assignment
+    // of its cell which it was, by the id of the element it is in: what the next is a change
+    // from. A panel is painted by one thread at a time, so that each change is from the last.
+    private val sent: juc.ConcurrentHashMap[Text, (List[Block], Int)] = juc.ConcurrentHashMap()
+    private val painting: Object = Object()
+
+    private def contentId(panel: Panel): Text = t"${HtmlRenderer.panelId(panel)}-content"
+
+    private def whole(panel: Panel, content: List[Block], serial: Int): Patch =
+      Patch(t"replace", contentId(panel), renderer.blocks(content).show, serial)
+
+    // A panel's content, sent to the tabs unless they were sent a later one: the nodes of its
+    // trees which changed, where nothing else did, and otherwise — or when it is `repainted`,
+    // under another purview — the whole of it. With no tab to send it to it is not rendered:
+    // the page a tab is about to ask for has it, and says which it has.
+    private def paint(panel: Panel, repainted: Boolean): Unit = painting.synchronized:
+      val (content, serial) = panel.content.versioned
+      val id: Text = contentId(panel)
+      val before = sent.get(id)
+
+      if repainted || before == null || before.nn(1) < serial then
+        sent.put(id, (content, serial))
+
+        if !tabs.isEmpty then
+          val grafts: Optional[List[Graft]] =
+            if repainted || before == null then Unset
+            else Graft.between(before.nn(0), content, renderer)
+
+          grafts.lay(broadcast(whole(panel, content, serial))): grafts =>
+            broadcast(Patch(t"graft", id, grafts.in[Json].show, serial, before.nn(1)))
+
+        bindFigures(content)
+
+    // The whole of a panel's content as the tabs were last sent it, for a tab which was sent a
+    // change from what it does not show: one which missed a patch, or was not yet there for it.
+    private def repaint(connection: Int, id: Text): Unit = painting.synchronized:
+      interface.panels.seek(contentId(_) == id).let: panel =>
+        val state = sent.get(id)
+        if state != null then tell(connection, whole(panel, state.nn(0), state.nn(1)))
+
     // What each cell repaints: the activities' holder, a panel's content, or a control's
     // holder. A panel's figures are bound after its content is sent, so a figure is on the page
     // before its revisions reach it.
@@ -380,11 +422,8 @@ extends pyrocosm.Frontend:
       interface.panels.each: panel =>
         bindFigures(panel.content())
 
-        panel.content.bindWake: () =>
-          val content = panel.content()
-          val html: Text = renderer.blocks(content).show
-          broadcast(Patch(t"replace", t"${HtmlRenderer.panelId(panel)}-content", html))
-          bindFigures(content)
+        sent.put(contentId(panel), panel.content.versioned)
+        panel.content.bindWake: () => paint(panel, false)
 
       (interface.controls + interface.panels.bind(_.controls)).each:
         case Control.Field(input, _, value, decoration, _, _, history, revision) =>
@@ -463,6 +502,10 @@ extends pyrocosm.Frontend:
           // application's own, so nothing checks it.
           case t"locate" =>
             handle(Event.Located(incoming.text))
+
+          // A tab sent a change from content it does not show asks for the whole of it.
+          case t"repaint" =>
+            repaint(connection, incoming.id)
 
           case t"toggle" =>
             interface.toggles.seek(_.toggle.id == incoming.id).let: toggle =>
