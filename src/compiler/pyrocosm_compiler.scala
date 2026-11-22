@@ -124,12 +124,14 @@ private def markupInline(markup: Markup): Inline = markup match
   case Markup.Named(isType, _, _) =>
     highlighted(markup.plain, if isType then Scala.Context.Type else Scala.Context.Term)
 
-  case Markup.Spanned(_, _, children) => Inline.Phrase(children.map(markupInline))
+  case Markup.Spanned(_, _, children)    => Inline.Phrase(children.map(markupInline))
+  case Markup.Tree(_, children)          => Inline.Phrase(children.map(markupInline))
+  case Markup.Node(_, _, _, _, children) => Inline.Phrase(children.map(markupInline))
 
 // A compiler's notice as a diagnostic. The message is read for the semantic markup the compiler
 // embeds (delicious), so that a type shows as a type and a code sample as code, a multi-line
-// sample as a code block of its own, and the lines of a missing-given search (frontier's tree)
-// keep their marks; a message with no markup is its lines. Given the highlighted lines of the
+// sample as a code block of its own, and the tree of a missing-given search (frontier's) as a
+// tree; a message with no markup is its lines. Given the highlighted lines of the
 // file, the excerpt around the notice's span is cut from them, numbered, with the span marked.
 object Notices:
   def tone(importance: anthology.Importance): Tone = importance match
@@ -209,7 +211,7 @@ object Notices:
     Block.Diagnostic(tone(notice.importance), location, message, excerpt, code = notice.code)
 
   // Runs of phrasing become one paragraph, broken at the message's own newlines; a code sample
-  // with a newline in it becomes a code block between paragraphs.
+  // with a newline in it becomes a code block between paragraphs, and a tree a tree.
   def blocks(nodes: List[Markup], types: Markup.Typed => Text = _.plain): List[Block] =
     // Both accumulators are built in reverse and turned round when they are drained: `run` is
     // the phrasing of the paragraph being assembled, `blocks` the blocks completed so far.
@@ -231,7 +233,7 @@ object Notices:
       case Markup.Textual(text) =>
         stripAnsi(text).cut(t"\n").indexed.each: (line: Text, index: Ordinal) =>
           if index.n0 > 0 then run = Inline.Break() :: run
-          if line != t"" then run = lineInlines(line).reverse + run
+          if line != t"" then run = Inline.Textual(line) :: run
 
       case Markup.Code(_, _) =>
         if markup.plain.contains(t"\n") then
@@ -250,49 +252,71 @@ object Notices:
       case Markup.Named(_, _, children)       => children.each(phrase)
       case Markup.Spanned(_, _, children)     => children.each(phrase)
 
+      case tree: Markup.Tree =>
+        flush()
+        blocks = resolution(tree) :: blocks
+
+      // A node which is in no tree has nowhere to be drawn as one: it is its text.
+      case Markup.Node(_, _, _, _, children)  => children.each(phrase)
+
     nodes.each(phrase)
     flush()
     blocks.reverse
+
+  // The tree which explains a failed contextual resolution (frontier's), as a tree: each node
+  // is its mark, toned for the part it plays, the word for that part, and what was sought,
+  // found or proposed, highlighted as the type or the value it is. A node with children can
+  // be closed, and starts open. The text which draws the tree for a reader of plain text is
+  // in the markup beside the nodes, and is not read.
+  def resolution(tree: Markup.Tree): Block.Tree =
+    def tone(role: Markup.Role): Tone = role match
+      case Markup.Role.Resolving => Tone.Accent
+      case Markup.Role.Found     => Tone.Success
+      case Markup.Role.Requires  => Tone.Failure
+      case Markup.Role.Candidate => Tone.Warning
+      case Markup.Role.Prohibits => Tone.Warning
+      case Markup.Role.Propose   => Tone.Info
+
+    // A candidate and a proposal are givens, named as terms; the rest are the types sought.
+    def context(role: Markup.Role): Scala.Context = role match
+      case Markup.Role.Candidate | Markup.Role.Propose => Scala.Context.Term
+      case _                                           => Scala.Context.Type
+
+    def muted(text: Text): Inline = Inline.Toned(Tone.Muted, Inline.text(text))
+
+    def treeNode(node: Markup.Node): Block.TreeNode =
+      val remarks: List[Text] =
+        node.note.lay(Nil)(List(_)) + (if node.repeated then List(t"as above") else Nil)
+
+      val remark: List[Inline] =
+        if remarks.nil then Nil else List(muted(t" (${remarks.join(t", ")})"))
+
+      val label: List[Inline] =
+        List
+          ( Inline.Toned(tone(node.role), Inline.text(node.role.glyph)),
+            Inline.Textual(t" ${node.role.word} "),
+            highlighted(node.name, context(node.role)) ) +
+          remark
+
+      val children: List[Block.TreeNode] = node.nodes.map(treeNode)
+      Block.TreeNode(label, children, open = if children.nil then Unset else true)
+
+    val omitted: List[Block.TreeNode] =
+      if tree.omitted <= 0 then Nil
+      else List(Block.TreeNode(List(muted(t"… ${tree.omitted} more"))))
+
+    tree.nodes.map(treeNode) match
+      case root :: Nil => Block.Tree(List(root.copy(children = root.children + omitted)))
+      case roots       => Block.Tree(roots + omitted)
 
   // A message's lines stay together in one paragraph, broken where the message breaks.
   private def paragraphs(text: Text): List[Block] =
     val content: List[Inline] =
       text.cut(t"\n").indexed.bind: (line: Text, index: Ordinal) =>
         val break: List[Inline] = if index.n0 == 0 then Nil else List(Inline.Break())
-        break + lineInlines(line)
+        break + List(Inline.Textual(line))
 
     List(Block.Paragraph(content))
-
-  // The keywords of a missing-given diagnostic's tree.
-  private val keywords: Set[Text] =
-    Set(t"resolving", t"found", t"requires", t"candidate", t"propose")
-
-  // One line of a message as phrasing: a line of a missing-given diagnostic's tree (frontier's
-  // `■ resolving Foo`, `└─ ▸ propose bar`, and so on) has its mark toned, its keyword kept and
-  // its name highlighted as the type or value it is; any other line is text.
-  private def lineInlines(line: Text): List[Inline] = line match
-    case r"$prefix([\s│├└─]*)$mark([■✓✗▪▸])\s+$keyword([a-z]+)\s+$name(\S.*?)$label(\s+\(.*\))?"
-      if keywords.has(keyword) =>
-      val tone: Tone = mark match
-        case t"■" => Tone.Accent
-        case t"✓" => Tone.Success
-        case t"✗" => Tone.Failure
-        case t"▪" => Tone.Warning
-        case _    => Tone.Info
-
-      val context = if keyword == t"propose" then Scala.Context.Term else Scala.Context.Type
-
-      val labelled: List[Inline] =
-        label.lay(Nil): (label: Text) => List(Inline.Toned(Tone.Muted, Inline.text(label)))
-
-      List
-        ( Inline.Toned(Tone.Muted, Inline.text(prefix)),
-          Inline.Toned(tone, Inline.text(mark)),
-          Inline.Textual(t" $keyword "),
-          highlighted(name, context) ) +
-        labelled
-
-    case _ => List(Inline.Textual(line))
 
 given noticePresentable: anthology.Compiler.Notice is Presentable in Block = Notices.diagnostic(_)
 

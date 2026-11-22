@@ -883,6 +883,79 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_ == List(t"paragraph", t"code"))
 
+    // The explanation of a contextual value nobody provides, as frontier writes it under
+    // `-Zsemantic-diagnostics`: a tree of marked nodes, with the text that draws it between.
+    val resolution: Text =
+      def node(role: Text, name: Text, more: List[(Text, Text)], body: Text): Text =
+        Markup.wrap(t"node", List(t"role" -> role, t"name" -> name) + more, body)
+
+      val found = node(t"found", t"Fairy", Nil, t" ✓ found Fairy")
+
+      val repeat =
+        node(t"requires", t"Wand", List(t"note" -> t"lost", t"repeated" -> t"true"),
+            t" ✗ requires Wand (lost, as above)")
+
+      val candidate =
+        node(t"candidate", t"puck", Nil, t" ▪ candidate puck\n │  ├─$found\n │  └─$repeat")
+
+      val propose = node(t"propose", t"oberon", Nil, t" ▸ propose oberon")
+
+      val root =
+        node(t"resolving", t"Bower", Nil, t" ■ resolving Bower\n ├─$candidate\n └─$propose")
+
+      val tree = Markup.wrap(t"tree", List(t"omitted" -> t"2"), t"$root\n … 2 more")
+      t"contextual value not found\n\n$tree\n"
+
+    def outline(node: Block.TreeNode): Text =
+      val inner: Text =
+        if node.children.nil then t"" else node.children.map(outline).join(t"[", t" ", t"]")
+
+      t"${node.label.map(_.plain).join}$inner"
+
+    test(m"a missing given's tree in a message becomes a tree, after its headline"):
+      Notices.blocks(SemanticMessage.parse(resolution).markup).map:
+        case Block.Paragraph(content) => content.map(_.plain).join
+        case Block.Tree(roots)        => roots.map(outline).join(t"; ")
+        case _                        => t"other"
+
+    . assert: blocks =>
+        blocks == List
+          ( t"contextual value not found",
+            t"■ resolving Bower[▪ candidate puck[✓ found Fairy ✗ requires Wand (lost, as above)] " +
+              t"▸ propose oberon … 2 more]" )
+
+    test(m"a node of a missing given's tree is collapsible only when it has children"):
+      Notices.blocks(SemanticMessage.parse(resolution).markup).bind:
+        case Block.Tree(roots) =>
+          roots.bind: root =>
+            (root :: root.children).map { node => (node.children.nil, node.open.or(false)) }
+
+        case _ =>
+          Nil
+
+    . assert(_ == List((false, true), (false, true), (true, false), (true, false)))
+
+    test(m"a missing given's tree renders on the web as a tree, not as text"):
+      val notice =
+        anthology.Compiler.Notice
+          ( anthology.Importance.Error, t"", Markup.plain(resolution), Unset, resolution )
+
+      val html: Text = HtmlRenderer().block(Notices.diagnostic(notice)).show
+      (html.contains(t"pyro-tree"), html.contains(t"└─"), html.contains(t"├─"))
+
+    . assert(_ == (true, false, false))
+
+    test(m"a diagnostic holding a missing given's tree survives the wire"):
+      val notice =
+        anthology.Compiler.Notice
+          ( anthology.Importance.Error, t"", Markup.plain(resolution), Unset, resolution )
+
+      val diagnostic: Block = Notices.diagnostic(notice)
+      val page = Page(List(diagnostic))
+      (diagnostic.in[Tel].show.read[Tel].as[Block] == diagnostic, Pages.roundTrip(page) == page)
+
+    . assert(_ == (true, true))
+
     test(m"a TEL error exhibits as a diagnostic with the faulty line marked"):
       val source = t"tel 1.0\n\ncontact alice\n  phone work 123\n  phone home 456\n"
       val error = Tel.Error(Tel.Error.Reason.TooManyAtoms, Tel.Error.spanAt(4, 9, 4))

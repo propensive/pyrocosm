@@ -30,7 +30,8 @@ import soundness.*
 // not have to satisfy.
 object ScalacOptions:
   // The fork's repairs, which reading Soundness's TASTy needs, its bolt code on every notice,
-  // and the language features Soundness idioms use.
+  // the markup which says what each part of a message is (so that a type shows as a type, and
+  // the tree of a missing given as a tree), and the language features Soundness idioms use.
   val houseOptions: List[Text] = List(
     t"-Zalias-captures",
     t"-Zbolt-codes",
@@ -41,6 +42,7 @@ object ScalacOptions:
     t"-Zpure-iarrays",
     t"-Zretains-bounds",
     t"-Zretains-skolems",
+    t"-Zsemantic-diagnostics",
     t"-Zspreadable-varargs",
     t"-Zunboxed-pure-types",
     t"-Zunion-captures",
