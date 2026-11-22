@@ -137,9 +137,16 @@ class TerminalRenderer
 
   def phrase(content: List[Inline]): Teletype = joined(content.map(inline1))
 
+  // A token in its accent's colour; a binding, a comment and what stands in for code are set in
+  // italics, as they are on the web.
   def token(token: Token): Teletype =
-    val coloured = tint(theme.accent(token.accent))(Teletype(token.text))
-    if token.role == Token.Role.Binding then e"$Italic($coloured)" else coloured
+    val coloured = tint(theme.codeAccent(token.accent))(Teletype(token.text))
+
+    val slanted: Boolean =
+      token.role == Token.Role.Binding || token.accent == Token.Accent.Comment
+      || token.accent == Token.Accent.Substitute
+
+    if slanted then e"$Italic($coloured)" else coloured
 
   def tokens(tokens: List[Token]): Teletype = joined(purview.elide(tokens).map(token))
 
@@ -506,6 +513,8 @@ class TerminalRenderer
   // Beneath a line, a row for each caret or captioned note that ends on it: `╱╲` beneath a
   // caret's position, or `‾` under each column a note of width marks, with the caption after
   // it, wrapped to the room that remains and continued beneath its own first word.
+  // A theme with a ground for code has the block painted as a panel upon it: every row is
+  // filled to the width, a column in from each edge.
   private def code
     ( lines: List[Block.Line], notes: List[Block.Note], start: Optional[Int], width: Int )
   :   List[Teletype] =
@@ -513,8 +522,18 @@ class TerminalRenderer
     val ascii: Boolean = glyphs == Gaugeable.Glyphs.Ascii
     val digits: Int = start.lay(0): (first: Int) => (first + lines.size - 1).show.length
     val margin: Int = if start.present then digits + 2 else 0
-    val inner: Int = (width - margin).max(1)
+    val ground: Optional[Chroma] = theme.codeBackground
+    val padding: Int = if ground.present then 1 else 0
+    val inner: Int = (width - margin - 2*padding).max(1)
     val divider: Text = if ascii then t"|" else t"│"
+
+    def panel(row: Teletype): Teletype = ground.lay(row): (ground: Chroma) =>
+      val slack: Int = (width - 2*padding - row.length).max(0)
+
+      val filled: Teletype =
+        Teletype(t" "*padding).append(row).append(Teletype(t" "*(slack + padding)))
+
+      e"${Bg(ground)}(${tint(theme.codeForeground)(filled)})"
 
     def gutter(number: Optional[Int]): Teletype =
       if start.absent then blank
@@ -563,7 +582,7 @@ class TerminalRenderer
 
         . bind: (note: Block.Note) => marker(note, index.n0, length)
 
-      numbered + markers
+      (numbered + markers).map(panel)
 
   // One line of code, the `index`th of its block: each token coloured by its accent, then the
   // segments of the notes which touch the line laid over it. A caret marks no segment; it is

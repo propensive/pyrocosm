@@ -210,7 +210,8 @@ variant), then `toString`. Instances for Soundness types live in the companion: 
 ### Terminal (`src/terminal`, on Ultimatum)
 
 `Block → List[Teletype]` at a width (tessellate for wrapping, escritoire for tables, dendrology
-for trees and graphs, ultimatum gauges, harlequin's teletype for tokens, Ergo text for maths).
+for trees and graphs, ultimatum gauges, the theme's code colours for tokens, Ergo text for
+maths).
 The **arrangement solver** chooses from a small family of pane arrangements by role, priority,
 `Minimum` hints and the current columns and rows: `Navigation` to a verso menu strip, `Primary`
 to the main pane, `Detail`/`Inspector` to a recto strip when width allows (otherwise below,
