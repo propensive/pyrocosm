@@ -24,7 +24,7 @@ package pyrocosm
 
 // The bolt codes of Pyrocosm and its tools, which begin `↯/f`. Each module of Pyrocosm is a
 // subdivision, numbered so that it comes after those it depends on, and the modules of the tools
-// follow them, from 15; the record of what every code means is `f.tel` in propensive/bolt.
+// follow them, from 15; the record of what every code means is `bolt.tel`, at the root.
 object Bolts:
   final val letter = 'f'
 
