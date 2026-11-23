@@ -100,6 +100,7 @@ object settings:
     "gossamer-core", "rudiments-core", "vacuous-core", "prepositional-core", "contingency-core",
     "spectacular-core", "wisteria-core", "fulminate-core", "denominative-core", "aviation-core",
     "clavichord-core",     // Keypress
+    "anticipation-color",  // Chromatic, for the colour a swatch shows
     "cosmopolite-core",    // Locale and Polyglot, for the languages an interface is read in
     "quantitative-core",   // Quantity, for measures
     "acyclicity-core",     // Dag, for graphs
@@ -142,7 +143,7 @@ object settings:
   // SVG drawings (savagery), carried as data: URIs and markup; monotonous encodes the Base64.
   def mediaDeps(soundness: String) = Seq(
     "hallucination-core", "hallucination-formats", "savagery-core", "monotonous-core",
-    "gesticulate-core")
+    "gesticulate-core", "iridescence-core")
   . map(component(soundness))
 
   // Git notes as metadata storage: guillotine drives `git`; stratiform is the note body codec.

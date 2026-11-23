@@ -726,6 +726,7 @@ object Tests extends Suite(m"Pyrocosm tests"):
                   Inline.Amount(0.0123, t"s"),
                   Inline.Numeral(3.5, 2),
                   Inline.Icon(t"/icon.svg", t"an icon"),
+                  Inline.Swatch(Block.Rgb(255, 136, 0)),
                   Inline.Import(t"/api/gossamer", t"gossamer"),
                   Inline.Bookmark(t"/api/gossamer.Text", t"gossamer.Text"),
                   Inline.Break() ),
@@ -2488,6 +2489,60 @@ object Tests extends Suite(m"Pyrocosm tests"):
           false
 
     . assert(_ == true)
+
+    // A suite of its own, as each is a method of its own, and `run` is as large as one may be.
+    suite(m"Swatch"):
+      test(m"a swatch is a square of its colour in a page, and says which in plain text"):
+        val swatch: Inline = Inline.Swatch(Block.Rgb(255, 136, 0))
+        val shown: Text = HtmlRenderer().block(Block.Paragraph(List(swatch))).show
+
+        ( shown.contains(t"""class="pyro-swatch""""), shown.contains(t"""fill="#ff8800""""),
+          shown.contains(t"""title="#ff8800""""), shown.contains(t"style="), swatch.plain,
+          TerminalRenderer().block(Block.Paragraph(List(swatch)), 40).map(_.plain.trim) )
+
+      . assert(_ == (true, true, true, false, t"#ff8800", List(t"■")))
+
+      test(m"a colour is read from hexadecimal of three digits or six, and from nothing else"):
+        ( Block.Rgb.hex(t"#f80"), Block.Rgb.hex(t"#FF8800"), Block.Rgb.hex(t"#ff88"),
+          Block.Rgb.hex(t"ff8800"), Block.Rgb.hex(t"#ggg") )
+
+      . assert(_ == (Block.Rgb(255, 136, 0), Block.Rgb(255, 136, 0), Unset, Unset, Unset))
+
+      test(m"a colour exhibits as its swatch and its hexadecimal"):
+        Chroma(255, 136, 0).exhibit match
+          case Inline.Phrase(Inline.Swatch(colour) :: _ :: code :: Nil) => (colour, code.plain)
+          case _                                                        => Unset
+
+      . assert(_ == (Block.Rgb(255, 136, 0), t"#ff8800"))
+
+      test(m"a colour of iridescence's, and a daub mixed of two, exhibit as swatches"):
+        import mixing.proportionalMixing
+
+        def hex(exhibit: Inline | Block): Text = exhibit match
+          case Inline.Phrase(Inline.Swatch(colour) :: _) => colour.hex
+          case _                                         => t""
+
+        (hex(WebColors.Red.exhibit), hex((5*WebColors.Red + 3*WebColors.Yellow).exhibit))
+
+      . assert(_ == (t"#ff0000", t"#ff5f00"))
+
+      test(m"a code span naming a colour in markdown has its swatch before it, and no other"):
+        Parser.parse(t"From `#f80` to `#1`.").exhibit match
+          case Block.Group(Block.Paragraph(content) :: Nil) =>
+            content.bind:
+              case Inline.Phrase(Inline.Swatch(colour) :: _ :: code :: Nil) =>
+                List(t"${colour.hex} ${code.plain}")
+
+              case Inline.Snippet(_, tokens) =>
+                List(tokens.map(_.text).join)
+
+              case _ =>
+                Nil
+
+          case _ =>
+            Nil
+
+      . assert(_ == List(t"#ff8800 #f80", t"#1"))
 
     test(m"an exception exhibits through its stack trace"):
       val exhibit: Block = (Exception("oops"): Throwable).exhibit

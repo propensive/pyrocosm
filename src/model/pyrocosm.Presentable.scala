@@ -105,6 +105,11 @@ object Presentable extends Presentable2:
   given double: Double is Presentable in Inline = Inline.Numeral(_)
   given keypress: Keypress is Presentable in Inline = Inline.Keystroke(_)
 
+  // A colour — any type which is `Chromatic`, so iridescence's colours, and a `Daub` of one —
+  // is its swatch, and what it is in hexadecimal.
+  given chromatic: [colour: Chromatic] => colour is Presentable in Inline =
+    colour => Inline.colour(Block.Rgb.of(colour))
+
   // Inline, so that the units are known where the given is summoned. A lambda rather than an
   // anonymous class: at an inline site the class form infers a capture variable for `Self` and
   // then fails the override check.

@@ -22,7 +22,9 @@
                                                                                                   */
 package pyrocosm
 
-import soundness.*
+// Excluded from the umbrella: `Channel` (anticipation's, of a colour), which would outrank this
+// package's own, since a wildcard import beats a package member declared in another file.
+import soundness.{Channel as _, *}
 
 import Journal.{Event, Mismatch, Party}
 

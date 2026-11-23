@@ -26,9 +26,9 @@ import java.util.concurrent as juc
 
 import scala.collection.concurrent.TrieMap
 
-// `Service` is excluded from the umbrella: pyrocosm's own, declared in another file, would be
-// outranked by urticose's.
-import soundness.{Service as _, *}
+// `Service` and `Channel` are excluded from the umbrella: pyrocosm's own, declared in another
+// file, would be outranked by urticose's and by anticipation's.
+import soundness.{Channel as _, Service as _, *}
 
 import Journal.{Event, Party}
 import alphabets.hexLowerCase

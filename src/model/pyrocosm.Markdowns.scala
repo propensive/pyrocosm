@@ -29,7 +29,8 @@ import soundness.{Language as _, *}
 // A Markdown document as blocks, node for node, the one conversion every tool shares: both
 // emphasis strengths become the model's one emphasis; inline HTML is dropped, as the parser
 // comments it out, and a paragraph of nothing else is no paragraph; an HTML comment block is
-// for the author, not the reader; an inline image becomes a link to it; a fence's content
+// for the author, not the reader; an inline image becomes a link to it; a code span naming a
+// colour in hexadecimal is preceded by a swatch of it; a fence's content
 // loses the newline that closed its last line, which is not a line. A tool with more to say —
 // a documentation tool that compiles its fences, links its code and anchors its headings —
 // says it through `Hooks`, each of which is given the line the node is on, from one.
@@ -161,6 +162,12 @@ object Markdowns:
     case head :: tail => layout(head, hooks) + all(tail, hooks)
     case _            => Nil
 
+  // A code span which names a colour in hexadecimal, `#f80` or `#ff8800`, has the colour's
+  // swatch before it, whatever a tool's hook makes of the code.
+  private def colour(code: Text, shown: Inline): Inline =
+    Block.Rgb.hex(code).lay(shown): (rgb: Block.Rgb) =>
+      Inline.Phrase(List(Inline.Swatch(rgb), Inline.Textual(t" "), shown))
+
   private def phrasing(nodes: List[Prose], hooks: Hooks, line: Int): List[Inline] =
     nodes.map(prose(_, hooks, line))
 
@@ -168,7 +175,7 @@ object Markdowns:
     case Prose.Textual(text)       => Inline.Textual(text)
     case Prose.Emphasis(children*) => Inline.Emphasis(phrasing(List.from(children), hooks, line))
     case Prose.Strong(children*)   => Inline.Strong(phrasing(List.from(children), hooks, line))
-    case Prose.Code(code)          => hooks.code(code, line)
+    case Prose.Code(code)          => colour(code, hooks.code(code, line))
     case Prose.Softbreak           => Inline.Textual(t" ")
     case Prose.Linebreak           => Inline.Break()
     case Prose.HtmlInline(_)       => Inline.Textual(t"")

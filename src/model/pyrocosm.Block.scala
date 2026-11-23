@@ -65,9 +65,26 @@ object Block:
   // nest, so `List[List[_]]` would flatten on the wire.
   case class Cell(content: List[Inline])
 
-  // A colour as captured output names one: the model has no colour of its own, since its
-  // renderings are themed, and this is the one place a colour comes from outside.
-  case class Rgb(red: Int, green: Int, blue: Int)
+  // A colour as captured output names one, or as a swatch shows one: the model has no colour
+  // of its own, since its renderings are themed, and these are the places a colour comes from
+  // outside.
+  object Rgb:
+    private val pattern: java.util.regex.Pattern =
+      java.util.regex.Pattern.compile("#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})").nn
+
+    // The colour a text names in hexadecimal, as a stylesheet would: `#f80` or `#ff8800`.
+    def hex(text: Text): Optional[Rgb] =
+      if !pattern.matcher(text.s).nn.matches then Unset else
+        val digits: String = text.s.substring(1).nn
+        val full: String = if digits.length == 6 then digits else digits.flatMap(d => s"$d$d")
+        val packed: Int = Integer.parseInt(full, 16)
+        Rgb((packed >> 16)&255, (packed >> 8)&255, packed&255)
+
+    def of[colour: Chromatic](colour: colour): Rgb =
+      Rgb(colour.chroma.red, colour.chroma.green, colour.chroma.blue)
+
+  case class Rgb(red: Int, green: Int, blue: Int):
+    def hex: Text = f"#$red%02x$green%02x$blue%02x".tt
 
   object Run:
     // Captured output as lines of its runs: the text cut at its newlines, each piece paired

@@ -167,6 +167,10 @@ class TerminalRenderer
     // A terminal has no hover; the note is for the page.
     case Inline.Annotated(content, _) => phrase(content)
 
+    // A square of the colour itself, whatever the theme.
+    case Inline.Swatch(colour) =>
+      tint(Chroma(colour.red, colour.green, colour.blue))(Teletype(t"■"))
+
     case Inline.Link(destination, content) =>
       val text = e"$Underline(${phrase(content)})"
 

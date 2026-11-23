@@ -52,6 +52,16 @@ given svgPresentable: Svg is Presentable in Block = svg =>
   val size: Text = t"${Media.dimension(svg.width)}×${Media.dimension(svg.height)}"
   Block.Figure(Figure(Inline.text(t"$size SVG"), svg.in[Xml].show))
 
+// A daub of paint is the colour it has come to, as its swatch: iridescence gives a colour a
+// `Chromatic`, which is all `Presentable` asks for one, but not a `Daub` of it, which would
+// otherwise be exhibited as the record of its parts. The colour is found as sRGB, since
+// `Chromatic` is exact in `Self`, and a daub's colour is typed by its space alone.
+given daubPresentable: [topic <: Color] => (perceptual: topic is Perceptual in Srgb)
+=>  Daub[topic] is Presentable in Inline =
+  daub =>
+    val srgb: Color in Srgb = perceptual.convert(daub.color)
+    Inline.colour(Block.Rgb.of(srgb))
+
 object Media:
   def image(raster: Raster, rasterizable: Rasterizable): Block =
     Block.Image(dataUri(raster, rasterizable), caption(raster, rasterizable))

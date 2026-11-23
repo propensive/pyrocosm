@@ -347,7 +347,9 @@ object Samples:
               Inline.Annotated
                 ( Inline.text(t"annotated term"),
                   Inline.text(t"a phrase whose note is shown when it is pointed at") ),
-              Inline.Textual(t" carries its note"),
+              Inline.Textual(t" carries its note, and a colour such as "),
+              Inline.colour(Block.Rgb(255, 136, 0)),
+              Inline.Textual(t" its swatch"),
               Inline.Textual(t". Keystrokes such as "),
               Inline.Keystroke(Keypress.Ctrl('C')),
               Inline.Textual(t", "),
