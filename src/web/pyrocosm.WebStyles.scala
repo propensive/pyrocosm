@@ -690,6 +690,12 @@ object WebStyles:
         css".pyro-math { font-family: math, serif; font-size: var(--pyro-text-math) }" +
         css".pyro-icon { height: 1em; width: auto; vertical-align: -0.125em }" +
         css"""
+          .pyro-swatch > svg {
+            width: 0.8em; height: 0.8em; vertical-align: -0.05em; box-sizing: border-box;
+            border: 1px solid color-mix(in srgb, var(--pyro-fg) 35%, transparent)
+          }
+        """ +
+        css"""
           .pyro-glyph > svg {
             height: 1em; width: auto; vertical-align: -0.125em; fill: currentColor;
             margin-right: 0.3em

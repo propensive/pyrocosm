@@ -377,6 +377,15 @@ class HtmlRenderer
         safely(source.read[Html of "svg"]).lay(Span(`class` = holder, title = alt)(alt)): svg =>
           if alt == t"" then Span(`class` = holder)(svg) else Span(`class` = holder, title = alt)(svg)
 
+    // The colour is no theme's, so no class can say it, and nothing carries an inline style:
+    // the square is drawn, as an icon is, filled with the colour; its title says which it is.
+    case Inline.Swatch(colour) =>
+      val drawing: Text =
+        t"""<svg viewBox="0 0 1 1"><rect width="1" height="1" fill="${colour.hex}"/></svg>"""
+
+      safely(drawing.read[Html of "svg"]).lay(Span(title = colour.hex)(colour.hex)): svg =>
+        Span(`class` = cls(t"pyro-swatch"), title = colour.hex)(svg)
+
     case Inline.Link(destination, content) => lead(destination, phrase(content))
     case Inline.Import(path, label)        => importButton(path, label)
     case Inline.Bookmark(path, label)      => bookmarkButton(path, label)

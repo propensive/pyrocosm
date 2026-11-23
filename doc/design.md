@@ -90,7 +90,10 @@ is an edge detail of the web frontend. Several model shapes follow from being se
 `Keystroke(keypress)`, `Link(External | Internal(action) | Local(path, fragment), …)`, `Math`,
 `Symbol(glyph)`, `Reference(id)`, `Amount(value, units)`, `Numeral(value, precision)`,
 `Annotated(content, note)` (a phrase with a note shown on demand: a tooltip on the web, the
-content alone in a terminal), `Break`.
+content alone in a terminal), `Swatch(colour)` (a small square of a colour, set in the line
+beside the text which names it: wherever a particular colour is meant, it is shown so — a
+`Chromatic` value's `Presentable` is its swatch and its hexadecimal, and a Markdown code span
+such as `#ff8800` gains one), `Break`.
 
 `Snippet` and `Numeral` were `Code` and `Figure`, renamed apart from `Block.Code` and
 `Block.Figure`: a TEL schema has one namespace of definition names, and stratiform names a

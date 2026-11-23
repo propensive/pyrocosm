@@ -51,6 +51,14 @@ object Inline:
   def toned(tone: Tone, text: Text): Inline = Toned(tone, List(Textual(text)))
   def glyph(tone: Tone, glyph: Glyph): Inline = Toned(tone, List(Symbol(glyph)))
 
+  // A swatch of anything which is a colour: iridescence's, or a packed `Chroma`.
+  def swatch[colour: Chromatic](colour: colour): Inline = Swatch(Block.Rgb.of(colour))
+
+  // A colour in a line of text: its swatch, and beside it what it is in hexadecimal, as code.
+  def colour(colour: Block.Rgb): Inline =
+    val code: Inline = Snippet(Language.Plain, List(Token.plain(colour.hex)))
+    Phrase(List(Swatch(colour), Textual(t" "), code))
+
   object Amount:
     // A quantity's units exist only at the type level, so they are captured as text when the
     // phrase is made; that is what lets an amount travel over the wire and still render with
@@ -99,6 +107,10 @@ enum Inline:
   // term's definition — as a tooltip where the medium has one; a plain rendering is the
   // content alone.
   case Annotated(content: List[Inline], note: List[Inline])
+  // A small square of a colour, set in the line with the text, to show the colour which the
+  // text beside it names: wherever a particular colour is meant, this is how it is shown. A
+  // plain rendering says it in hexadecimal.
+  case Swatch(colour: Block.Rgb)
   // A toggle of the wildcard import of the page at `path` — a package's — into the reader's
   // `Purview`, and a button bookmarking the page there; each labelled. Both are the frontend's
   // to act on, not the application's, and a medium without a purview shows nothing.
@@ -126,6 +138,7 @@ enum Inline:
     case Numeral(value, _)     => value.toString.tt
     case Icon(_, alt)          => alt
     case Annotated(content, _) => Inline.plain(content)
+    case Swatch(colour)        => colour.hex
     case Import(_, _)          => t""
     case Bookmark(_, _)        => t""
     case Break()               => "\n"
