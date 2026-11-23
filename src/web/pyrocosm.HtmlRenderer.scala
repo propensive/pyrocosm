@@ -1287,7 +1287,7 @@ class HtmlRenderer
           ( Td(`class` = cls(t"pyro-at"))(t"↳"),
             Td(`class` = cls(t"pyro-owner"))(origin.owner.or(t"")),
             Td(`class` = cls(t"pyro-dot"))(origin.owner.lay(t"")(_ => t".")),
-            Td(`class` = cls(t"pyro-method"))(origin.name.or(t"inlined from")),
+            Td(`class` = cls(t"pyro-method"))(origin.name.or(Phrases.inlinedFrom())),
             Td(`class` = cls(t"pyro-file"))(origin.file),
             Td(`class` = cls(t"pyro-line"))
               ( Span(`class` = cls(t"pyro-colon"))(t":"), origin.line.show ),

@@ -36,20 +36,22 @@ import strategies.throwUnsafely
 // Type: Propensity for titles, Roboto for prose (at nine tenths of its width, and its regular
 // weight), and Roboto Mono for code and for the small tracked capitals of labels and buttons;
 // in Japanese, Noto Serif JP for titles and Noto Sans JP for prose, chosen by a `:lang(ja)`
-// rule that redefines the two font properties, and the width, which is whole again. All but
+// rule that redefines the two font properties, and the width, which is whole again, and in
+// Chinese their SC counterparts, by a `:lang(zh)` rule which does the same. All but
 // Propensity are fetched from Google Fonts by the `@import` that heads the sheet, and Propensity
 // from propensive.dev by the `@font-face` that follows it; each has system fallbacks. Text is
 // one size, but for labels and code (a little smaller, as monospace reads larger). Layout: the
 // masthead and toolbar span the page; the matter beneath is centred within a measure, wider
 // when a side column is present, and every column stacks on a narrow viewport.
 object WebStyles:
-  // The Google Fonts stylesheet declaring the prose, code and Japanese typefaces' `@font-face`
-  // rules; one node built by hand, as cataclysm's typeface provisions would import it once per
-  // typeface. The Japanese faces are served in subsets by `unicode-range`, so a page with no
-  // Japanese text fetches none of them.
+  // The Google Fonts stylesheet declaring the prose, code, Japanese and Chinese typefaces'
+  // `@font-face` rules; one node built by hand, as cataclysm's typeface provisions would import
+  // it once per typeface. The Japanese and Chinese faces are served in subsets by
+  // `unicode-range`, so a page with no text in either fetches none of them.
   val fontsUrl: Text =
     t"https://fonts.googleapis.com/css2?family=Roboto:wdth,wght@90,400..700" +
       t"&family=Noto+Sans+JP:wght@400..700&family=Noto+Serif+JP" +
+      t"&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC" +
       t"&family=Roboto+Mono:wght@400;500;600;700&display=swap"
 
   // The titles' typeface, a single file that no font service declares, so the sheet declares
@@ -265,7 +267,12 @@ object WebStyles:
           t"--pyro-font-body: \"Noto Sans JP\", system-ui, -apple-system, \"Segoe UI\",",
           t"sans-serif;",
           t"--pyro-stretch-body: 100%;",
-          t"--pyro-font-title: \"Noto Serif JP\", Georgia, \"Times New Roman\", serif }" )
+          t"--pyro-font-title: \"Noto Serif JP\", Georgia, \"Times New Roman\", serif }",
+          t":lang(zh) {",
+          t"--pyro-font-body: \"Noto Sans SC\", system-ui, -apple-system, \"Segoe UI\",",
+          t"sans-serif;",
+          t"--pyro-stretch-body: 100%;",
+          t"--pyro-font-title: \"Noto Serif SC\", Georgia, \"Times New Roman\", serif }" )
 
       . join(t" ")
       . read[Css]
