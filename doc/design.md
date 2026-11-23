@@ -816,8 +816,8 @@ The conventions the tools share, decided 2026-11-02:
   (`error [↯/f.8.1.3]`); a TEL error's comes from Soundness. A compiler notice has none yet:
   Proscala gives each message a code under `-Zbolt-codes`, but anthology's `Compiler.Notice`
   does not carry it. A code carrying another names the error reported
-  on account of it: a failed ping, `↯/f.10.1/f.8.1.3`. The registry of what every code means is
-  `f.tel` in propensive/bolt.
+  on account of it: a failed ping, `↯/f.10.1/f.8.1.3`. The record of what every code means is
+  `bolt.tel`, at the root of this repository, which the index in propensive/bolt names.
 - **Width.** `COLUMNS` in the invocation's environment, else the terminal's own report, else
   100; never more than 160.
 - **Durations.** One grammar, `<number>[ms|s|m|h|d]`, decimals allowed, a bare number being
