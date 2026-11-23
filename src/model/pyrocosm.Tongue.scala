@@ -29,13 +29,33 @@ import dysasymptotics.linearAccess
 // A human language, as it is written: `fr`, or with a region, `fr-CA`. (`Language` is a
 // programming language here, which a code block is written in.) An application says which
 // languages its matter exists in, and is told which a reader would have; Pyrocosm's own
-// interface exists in a few (`Tongue.Chrome`), and follows the reader's as nearly as it can:
+// interface exists in ten (`Tongue.Chrome`), and follows the reader's as nearly as it can:
 // a regional variant reads as its language, and a language it has no words for as English.
 object Tongue:
   // The languages Pyrocosm's own interface is written in.
-  type Chrome = en & fr & de
+  type Chrome = en & fr & de & es & it & pt & pl & ru & zh & ja
 
-  val chrome: List[Text] = List(t"en", t"fr", t"de")
+  // Those of them which cosmopolite does not have, in its own shape: an object to write a
+  // phrase with, and a trait of the same name to stand for the language in a type. Portuguese
+  // is Brazil's, and Chinese is simplified, as Soundness's documentation has them.
+  object it extends cosmopolite.Language(t"it") { type Code = it }
+  trait it
+
+  object pt extends cosmopolite.Language(t"pt") { type Code = pt }
+  trait pt
+
+  object ru extends cosmopolite.Language(t"ru") { type Code = ru }
+  trait ru
+
+  object zh extends cosmopolite.Language(t"zh") { type Code = zh }
+  trait zh
+
+  object ja extends cosmopolite.Language(t"ja") { type Code = ja }
+  trait ja
+
+  private val tongues: List[cosmopolite.Language] = List(en, fr, de, es, it, pt, pl, ru, zh, ja)
+
+  val chrome: List[Text] = tongues.map(_.code)
 
   // The name of the cookie which keeps a reader's choice, for every tool of an origin.
   val cookieName: Text = t"pyro-language"
@@ -60,10 +80,9 @@ object Tongue:
 
   // The locale Pyrocosm's own words are read in, for a reader who would have these languages,
   // in order: English, when it has none of them.
-  def locale(wanted: List[Text]): Locale[Chrome] = choose(wanted, chrome).or(t"en") match
-    case t"fr" => Locale(fr)
-    case t"de" => Locale(de)
-    case _     => Locale(en)
+  def locale(wanted: List[Text]): Locale[Chrome] =
+    val code: Text = choose(wanted, chrome).or(t"en")
+    Locale(tongues.seek(_.code == code).or(en))
 
   // The code of the language a locale reads in.
   def code(locale: Locale[Chrome]): Text = locale.language.code

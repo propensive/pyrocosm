@@ -1945,10 +1945,47 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     test(m"Pyrocosm's words follow the matter's language, then the reader's, then English"):
       ( Tongue.code(Audience(List(t"de")).locale(t"fr-CA")),
-        Tongue.code(Audience(List(t"es", t"de-AT")).locale(t"pl")),
-        Tongue.code(Audience(List(t"es")).locale()) )
+        Tongue.code(Audience(List(t"nl", t"de-AT")).locale(t"sv")),
+        Tongue.code(Audience(List(t"nl")).locale()) )
 
     . assert(_ == (t"fr", t"de", t"en"))
+
+    // A suite of its own, as each is a method of its own, and `run` is as large as one may be.
+    suite(m"Ten languages"):
+      test(m"Pyrocosm has words in each of its ten languages, and in a region's as its language's"):
+        ( Tongue.chrome.map { code => Tongue.code(Audience(List(code)).locale()) },
+          List(t"pt-BR", t"es-MX", t"zh-CN", t"ja-JP", t"ru-RU").map: code =>
+            Tongue.code(Audience(List(code)).locale()) )
+
+      . assert:
+          _ ==
+            ( List(t"en", t"fr", t"de", t"es", t"it", t"pt", t"pl", t"ru", t"zh", t"ja"),
+              List(t"pt", t"es", t"zh", t"ja", t"ru") )
+
+      test(m"a page is in Japanese or Russian for a reader of either, its script's words too"):
+        val reading: Interface = Interface(Inline.text(t"Docs"), Nil, purview = Purview())
+
+        List(t"ja", t"ru").map: code =>
+          val renderer: HtmlRenderer = HtmlRenderer(locale = Audience(List(code)).locale())
+          val shown: Text = PyrocosmPage(reading, renderer, WebTheme.default).markup.show
+
+          ( shown.contains(t"ブックマーク"), shown.contains(t"再接続中"), shown.contains(t"Закладки"),
+            shown.contains(t"переподключение"), shown.contains(t"""lang="$code"""") )
+
+      . assert(_ == List((true, true, false, false, true), (false, false, true, true, true)))
+
+      test(m"a phrase which names something names it in every language"):
+        Tongue.chrome.map: code =>
+          given Locale[Tongue.Chrome] = Tongue.locale(List(code))
+
+          List
+            ( Phrases.addImport(t"a.b")(), Phrases.removeImport(t"a.b")(),
+              Phrases.addBookmark(t"a.b")(), Phrases.removeBookmark(t"a.b")(),
+              Phrases.remove(t"a.b")(), Phrases.on(t"a.b")() )
+
+          . all(_.contains(t"a.b"))
+
+      . assert(_ == List.fill(10)(true))
 
     test(m"a language is named by its two letters, or in full where two share them"):
       ( Tongue.labels(List(t"en-US", t"fr", t"fr-CA")), Tongue.valid(t"pt-BR"),
@@ -2673,6 +2710,21 @@ object Tests extends Suite(m"Pyrocosm tests"):
         WebStyles.fontsUrl.contains(t"family=Noto+Serif+JP") )
 
     . assert(_ == (true, true, false, true, true))
+
+    test(m"Chinese has typefaces of its own too, at their whole width"):
+      val chinese = stylesheet.s.indexOf(":lang(zh)")
+
+      val rule: Text =
+        if chinese < 0 then t""
+        else stylesheet.s.substring(chinese, stylesheet.s.indexOf("}", chinese)).nn.tt
+
+      ( rule.contains(t"--pyro-font-body: \"Noto Sans SC\""),
+        rule.contains(t"--pyro-font-title: \"Noto Serif SC\""),
+        rule.contains(t"--pyro-stretch-body: 100%"),
+        WebStyles.fontsUrl.contains(t"family=Noto+Sans+SC"),
+        WebStyles.fontsUrl.contains(t"family=Noto+Serif+SC") )
+
+    . assert(_ == (true, true, true, true, true))
 
     test(m"prose is narrowed to nine tenths of its width, but not in Japanese"):
       val japanese = stylesheet.s.indexOf(":lang(ja)")

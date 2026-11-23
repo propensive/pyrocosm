@@ -167,7 +167,9 @@ again. A page is opened for an `Audience`: the languages its reader would have, 
 cookie's, then the `language` of the user's configuration, then the browser's
 `Accept-Language` — from which an application picks the one it has (`Audience.language`;
 `WebFrontend.attend`, `WebService.attending`). Pyrocosm's own words (`Phrases`) are a
-`Polyglot` each, in English, French and German, and are said in the nearest of those to the
+`Polyglot` each, in the ten languages of Soundness's documentation — English, French, German,
+Spanish, Italian, Portuguese (Brazil's), Polish, Russian, Chinese (simplified) and Japanese; the
+five of them cosmopolite lacks are `Tongue`'s own — and are said in the nearest of those to the
 language shown: a regional variant reads as its language, and a language it has no words for
 as English. What an application shows is the application's to translate.
 
