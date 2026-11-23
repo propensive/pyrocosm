@@ -139,6 +139,58 @@ object WebStyles:
       }
     """
 
+  // Each level of a tree indents by `--pyro-tree-step`, and the marker of a node which
+  // opens and closes sits within that step, hanging before its label: its own width
+  // (1.25em at 0.55em) and the margin after it fill the step exactly, so a leaf's label
+  // and a node's line up.
+  //
+  // The line down the side of a node's children falls from the point of its marker, which
+  // is `--pyro-tree-point` into the step: the middle of the marker's box (0.344em), about
+  // which it turns, and as much again as the glyph sits right of that (measured, 0.036em).
+  // The list of children is drawn back from the label's edge to there, less half the
+  // line's own width, and its items are padded by as much again, so their labels stay a
+  // step in from their parent's.
+  //
+  // A tree's rows are closer than a list's: 85% of its line height (1.25), of the margin
+  // between its items (0.2rem) and of the padding about a node's summary; and a label's
+  // boxed code, which has a line height of its own, is brought down with them.
+  //
+  // (Apart from `rules`, as `ran` is.)
+  private def tree: Css =
+    css"""
+      .pyro-tree, .pyro-tree ul {
+        --pyro-tree-step: 0.85em; --pyro-tree-point: 0.38em; list-style: none;
+        padding-left: 0; margin: 0; border-left: 1px solid var(--pyro-border);
+        line-height: 1.0625
+      }
+    """ +
+    css".pyro-tree { padding-left: 0; border-left: 0; margin: 0 0 var(--pyro-space-4) 0 }" +
+    css"""
+      .pyro-tree li { padding-left: var(--pyro-tree-step); margin: 0.17rem 0 }
+      .pyro-tree code.pyro-code { line-height: 1.0625 }
+      .pyro-tree ul {
+        margin-left: calc(var(--pyro-tree-point) - var(--pyro-tree-step) - 0.5px)
+      }
+      .pyro-tree ul > li {
+        padding-left: calc(2 * var(--pyro-tree-step) - var(--pyro-tree-point) + 0.5px)
+      }
+    """ +
+    css"""
+      .pyro-node > summary {
+        cursor: pointer; list-style: none; padding: calc(var(--pyro-space-1) * 0.85) 0
+      }
+    """ +
+    css"""
+      .pyro-node > summary::before {
+        margin-left: calc(-1 * var(--pyro-tree-step) / 0.55);
+        margin-right: calc(var(--pyro-tree-step) / 0.55 - 1.25em)
+      }
+    """ +
+    css"""
+      .pyro-node > summary:hover { color: var(--pyro-tone-accent) }
+      .pyro-node > summary:hover::before { color: var(--pyro-tone-accent) }
+    """
+
   def rules(theme: WebTheme): Css =
     // A tone's colour, its notice's edge and tint, and a tinted row; an accent's colour. These
     // rules are generated per case, so they are read from text like the theme's `:root`
@@ -1055,31 +1107,6 @@ object WebStyles:
           }
         """ +
         css".pyro-disclosure summary:hover::before { color: var(--pyro-tone-accent) }" +
-        // Each level of a tree indents by `--pyro-tree-step`, and the marker of a node which
-        // opens and closes sits within that step, hanging before its label: its own width
-        // (1.25em at 0.55em) and the margin after it fill the step exactly, so a leaf's label
-        // and a node's line up.
-        css"""
-          .pyro-tree, .pyro-tree ul {
-            --pyro-tree-step: 0.85em; list-style: none; padding-left: 0; margin: 0;
-            border-left: 1px solid var(--pyro-border)
-          }
-        """ +
-        css".pyro-tree { padding-left: 0; border-left: 0; margin: 0 0 var(--pyro-space-4) 0 }" +
-        css".pyro-tree li { padding-left: var(--pyro-tree-step) }" +
-        css"""
-          .pyro-node > summary { cursor: pointer; list-style: none; padding: var(--pyro-space-1) 0 }
-        """ +
-        css"""
-          .pyro-node > summary::before {
-            margin-left: calc(-1 * var(--pyro-tree-step) / 0.55);
-            margin-right: calc(var(--pyro-tree-step) / 0.55 - 1.25em)
-          }
-        """ +
-        css"""
-          .pyro-node > summary:hover { color: var(--pyro-tone-accent) }
-          .pyro-node > summary:hover::before { color: var(--pyro-tone-accent) }
-        """ +
         css"""
           .pyro-graph { list-style: none; padding: 0; margin: 0 0 var(--pyro-space-4) 0 }
           .pyro-arrow { color: var(--pyro-muted) }
@@ -1675,5 +1702,6 @@ object WebStyles:
     val traceAccents: Css = (1 to 5).foldLeft(Css(Nil)): (acc, index) => acc + traceAccent(index)
 
     theme.variables + scale + stage + base + layout + menubar + masthead + phrasing + label + flow +
-      ran + fieldPrompt + trace + charts + panels + controls + purview + responsive + tones + shares + accents +
+      ran + fieldPrompt + tree + trace + charts + panels + controls + purview + responsive + tones +
+      shares + accents +
       traceAccents
