@@ -275,6 +275,8 @@ class HtmlRenderer
 
   // The reader's purview as a side panel: the imports, then the bookmarks, each entry a link
   // to its page with the button which removes it; replaced as one when the purview changes.
+  // An entry's path is the page's as the application knows it, so its link goes under the
+  // prefix, as a local destination's does; the button carries the path bare.
   def purviewPanel: Html of Flow =
     def entries(kind: Text, entries: List[Purview.Entry], empty: Text): Html of Flow =
       if entries.nil then P(`class` = cls(t"pyro-empty"))(empty)
@@ -284,7 +286,7 @@ class HtmlRenderer
             purviewButton(kind, entry.path, t"", true, Phrases.remove(entry.label)())
 
           val style: List[Name[CssClass]] = List(cls(t"pyro-link"), cls(t"pyro-locate"))
-          Li(A(href = entry.path, `class` = style)(entry.label), t" ", remove)
+          Li(A(href = t"$prefix${entry.path}", `class` = style)(entry.label), t" ", remove)
 
         Ul(`class` = cls(t"pyro-purview-list"))(items*)
 
