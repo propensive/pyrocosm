@@ -1635,6 +1635,19 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
         . all(html.contains(_)) && !html.contains(t">Foo<")
 
+    test(m"the purview panel links its entries under the prefix, and its buttons carry them bare"):
+      val purview: Purview = imported.toggleBookmark(Purview.Entry(t"/api/com.example.Foo", t"Foo"))
+      HtmlRenderer(purview, t"/fuel").purviewPanel.show
+
+    . assert: html =>
+        List
+          ( t"""<a href="/fuel/api/com.example" """,
+            t"""<a href="/fuel/api/com.example.Foo" """,
+            t"""data-path="/api/com.example"""",
+            t"""data-path="/api/com.example.Foo"""" )
+
+        . all(html.contains(_)) && !html.contains(t"""href="/api/""")
+
     test(m"a fixed table's note stands in its last column, the others empty"):
       val columns: List[Block.Column] =
         List
