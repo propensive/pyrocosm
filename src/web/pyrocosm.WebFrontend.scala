@@ -109,10 +109,12 @@ object WebFrontend:
 
   private def local(entry: Purview.Entry): Boolean = entry.path.starts(t"/")
 
-  // The script, from the module's resources.
+  // The script: the code blocks' own (the code module's, which a page of another kind serves
+  // alone), then the frontend's, from this module's resources, as one file.
   lazy val script: Text =
     val stream = getClass.getResourceAsStream("/pyrocosm.js")
-    if stream == null then t"" else new String(stream.nn.readAllBytes(), "UTF-8").tt
+    val own: Text = if stream == null then t"" else new String(stream.nn.readAllBytes(), "UTF-8").tt
+    t"${CodeScript.text}\n$own"
 
   // How long a session outlives its last tab, so a reload or a dropped connection resumes it.
   private val grace: Quantity[Seconds[1]] = 30.0*Second
