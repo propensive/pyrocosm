@@ -125,6 +125,9 @@ object settings:
     "monotonous-core")
   . map(component(soundness))
 
+  // What a block of code is drawn with: honeycomb's HTML and cataclysm's CSS, and no server.
+  def codeDeps(soundness: String) = Seq("honeycomb-core", "cataclysm-core").map(component(soundness))
+
   def webDeps(soundness: String) = Seq(
     "honeycomb-core", "cataclysm-core", "graffiti-core", "perihelion-core", "scintillate-server",
     "jacinta-core", "iridescence-core", "eucalyptus-core", "cosmopolite-core")
@@ -325,9 +328,17 @@ object pyrocosm extends Project:
   object terminal extends Component(model), Publishing:
     def mvnDeps = Task(settings.terminalDeps(deps.soundness()))
 
+  // Code as HTML — a block, plain or animated, with its notes and alternatives — its rules, and
+  // the script which plays an animated block: the part of the web renderer a page that is not
+  // a Pyrocosm application's can use by itself, on Honeycomb and Cataclysm alone.
+  // `dev.propensive:pyrocosm-code`.
+  object code extends Component(model), Publishing:
+    def mvnDeps = Task(settings.codeDeps(deps.soundness()))
+    def resources = Task.Sources(mill.api.BuildCtx.workspaceRoot / "res" / "code")
+
   // The web renderer and frontend, on Honeycomb, Graffiti and Perihelion.
   // `dev.propensive:pyrocosm-web`.
-  object web extends Component(model), Publishing:
+  object web extends Component(model, code), Publishing:
     def mvnDeps = Task(settings.webDeps(deps.soundness()))
     def resources = Task.Sources(mill.api.BuildCtx.workspaceRoot / "res" / "web")
 
@@ -420,7 +431,7 @@ object pyrocosm extends Project:
       os.write.over(directory / "date", buildDate() + "\n", createFolders = true)
       super.resources() ++ Seq(PathRef(Task.dest))
 
-  object test extends Component(model, compiler, media, terminal, web, notes, cli, remote, bus, swarm, hub, system, harness):
+  object test extends Component(model, code, compiler, media, terminal, web, notes, cli, remote, bus, swarm, hub, system, harness):
     def mvnDeps = Task(settings.testDeps(deps.soundness()))
     def finalMainClass = "pyrocosm.Tests"
 
@@ -438,7 +449,7 @@ object pyrocosm extends Project:
 // it. The release (release.sh in propensive/.github) uploads what `stage` produces.
 object release extends Module:
   def modules: Seq[PublishModule] =
-    Seq(pyrocosm.model, pyrocosm.compiler, pyrocosm.media, pyrocosm.terminal, pyrocosm.web,
+    Seq(pyrocosm.model, pyrocosm.code, pyrocosm.compiler, pyrocosm.media, pyrocosm.terminal, pyrocosm.web,
         pyrocosm.notes, pyrocosm.cli, pyrocosm.remote, pyrocosm.script, pyrocosm.bus, pyrocosm.swarm,
         pyrocosm.hub, pyrocosm.system, pyrocosm.harness)
 
