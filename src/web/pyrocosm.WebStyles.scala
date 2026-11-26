@@ -1377,6 +1377,13 @@ object WebStyles:
             margin-left: calc(-1 * var(--pyro-space-2))
           }
         """ +
+        css"""
+          .pyro-listing > li > p:has(+ .pyro-item-note) { margin-bottom: 0 }
+          .pyro-item-note {
+            color: var(--pyro-muted); font-size: var(--pyro-text-small); line-height: 1.4;
+            margin: 0
+          }
+        """ +
         css"a.pyro-action { text-decoration: none }" +
         css".pyro-selected { outline: 2px solid var(--pyro-tone-accent); outline-offset: 2px }" +
         css"""

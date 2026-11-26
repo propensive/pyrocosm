@@ -162,11 +162,14 @@ object Block:
       note:   List[Inline]     = Nil )
 
   // An item either acts (a press the application handles) or leads to a destination; the
-  // action wins when both are given.
+  // action wins when both are given. A `note` is a line beneath the item's content, set smaller
+  // and fainter, as a row's is: what there is to say of the thing the item names, which is
+  // secondary to its name.
   case class Item
     ( content:     List[Block],
       action:      Optional[Action]             = Unset,
-      destination: Optional[Inline.Destination] = Unset )
+      destination: Optional[Inline.Destination] = Unset,
+      note:        List[Inline]                 = Nil )
 
   case class Entry(key: List[Inline], value: List[Block])
 
