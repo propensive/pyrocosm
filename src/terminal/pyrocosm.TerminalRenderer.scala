@@ -294,7 +294,12 @@ class TerminalRenderer
 
         items.zip(marks).bind: (item: Block.Item, mark: Text) =>
           val chosen = item.action.present && item.action == selected
-          val body = blocks(item.content, width - indent, tick, selected)
+
+          val note: List[Teletype] =
+            if item.note.nil then Nil
+            else Flow.wrap(phrase(item.note), (width - indent).max(10)).to[List].map(faint(_))
+
+          val body = blocks(item.content, width - indent, tick, selected) + note
           val prefix0 = Teletype(mark.pad(indent))
           val prefix = if chosen then e"$Reverse($prefix0)" else prefix0
           indented(body, prefix, Teletype(t" "*indent))

@@ -28,4 +28,5 @@ package pyrocosm
 @main
 def runTests(): Unit =
   Harness.main
-    ( scala.Array(), Tests, CompilerTests, ServicesTests, SwarmTests, GraftTests, CodeThemeTests, ActionsTests, CodeTests )
+    ( scala.Array(), Tests, CompilerTests, ServicesTests, SwarmTests, GraftTests, CodeThemeTests, ActionsTests,
+      ItemTests )

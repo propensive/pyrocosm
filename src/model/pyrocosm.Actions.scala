@@ -89,7 +89,8 @@ object Actions:
     case Block.Heading(_, content, _) => linkedPhrase(content)
 
     case Block.Listing(_, items) =>
-      items.bind: (item: Block.Item) => linked(item.destination) + linked(item.content)
+      items.bind: (item: Block.Item) =>
+        linked(item.destination) + linked(item.content) + linkedPhrase(item.note)
 
     case Block.Table(columns, rows, caption) =>
       val titles: List[Action] = columns.bind: (column: Block.Column) => linkedPhrase(column.title)
@@ -112,7 +113,9 @@ object Actions:
     case Block.Quotation(content)              => linked(content)
     case Block.Group(content)                  => linked(content)
     case Block.Gauge(_, caption)               => caption.lay(Nil: List[Action])(linkedPhrase(_))
-    case Block.Tree(roots)                     => roots.bind: (root: Block.TreeNode) => linkedTree(root)
+
+    case Block.Tree(roots) =>
+      roots.bind: (root: Block.TreeNode) => linkedTree(root)
 
     case Block.Deck(leaves, _) =>
       leaves.bind: (leaf: Block.Leaf) => linked(leaf.content)

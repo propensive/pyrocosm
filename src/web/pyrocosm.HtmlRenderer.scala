@@ -536,13 +536,20 @@ extends CodeRenderer:
   // An item with a destination and no action is a real link (which opens in a new tab as a
   // link does): the anchor wraps its one paragraph's phrasing, since an anchor cannot hold
   // blocks; an item of several blocks leads from its first paragraph.
+  // An item's note is a paragraph of its own after its content, which the stylesheet sets
+  // smaller and fainter; within an item which leads somewhere, it is not part of the link.
   private def item(item: Block.Item): Html of "li" =
+    val note: List[Html of Flow] =
+      if item.note.nil then Nil else List(P(`class` = cls(t"pyro-item-note"))(phrase(item.note)))
+
+    def content: List[Html of Flow] = blocks(item.content) :: note
+
     def linked: Html of "li" =
-      item.destination.lay(Li(blocks(item.content))): destination =>
-        Li(`class` = cls(t"pyro-lead"))(leading(destination, item.content)*)
+      item.destination.lay(Li(content*)): destination =>
+        Li(`class` = cls(t"pyro-lead"))((leading(destination, item.content) + note)*)
 
     item.action.lay(linked): action =>
-      Li(id = action.id, `class` = cls(t"pyro-action"))(blocks(item.content))
+      Li(id = action.id, `class` = cls(t"pyro-action"))(content*)
 
   private def leading(destination: Inline.Destination, content: List[Block]): List[Html of Flow] =
     content match

@@ -82,7 +82,7 @@ enum Pong derives CanEqual:
 object Tests extends Suite(m"Pyrocosm tests"):
   // The plain-`java` entry point the release script and CI use (`java -cp <test jar>
   // pyrocosm.Tests`), through the harness every tool's is.
-  def main(args: scala.Array[String]): Unit = Harness.main(args, Tests, SwarmTests, ServicesTests, CompilerTests, GraftTests, ActionsTests)
+  def main(args: scala.Array[String]): Unit = Harness.main(args, Tests, SwarmTests, ServicesTests, CompilerTests, GraftTests, ActionsTests, ItemTests)
 
   def run(): Unit =
     test(m"a live cell's assignment publishes the value"):
