@@ -107,6 +107,10 @@ extends Focus, Refreshable:
   @caps.unsafe.untrackedCaptures
   private var offset: Optional[Int] = Unset
 
+  // The furthest the window could start when it was last painted: the content less the height.
+  @caps.unsafe.untrackedCaptures
+  private var limit: Int = 0
+
   private def follow: Boolean = panel.hints.has[hints.Follow.type]
 
   private def tick: Tui.Tick = Tui.Tick.at((java.lang.System.nanoTime - started)/1000000L, 80)
@@ -268,7 +272,8 @@ extends Focus, Refreshable:
     val head: List[Teletype] = heading(focused)
     val all = head.size + total
     val height = canvas.height.max(1)
-    val start = offset.or(if follow then (all - height).max(0) else 0).min((all - height).max(0))
+    limit = (all - height).max(0)
+    val start = origin
     val until = start + height
     val selected0: Optional[Action] = if focused then selected else Unset
 
@@ -313,14 +318,22 @@ extends Focus, Refreshable:
 
   private def blank: Teletype = Teletype(t"")
 
+  // Where the window starts: the bottom, for a following panel nobody has scrolled, and never
+  // past the limit, so that a key always moves the content from where it is seen to be.
+  private def origin: Int = offset.or(if follow then limit else 0).min(limit)
+
+  // Scrolling is bounded at both ends, so no key is spent on a position which is not shown; and
+  // a following panel brought back to the bottom follows again.
+  private def scroll(delta: Int): Unit =
+    val next = (origin + delta).max(0).min(limit)
+    offset = if follow && next == limit then Unset else next
+
   def handle(event: Terminal.Event): Unit = event match
     case Keypress.Up =>
-      if !actions.nil then selection = (selection - 1).max(0)
-      else offset = (offset.or(0) - 1).max(0)
+      if !actions.nil then selection = (selection - 1).max(0) else scroll(-1)
 
     case Keypress.Down =>
-      if !actions.nil then selection = (selection + 1).min(actionCount - 1)
-      else offset = offset.or(0) + 1
+      if !actions.nil then selection = (selection + 1).min(actionCount - 1) else scroll(1)
 
     case Keypress.Enter =>
       selected.let: action => dispatch(Event.Pressed(action))

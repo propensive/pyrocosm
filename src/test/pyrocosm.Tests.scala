@@ -82,7 +82,7 @@ enum Pong derives CanEqual:
 object Tests extends Suite(m"Pyrocosm tests"):
   // The plain-`java` entry point the release script and CI use (`java -cp <test jar>
   // pyrocosm.Tests`), through the harness every tool's is.
-  def main(args: scala.Array[String]): Unit = Harness.main(args, Tests, SwarmTests, ServicesTests, CompilerTests, GraftTests, ActionsTests, ItemTests)
+  def main(args: scala.Array[String]): Unit = Harness.main(args, Tests, SwarmTests, ServicesTests, CompilerTests, GraftTests, ActionsTests, ItemTests, ScrollTests)
 
   def run(): Unit =
     test(m"a live cell's assignment publishes the value"):
@@ -2820,45 +2820,6 @@ object Tests extends Suite(m"Pyrocosm tests"):
     . assert(_ == true)
 
     // ── The code field ────────────────────────────────────────────────────────────────────
-
-    // A board in memory: the plain characters put on it, by cell, and where the caret was left.
-    class MemoryBoard(val width: Int, val height: Int) extends profanity.Board:
-      val cells: java.util.HashMap[Int, Char] = java.util.HashMap()
-      var column: Int = 0
-      var row: Int = 0
-      var caret: (Int, Int) = (0, 0)
-
-      def move(column: Ordinal, row: Ordinal): Unit =
-        this.column = column.n0
-        this.row = row.n0
-
-      def put(text: Text): Unit = text.s.foreach: char =>
-        if char == '\n' then
-          column = 0
-          row += 1
-        else
-          if row < height && column < width then cells.put(row*width + column, char)
-          column += 1
-
-      def put(text: Teletype): Unit = put(text.plain)
-
-      def clear(): Unit =
-        cells.clear()
-        column = 0
-        row = 0
-
-      def clearLine(): Unit = ()
-      def cursor(visible: Boolean): Unit = ()
-      def showCaret(column: Ordinal, row: Ordinal): Unit = caret = (column.n0, row.n0)
-      def flush(): Unit = ()
-
-      def line(row: Int): Text =
-        val builder = java.lang.StringBuilder()
-
-        (0 until width).foreach: column =>
-          builder.append(cells.getOrDefault(row*width + column, ' '))
-
-        builder.toString.tt
 
     def codeField(value: Text, prompt: List[Inline]): CodeField =
       val field: Control.Field =
