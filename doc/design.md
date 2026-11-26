@@ -252,6 +252,15 @@ WebSocket per tab carrying JSON patches (`Replace`, `Append`, `Enable`,
 `Resize`) up, coalesced per animation frame. One generic script, `res/web/pyrocosm.js`, with
 nothing app-specific in it.
 
+Code has a module of its own beneath the web module, `pyrocosm-code`, on honeycomb and
+cataclysm alone: `CodeRenderer` (a block of code as HTML, plain or animated, which
+`HtmlRenderer` is one of), `CodeStyles` (its rules, every colour, face and length of which is
+a custom property the page declares) and `CodeScript` (`res/code/pyrocosm-code.js`: the
+animation, the timeline and a block's tabs, with no socket). A page which is not a Pyrocosm
+application's — a website's own — depends on it and on the model, serves the script and the
+rules itself, and draws code exactly as every tool does; the web frontend serves the same
+script at the head of its own, as one `/pyrocosm.js`.
+
 ## The biggest challenges
 
 1. **One description, two arrangement solvers.** The vocabulary must be rich enough for a Fume

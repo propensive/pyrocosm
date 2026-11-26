@@ -18,7 +18,7 @@ jobs:
   build:
     uses: propensive/.github/.github/workflows/scala-ci.yml@main
     with:
-      compile:       pyrocosm.model.compile pyrocosm.terminal.compile pyrocosm.web.compile
+      compile:       pyrocosm.model.compile pyrocosm.code.compile pyrocosm.terminal.compile pyrocosm.web.compile
       publish_local: pyrocosm.__
       assembly:      pyrocosm.demo.assembly
       test_assembly: pyrocosm.test.assembly
