@@ -56,6 +56,78 @@ object Actions:
     case Block.Record(entries, _)        => entries.bind: (entry: Block.Entry) => of(entry.value)
     case _                               => Nil
 
+  // The actions the links in a run of blocks lead to: every internal destination of a link in
+  // its phrasing, and of an item or a tree's node which leads rather than acts. They are not
+  // among `of`, since a link is followed where it is read rather than selected in turn, but
+  // following one is a press all the same, so a frontend which lets a link be followed
+  // validates the press against these as well.
+  def linked(blocks: List[Block]): List[Action] =
+    blocks.bind: (block: Block) => linkedBlock(block)
+
+  def linked(destination: Optional[Inline.Destination]): List[Action] = destination match
+    case Inline.Destination.Internal(action) => List(action)
+    case _                                   => Nil
+
+  private def linkedPhrase(content: List[Inline]): List[Action] =
+    content.bind: (inline: Inline) => linkedInline(inline)
+
+  private def linkedInline(inline: Inline): List[Action] = inline match
+    case Inline.Link(destination, content) => linked(destination) + linkedPhrase(content)
+    case Inline.Phrase(content)            => linkedPhrase(content)
+    case Inline.Emphasis(content)          => linkedPhrase(content)
+    case Inline.Strong(content)            => linkedPhrase(content)
+    case Inline.Toned(_, content)          => linkedPhrase(content)
+    case Inline.Annotated(content, note)   => linkedPhrase(content) + linkedPhrase(note)
+    case _                                 => Nil
+
+  private def linkedTree(node: Block.TreeNode): List[Action] =
+    linked(node.destination) + linkedPhrase(node.label) +
+      node.children.bind: (child: Block.TreeNode) => linkedTree(child)
+
+  private def linkedBlock(block: Block): List[Action] = block match
+    case Block.Paragraph(content)     => linkedPhrase(content)
+    case Block.Heading(_, content, _) => linkedPhrase(content)
+
+    case Block.Listing(_, items) =>
+      items.bind: (item: Block.Item) => linked(item.destination) + linked(item.content)
+
+    case Block.Table(columns, rows, caption) =>
+      val titles: List[Action] = columns.bind: (column: Block.Column) => linkedPhrase(column.title)
+
+      val cells: List[Action] = rows.bind: (row: Block.Row) =>
+        row.cells.bind { (cell: Block.Cell) => linkedPhrase(cell.content) } + linkedPhrase(row.note)
+
+      caption.lay(Nil: List[Action])(linkedPhrase(_)) + titles + cells
+
+    case Block.Record(entries, title) =>
+      val keyed: List[Action] = entries.bind: (entry: Block.Entry) =>
+        linkedPhrase(entry.key) + linked(entry.value)
+
+      title.lay(Nil: List[Action])(linkedPhrase(_)) + keyed
+
+    case Block.Notice(_, title, content) =>
+      title.lay(Nil: List[Action])(linkedPhrase(_)) + linked(content)
+
+    case Block.Disclosure(summary, content, _) => linkedPhrase(summary) + linked(content)
+    case Block.Quotation(content)              => linked(content)
+    case Block.Group(content)                  => linked(content)
+    case Block.Gauge(_, caption)               => caption.lay(Nil: List[Action])(linkedPhrase(_))
+    case Block.Tree(roots)                     => roots.bind: (root: Block.TreeNode) => linkedTree(root)
+
+    case Block.Deck(leaves, _) =>
+      leaves.bind: (leaf: Block.Leaf) => linked(leaf.content)
+
+    case Block.Graph(vertices, _) =>
+      vertices.bind: (vertex: Block.Vertex) => linkedPhrase(vertex.label)
+
+    case Block.Chart(_, series) =>
+      series.bind: (series: Block.Series) => linkedPhrase(series.label)
+
+    case Block.Diagnostic(_, _, message, excerpt, detail, _) =>
+      linked(message) + linked(excerpt) + linked(detail)
+
+    case _ => Nil
+
   def animated(blocks: List[Block]): Boolean = blocks.exists: (block: Block) => animatedBlock(block)
 
   // How many leading blocks are settled: every block before the first that animates. A
