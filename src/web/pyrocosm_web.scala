@@ -42,7 +42,12 @@ extension (interface: Interface)
 
   def allControls: List[Control] = interface.controls + interface.panels.bind(_.controls)
 
+  // Everything a page can press: its buttons, what its panels offer for selection, its
+  // shortcuts, and what its links lead to within the application — a link in a panel's
+  // phrasing, and an activity's card.
   def actions: List[Action] =
     interface.buttons.map(_.action) +
       interface.panels.bind { (panel: Panel) => Actions.of(panel.content()) } +
-      interface.shortcuts.map(_.action)
+      interface.shortcuts.map(_.action) +
+      interface.panels.bind { (panel: Panel) => Actions.linked(panel.content()) } +
+      interface.activities().bind { (activity: Activity) => Actions.linked(activity.destination) }
