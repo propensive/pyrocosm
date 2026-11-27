@@ -282,8 +282,15 @@ extends pyrocosm.Frontend:
     def press(action: Action): Unit = handle(Event.Pressed(action))
 
     // Tells the application which page a tab opened or navigated to. The application answers,
-    // as to a press, by setting its cells; `/` is a page like any other.
-    def locate(path: Text): Unit = handle(Event.Located(path))
+    // as to a press, by setting its cells; `/` is a page like any other. The tabs are then told
+    // which page the session shows, after the panels' own patches, which the cells' wakes sent
+    // as they were set: the tab which asked (`from`, with the number it gave its asking) hears
+    // that its page is shown, and stops waiting for it; any other, which the session has moved
+    // without its asking, has its address follow.
+    def locate(path: Text, from: Optional[Int] = Unset, asking: Int = 0): Unit =
+      handle(Event.Located(path))
+      from.let(tell(_, Patch(t"located", t"", path, asking)))
+      broadcast(Patch(t"located", t"", path), from)
     private val tabs: juc.ConcurrentHashMap[Int, Tab] = juc.ConcurrentHashMap()
     private val published: Published = Published()
 
@@ -503,7 +510,7 @@ extends pyrocosm.Frontend:
           // A click on a local link, or the browser's back and forward: the path is the
           // application's own, so nothing checks it.
           case t"locate" =>
-            handle(Event.Located(incoming.text))
+            locate(incoming.text, connection, incoming.version)
 
           // A tab sent a change from content it does not show asks for the whole of it.
           case t"repaint" =>

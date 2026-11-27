@@ -460,7 +460,19 @@ send the same event over the socket while the script keeps the address bar curre
 (`pushState`, keeping the query which names the session). The application answers a `Located`
 as it answers a press — by setting its cells — and decides what a path it does not know shows.
 In `run` mode every tab shares the one session, so a `Located` moves them all, as a press
-does; a tool whose pages are per tab (fuel) uses `serve`. A `Local` destination travels over
+does, and the address of each follows; a tool whose pages are per tab (fuel) uses `serve`.
+
+Following a link within the page is an economy over loading the page at its address, and
+never another route: the address is the truth, and the browser's history is made of addresses
+the server serves whole. So the script keeps what it shows to the address by one rule — the
+session is told whenever the address comes to name another page, and must answer (a `located`
+patch, after the panels' own, carrying the number of the asking) — and leaves to the browser
+whatever it cannot see through to that answer: a link is followed as any link while the socket
+is closed, an asking is made again when the socket reopens, and an address whose page is not
+confirmed within ten seconds is loaded afresh. Each history entry's scroll position is kept in
+the entry's state (`scrollRestoration` is `manual`, since the browser would restore it to a
+page whose content had yet to change) and gone to when its page is confirmed; a place on the
+page already shown is the browser's own fragment navigation. A `Local` destination travels over
 the swarm as an external URL, as an internal one does.
 
 **One origin.** The hub serves the machine's one web origin, on 8090 (or a port of its own
