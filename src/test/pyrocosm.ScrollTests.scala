@@ -26,12 +26,14 @@ import soundness.{Channel as _, Control as _, Filter as _, Glyph as _, Language 
   Status as _, *}
 
 import dysasymptotics.{linearAccess, linearSize}
+import formatting.indentedCssFormatting
 import palettes.solarizedDarkGaugePalette
 import tableStyles.thickTableStyle
 import textMetrics.uniformMetric
 
 // Scrolling a panel's content in the terminal with Up and Down: bounded at both ends, so that a
 // key pressed at an end is not owed back before the content moves the other way.
+// And, on the web, a side column which scrolls within itself, apart from the matter beside it.
 object ScrollTests extends Suite(m"Pyrocosm scroll tests"):
   def run(): Unit =
     val renderer = TerminalRenderer()
@@ -125,3 +127,24 @@ object ScrollTests extends Suite(m"Pyrocosm scroll tests"):
       window(fixture)
 
     . assert(_ == List(t"", t"p10", t"", t"p11"))
+
+    // The rule for the side columns, as it is beside the matter and as it is on a narrow page,
+    // where the columns are stacked and the page alone scrolls.
+    val stylesheet: Text = WebStyles.css(WebTheme.default).show
+    val rules: List[Text] = stylesheet.cut(t".graffiti-verso, .graffiti-recto {")
+    def body(rule: Optional[Text]): Text = rule.let(_.cut(t"}").at(Ordinal.zerary(0))).or(t"")
+    val beside: Text = body(rules.at(Ordinal.zerary(1)))
+    val stacked: Text = body(rules.reverse.at(Ordinal.zerary(0)))
+
+    test(m"a side column taller than the window scrolls within itself, beside the matter"):
+      ( beside.contains(t"position: sticky"),
+        beside.contains(t"overflow-y: auto"),
+        beside.contains(t"max-height: calc(100vh - 2*var(--pyro-space-5))"),
+        beside.contains(t"overscroll-behavior: contain") )
+
+    . assert(_ == (true, true, true, true))
+
+    test(m"a side column stacked above the matter on a narrow page scrolls with the page"):
+      (stacked.contains(t"position: static"), stacked.contains(t"max-height: none"))
+
+    . assert(_ == (true, true))

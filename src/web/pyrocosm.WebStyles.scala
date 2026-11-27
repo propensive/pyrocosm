@@ -415,7 +415,9 @@ object WebStyles:
 
     // The matter's measure and the columns: the graffiti rules for the layouts come earlier
     // in the sheet, so these override them at the same specificity. A side column stays in
-    // view as the matter scrolls.
+    // view as the matter scrolls, and one taller than the window scrolls within itself, apart
+    // from the matter: it is where it was left when the matter is replaced, and scrolling to
+    // its end does not go on to scroll the page.
     val layout: Css =
       css"""
         main.graffiti-mainstay {
@@ -433,7 +435,13 @@ object WebStyles:
             gap: var(--pyro-space-5); align-items: start
           }
         """ +
-        css".graffiti-verso, .graffiti-recto { position: sticky; top: var(--pyro-space-5) }" +
+        css"""
+          .graffiti-verso, .graffiti-recto {
+            position: sticky; top: var(--pyro-space-5);
+            max-height: calc(100vh - 2*var(--pyro-space-5)); overflow-y: auto;
+            overscroll-behavior: contain
+          }
+        """ +
         css".graffiti-verso-content, .graffiti-recto-content { min-width: 0 }"
 
     // The menu bar spans the page as a dark band above the masthead; its contents are centred
@@ -1379,7 +1387,9 @@ object WebStyles:
       css"""
         @media (max-width: 64rem) {
           .graffiti-verso-layout, .graffiti-recto-layout { grid-template-columns: 1fr }
-          .graffiti-verso, .graffiti-recto { inline-size: auto; position: static }
+          .graffiti-verso, .graffiti-recto {
+            inline-size: auto; position: static; max-height: none; overflow-y: visible
+          }
           .pyro-frames .pyro-source { display: none }
         }
       """ +
