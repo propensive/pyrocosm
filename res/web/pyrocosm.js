@@ -62,42 +62,147 @@
     return pathname.indexOf(base + "/") === 0 ? pathname.substring(base.length) : null;
   }
 
-  // A local destination: a page of this application. Going to one tells the session where the
-  // tab now is and lets it change the panels, so the page is not reloaded; the address bar
-  // follows (keeping the query, which names the session), and the fragment is scrolled to once
-  // the patch which contains it has landed. Back and forward replay the same.
-  var pendingFragment = "";
-  var pendingTop = false;
+  // ── The pages and the browser's history ──────────────────────────────────────────────────
+  // A local destination is a page of this application, and every one of them is a page the
+  // server serves whole at its own address: that is what the browser's history is made of, and
+  // what a reload, a new tab, and a link followed before this script runs all get. Following a
+  // link within the page is an economy over that, never another route: the session is told
+  // where the tab now is and changes the panels, and the address follows.
+  //
+  // The address is the truth. What the page shows is what the session was last told of
+  // (`shown`); whenever the address comes to name another page — a link, or the browser's back
+  // and forward — the session is told, and must say that it has heard (a `located` patch,
+  // which follows the panels' own). Whatever the script cannot see through to that answer it
+  // leaves to the browser: a link is followed as any link is while the socket is not open, and
+  // an address whose page has not been confirmed in time is loaded afresh.
+  //
+  // The scroll position of each entry of the history is the script's to keep, since the
+  // browser would restore it to a page whose content has yet to change: it is kept in the
+  // entry's own state, and gone to once the page it belongs to has arrived.
+  var shown = location.pathname;
+  var awaited = null;
+  var pending = null;
+  var asked = 0;
+  var PATIENCE = 10000;
 
-  function navigate(href, push) {
+  try { history.scrollRestoration = "manual"; } catch (error) {}
+
+  function online() { return !!socket && socket.readyState === WebSocket.OPEN; }
+
+  function keepScroll() {
+    try {
+      var state = Object.assign({}, history.state || {});
+      state.pyroScroll = { x: window.scrollX, y: window.scrollY };
+      history.replaceState(state, "");
+    } catch (error) {}
+  }
+
+  var scrollTimer = null;
+
+  // Not while a page is awaited: the window is then wherever the page before it left it.
+  window.addEventListener("scroll", function () {
+    clearTimeout(scrollTimer);
+    if (!awaited) scrollTimer = setTimeout(keepScroll, 200);
+  }, { passive: true });
+
+  window.addEventListener("pagehide", keepScroll);
+
+  // Where the window should be once a page is shown: where its reader left it, else at the
+  // fragment the address names, else at its top. False while the fragment has yet to arrive.
+  function place(want) {
+    if (want.scroll) { window.scrollTo(want.scroll.x, want.scroll.y); return true; }
+    if (!want.fragment) { window.scrollTo(0, 0); return true; }
+    var target = document.getElementById(want.fragment);
+    if (target) target.scrollIntoView();
+    return !!target;
+  }
+
+  function wanted(scroll) {
+    var fragment = "";
+    try { fragment = decodeURIComponent(location.hash.substring(1)); } catch (error) { fragment = location.hash.substring(1); }
+    return { scroll: scroll || null, fragment: fragment, heard: false };
+  }
+
+  // Tells the session which page the address names, and waits to hear that it has: the
+  // address is loaded as any address is if it does not say so in time. Each asking is
+  // numbered, and the answer carries the number, so that an answer to an earlier one is not
+  // taken for this one's. With the socket closed it is asked when the socket next opens.
+  function ask() {
+    send({ kind: "locate", id: "", text: awaited.path, caret: 0, index: 0, version: awaited.serial });
+  }
+
+  function locate(path, want) {
+    shown = location.pathname;
+    pending = want;
+    clearTimeout(scrollTimer);
+    if (awaited) clearTimeout(awaited.timer);
+    awaited = { path: path, serial: ++asked, timer: setTimeout(function () { location.reload(); }, PATIENCE) };
+    ask();
+  }
+
+  // A click on a local link. False leaves it to the browser, which follows it as any link: so
+  // it is while the socket is closed, and for another place on the page shown, which the
+  // browser goes to itself wherever the link's address differs from the page's only in that.
+  function follow(href) {
     var url;
     try { url = new URL(href, location.href); } catch (error) { return false; }
     if (url.origin !== location.origin) return false;
     var path = own(url.pathname);
-    if (path === null) return false;
-    var moved = url.pathname !== location.pathname;
-    if (push) history.pushState({}, "", url.pathname + location.search + url.hash);
-    if (moved) {
-      pendingFragment = url.hash ? url.hash.substring(1) : "";
-      pendingTop = push && !url.hash;
-      send({ kind: "locate", id: "", text: path, caret: 0, index: 0 });
-    } else if (url.hash) {
-      var target = document.getElementById(url.hash.substring(1));
-      if (target) target.scrollIntoView();
+    if (path === null || !online()) return false;
+    var here = url.pathname === location.pathname && url.pathname === shown;
+    keepScroll();
+    if (here && url.search === location.search && url.hash) return false;
+    var address = url.pathname + (url.search || location.search) + url.hash;
+    if (address !== location.pathname + location.search + location.hash) {
+      try { history.pushState({}, "", address); } catch (error) { return false; }
     }
+    if (here) place(wanted(null)); else locate(path, wanted(null));
     return true;
   }
 
-  // Once a patch has landed after a navigation: a page gone to anew is read from its top, and a
-  // fragment is scrolled to when the patch which contains it arrives.
+  // Once a patch has landed after a navigation, the window is placed, so that the new page is
+  // not read from where the last was left; it is placed for good when the session has said the
+  // page is shown, or when a fragment which arrives later does.
   function settle() {
-    if (pendingTop) { window.scrollTo(0, 0); pendingTop = false; }
-    if (!pendingFragment) return;
-    var target = document.getElementById(pendingFragment);
-    if (target) { target.scrollIntoView(); pendingFragment = ""; }
+    if (!pending) return;
+    var placed = place(pending);
+    if (placed && pending.heard) pending = null;
   }
 
-  window.addEventListener("popstate", function () { navigate(location.href, false); });
+  // The session says which page it now shows. It is the one this tab asked for, and the wait
+  // is over; or another tab of the same session has moved it (an answer to no asking of this
+  // tab's), and this tab's address follows, as a link followed here would have had it.
+  function located(path, serial) {
+    if (awaited) {
+      if (serial !== awaited.serial) return;
+      clearTimeout(awaited.timer);
+      awaited = null;
+      if (pending) { pending.heard = true; settle(); }
+    } else if (serial === 0 && own(location.pathname) !== path) {
+      keepScroll();
+      try { history.pushState({}, "", prefix() + path + location.search); } catch (error) { return; }
+      shown = location.pathname;
+      window.scrollTo(0, 0);
+    }
+  }
+
+  // Back and forward: the address has changed already. The same page at another place is only
+  // scrolled to; another page is asked for.
+  window.addEventListener("popstate", function (event) {
+    var scroll = event.state && event.state.pyroScroll;
+    var path = own(location.pathname);
+    if (path === null) { location.reload(); return; }
+    clearTimeout(scrollTimer);
+    if (location.pathname === shown && !awaited) place(wanted(scroll)); else locate(path, wanted(scroll));
+  });
+
+  // The page as it was loaded: a reload, or a return from another site, is read from where it
+  // was left.
+  function resume() {
+    var scroll = history.state && history.state.pyroScroll;
+    if (scroll) window.scrollTo(scroll.x, scroll.y);
+    else if (location.hash) place(wanted(null));
+  }
 
   // The page's mode — light, dark or mixed — kept by the browser and cycled by the masthead's
   // button; the head applied the kept one before the first paint.
@@ -319,6 +424,7 @@
 
   function apply(patch) {
     if (patch.kind === "pong") return;
+    if (patch.kind === "located") { located(patch.html, patch.version || 0); return; }
     // The reader's purview, kept for a year, so the next page asked for is rendered under it;
     // it is this application's, so it is kept for its paths alone.
     if (patch.kind === "cookie") { document.cookie = "pyro-purview=" + patch.html + "; path=" + prefix() + "/; max-age=31536000; SameSite=Lax"; return; }
@@ -393,7 +499,11 @@
     var protocol = location.protocol === "https:" ? "wss://" : "ws://";
     var opened = false;
     socket = new WebSocket(protocol + location.host + prefix() + "/socket" + sessionQuery());
-    socket.onopen = function () { opened = true; refusals = 0; status(true); };
+    // A page asked for over a socket which then closed is asked for again over this one.
+    socket.onopen = function () {
+      opened = true; refusals = 0; status(true);
+      if (awaited) ask();
+    };
     socket.onclose = function () {
       status(false);
       if (!opened && sessionQuery() !== "" && ++refusals >= 5) { location.reload(); return; }
@@ -1178,7 +1288,7 @@
       link.dataset.pyroWired = "1";
       link.addEventListener("click", function (event) {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        if (navigate(link.getAttribute("href"), true)) event.preventDefault();
+        if (follow(link.getAttribute("href"))) event.preventDefault();
       });
     });
 
@@ -1295,6 +1405,7 @@
   wire(document);
   wireMode();
   wireLanguage();
+  resume();
   var first = document.querySelector(".pyro-editor");
   if (first) first.focus({ preventScroll: true });
   connect();

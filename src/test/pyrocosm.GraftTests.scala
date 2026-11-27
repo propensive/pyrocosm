@@ -212,3 +212,68 @@ object GraftTests extends Suite(m"Pyrocosm graft tests"):
           graft.contains(t"Alpha"), whole.contains(t""""version":1"""), whole.contains(t"Alpha") )
 
     . assert(_ == (true, true, true, true, false, true, true))
+
+    // A tab which says where it is hears that the session shows that page, after the page's
+    // own patches and under the number the tab gave its asking: what tells its script that
+    // the address it shows and the page it shows are one.
+    test(m"a tab which asks for a page is sent the page, and then that it is shown"):
+      supervise:
+        val content: Live[List[Block]] = Live(closed)
+
+        val interface: Interface =
+          Interface
+            ( Inline.text(t"Trees"),
+              List
+                ( Panel
+                    ( Panel.Id(t"main"), Panel.Role.Primary, Unset, content,
+                      Panel.Priority.Essential ) ) )
+
+        val presence: Presence = Presence()
+        val frontend: WebFrontend = WebFrontend(0, presence = presence)
+
+        async:
+          frontend.run(interface):
+            case Event.Located(t"/marked") => content() = marked
+            case _                         => ()
+
+        def waiting(attempts: Int)(condition: => Boolean): Unit =
+          if attempts > 0 && !condition then
+            snooze(0.2*Second)
+            waiting(attempts - 1)(condition)
+
+        waiting(25)(presence.web().present)
+        val port: Int = presence.web().or(0)
+        val url: Websocket.Url = t"ws://127.0.0.1:${port.show}/socket".as[Websocket.Url]
+
+        val asking: Text =
+          t"""{"kind":"locate","id":"","text":"/marked","caret":0,"index":0,"version":7,"label":""}"""
+
+        def text(message: Message): Text = message match
+          case Message.Binary(data) => data.utf8
+          case Message.Text(text)   => text
+
+        val heard: Promise[Text] = Promise()
+        val patches: java.util.concurrent.atomic.AtomicReference[Text] =
+          java.util.concurrent.atomic.AtomicReference(t"")
+
+        def collect(message: Message): coaxial.Control[Unit] =
+          val patch: Text = text(message)
+          val seen: Text = patches.updateAndGet { earlier => t"${earlier.nn}$patch\n" }.nn
+
+          if !patch.contains(t"located") then coaxial.Control.Continue(()) else
+            heard.offer(seen)
+            coaxial.Control.Terminate
+
+        async:
+          url.exchange(())[Message](collect(_)): transmitter =>
+            transmitter.send(Message.Text(asking))
+
+        val sent: List[Text] = safely(heard.await(5.0*Second)).or(t"").cut(t"\n")
+        val first: Text = sent.at(Prim).or(t"")
+        val second: Text = sent.at(Sec).or(t"")
+        frontend.stop()
+
+        ( first.contains(t""""kind":"graft""""), second.contains(t""""kind":"located""""),
+          second.contains(t""""html":"/marked""""), second.contains(t""""version":7""") )
+
+    . assert(_ == (true, true, true, true))
