@@ -303,6 +303,9 @@ object WebStyles:
           t"line-height: 1.4 }",
           t".pyro-stage .pyro-leaf .pyro-codeblock { font-size: 1.1em; margin: 0.5em 0;",
           t"padding: 0.8em 1.1em }",
+          t".pyro-stage .pyro-leaf .pyro-video { margin: 0; min-height: 0; flex: 0 1 auto;",
+          t"display: flex; justify-content: center }",
+          t".pyro-stage .pyro-leaf .pyro-video video { max-height: 100%; min-height: 0 }",
           t".pyro-stage .pyro-deck-controls { position: absolute; right: 1em; bottom: 0.6em;",
           t"opacity: 0; transition: opacity 0.3s ease }",
           t".pyro-stage .pyro-deck:hover .pyro-deck-controls { opacity: 0.7 }" )
@@ -927,6 +930,8 @@ object WebStyles:
             color: var(--pyro-muted); font-size: var(--pyro-text-small);
             margin-top: var(--pyro-space-2)
           }
+          .pyro-video { margin: 0 0 var(--pyro-space-4) 0 }
+          .pyro-video video { display: block; max-width: 100%; margin: 0 auto }
         """ +
         // A drawing is shown at its own size, never stretched: its text then keeps the size it
         // was set at. One wider than the matter scrolls sideways within its holder, which the

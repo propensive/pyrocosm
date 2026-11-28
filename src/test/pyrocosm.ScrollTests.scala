@@ -171,3 +171,16 @@ object ScrollTests extends Suite(m"Pyrocosm scroll tests"):
       (page(true).contains(own), first.contains(t"""src="/talk/pyrocosm.js""""), page(false).contains(own))
 
     . assert(_ == (true, true, false))
+
+    // A video is silent, and has no controls: the script plays it when it comes into view.
+    test(m"a video is a muted video element, with its description as its label"):
+      val html: Text = HtmlRenderer().block(Block.Video(t"media/logo.webm", t"The logo")).show
+      ( html.contains(t"""class="pyro-video""""), html.contains(t"""src="media/logo.webm""""),
+        html.contains(t"muted"), html.contains(t"""aria-label="The logo""""), html.contains(t"controls") )
+
+    . assert(_ == (true, true, true, true, false))
+
+    test(m"a video in a terminal is described with where it is"):
+      TerminalRenderer().block(Block.Video(t"x.webm", t"a video"), 40).map(_.plain)
+
+    . assert(_ == List(t"[a video] x.webm"))

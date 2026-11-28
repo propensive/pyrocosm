@@ -129,7 +129,7 @@ position, each with a style and a caption of phrasing — and `start`, the sourc
 the first line, which numbers the lines), `Diagnostic` (a tone, a `Location`, a message, an
 excerpt, detail and a bolt code: what a compiler, a linter or a TEL reader reports), `Table` (columns with escritoire-style
 `Sizing`; rows may carry a `Tone` and an `Action`, which is how master/detail is built),
-`Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Tree` (whose nodes may be collapsible, `open`), `Graph(vertices, edges)`,
+`Record` (key/value facts), `Notice`, `Disclosure`, `Image`, `Video` (a silent one, played once when it comes into view), `Tree` (whose nodes may be collapsible, `open`), `Graph(vertices, edges)`,
 `Chart` (sparkline, bars, histogram only), `Gauge(status, caption)`, `Trace` (an exception's
 stack trace and its causes, as the model's own frames: `Block.Trace.of` converts digression's
 `StackTrace`), `Group`, `Output`.

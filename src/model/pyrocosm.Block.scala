@@ -657,6 +657,11 @@ enum Block:
   case Notice(tone: Tone, title: Optional[List[Inline]], content: List[Block])
   case Disclosure(summary: List[Inline], content: List[Block], open: Boolean = false)
   case Image(source: Text, alt: Text)
+
+  // A moving picture, without sound: played once from its start each time it comes into view
+  // — on a deck, each time its slide is shown — and left on its last frame. One with an alpha
+  // channel shows the page through it.
+  case Video(source: Text, alt: Text)
   case Figure(figure: pyrocosm.Figure)                  // a live drawing, revised in place
   case Tree(roots: List[Block.TreeNode])
 

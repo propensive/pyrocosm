@@ -407,6 +407,10 @@ class TerminalRenderer
         if source.starts(t"data:") then picture(source, width).or(List(described))
         else List(described.append(faint(Teletype(t" $source"))))
 
+      // A video has no terminal form either: it is described, with where it is.
+      case Block.Video(source, alt) =>
+        List(faint(e"$Italic([$alt])").append(faint(Teletype(t" $source"))))
+
       // A drawing has no terminal form; its description stands in for it.
       case Block.Figure(figure) =>
         List(faint(e"$Italic([${Inline.plain(figure.alt)}])"))
