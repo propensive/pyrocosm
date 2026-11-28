@@ -131,6 +131,9 @@ object WebFrontend:
 // bound to a wake that re-renders the element it belongs to and pushes the patch to the
 // session's tabs, and every incoming message is checked against the handles its interface
 // actually offers before it becomes an `Event`. Both serve until `stop()`.
+// `styles` is a stylesheet of the application's own, served at `/styles.css` and linked by every
+// page after Pyrocosm's, so that its rules prevail: a presentation in a site's colours and
+// faces, say.
 // `fallback` answers any request the frontend does not (an application's own API, say); a
 // request it declines is a 404. A `port` of 0 is a free port of the frontend's own, behind
 // the machine's hub, which serves every tool's front-end under one origin. `prefix` is the path
@@ -148,7 +151,8 @@ class WebFrontend
     fallback: Http.Request => Optional[Http.Response] = _ => Unset,
     presence: Presence = Presence.shared,
     prefix:   Optional[Text] = Unset,
-    language: Optional[Text] = Unset )
+    language: Optional[Text] = Unset,
+    styles:   Optional[Text] = Unset )
   ( using monitor: Monitor, probate: Probate, errorPage: WebserverErrorPage )
 extends pyrocosm.Frontend:
 
@@ -228,7 +232,9 @@ extends pyrocosm.Frontend:
 
     val interface = Interface(Inline.text(Phrases.configuration()), List(panel))
     val renderer: HtmlRenderer = HtmlRenderer(prefix = served, locale = locale)
-    val page: PyrocosmPage = PyrocosmPage(interface, renderer, theme, prefix = served)
+    val page: PyrocosmPage =
+      PyrocosmPage(interface, renderer, theme, prefix = served, styled = styles.present)
+
     t"<!DOCTYPE html>${page.markup.show}"
 
   // One interface and the tabs showing it. The handler is vouched pure, as the terminal
@@ -253,7 +259,7 @@ extends pyrocosm.Frontend:
 
     def page: PyrocosmPage =
       val session: Optional[Text] = if shared.present then Unset else id
-      PyrocosmPage(interface, renderer, theme, session, presence, served)
+      PyrocosmPage(interface, renderer, theme, session, presence, served, styles.present)
 
     // The reader's purview, as a page request's cookie says it is; nothing, without one.
     def adopt(cookies: Optional[Text]): Unit =
@@ -711,6 +717,13 @@ extends pyrocosm.Frontend:
           Http.Ok
             ( List(Http.Header(t"content-type", t"text/css; charset=utf-8")),
               Http.Body.Fixed(stylesheet.in[Data]) )
+
+        // The application's own sheet, where it has one, which its pages link after
+        // Pyrocosm's.
+        case t"/styles.css" if styles.present =>
+          Http.Ok
+            ( List(Http.Header(t"content-type", t"text/css; charset=utf-8")),
+              Http.Body.Fixed(styles.or(t"").in[Data]) )
 
         case t"/config" =>
           Http.Ok

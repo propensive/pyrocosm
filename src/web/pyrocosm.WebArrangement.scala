@@ -148,7 +148,7 @@ object PyrocosmPage:
 // others on one origin.
 class PyrocosmPage
   ( interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset,
-    presence: Presence = Presence.shared, prefix: Text = t"" )
+    presence: Presence = Presence.shared, prefix: Text = t"", styled: Boolean = false )
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
   import HtmlRenderer.{cls, panelId, classes, ariaLabel}
   import HtmlRenderer.given
@@ -474,17 +474,24 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
   // The page as served: graffiti's `html` inlines the stylesheet in a `<style>` element, but
   // this page links it, so a Pyrocosm application is restyled by serving another sheet. The
-  // sheet itself is `css`, which the frontend serves at `/pyrocosm.css`.
+  // sheet itself is `css`, which the frontend serves at `/pyrocosm.css`. A `styled` page links
+  // the application's own sheet after it, at `/styles.css`, whose rules so prevail, and which,
+  // being a sheet of its own, may begin with the `@import` of its fonts.
   // The body says which side columns the page has, so the sheet can widen its measure for them.
   def markup: Html of "html" =
     if interface.hints.has[hints.web.Stage.type] then staged else framed
+
+  private def sheets: Html of Metadata =
+    val sheet: Html of Metadata = Link.Stylesheet(href = t"$prefix/pyrocosm.css")
+
+    if !styled then sheet
+    else Html.Fragment[Metadata](sheet, Link.Stylesheet(href = t"$prefix/styles.css"))
 
   // A stage: the primary panels' content alone, each in the element its patches replace.
   private def staged: Html of "html" =
     val shown: List[Html of Flow] = plan.primary.map(panelContent)
     val stage: Html of Flow = Div(`class` = cls(t"pyro-stage-content"))(shown*)
-    val sheet: Html of Metadata = Link.Stylesheet(href = t"$prefix/pyrocosm.css")
-    val head0: Html of "head" = Head(Title(pageTitle), sheet, head)
+    val head0: Html of "head" = Head(Title(pageTitle), sheets, head)
     Html(head0, Body(dir = direction.show, lang = spoken, `class` = cls(t"pyro-stage"))(stage))
 
   private def framed: Html of "html" =
@@ -494,6 +501,5 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
     val recto: List[Name[CssClass]] = if hasRecto then List(cls(t"pyro-has-recto")) else Nil
     val sides: List[Name[CssClass]] = verso + recto
 
-    val sheet: Html of Metadata = Link.Stylesheet(href = t"$prefix/pyrocosm.css")
-    val head0: Html of "head" = Head(Title(pageTitle), sheet, head)
+    val head0: Html of "head" = Head(Title(pageTitle), sheets, head)
     Html(head0, Body(dir = direction.show, lang = spoken, `class` = sides)(frame))
