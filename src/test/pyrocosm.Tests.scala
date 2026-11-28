@@ -1797,13 +1797,13 @@ object Tests extends Suite(m"Pyrocosm tests"):
 
     . assert(_.contains(t"""<span class="pyro-lineno">7</span>"""))
 
-    test(m"a caret's marker row follows its line"):
+    test(m"an error without a width has its caption beneath its line, and no pointer"):
       val note = Block.Note(0, 3, 3, Block.Note.Style.Erroneous, Inline.text(t"here"))
       val line: Block.Line = Block.Line(List(Token.plain(t"abcd")))
       html.block(Block.Code(Language.Plain, List(line), List(note))).show
 
     . assert: html =>
-        html.contains(t"""<span class="pyro-marks">╱╲</span>""") &&
+        !html.contains(t"╱╲") &&
           html.contains(t"""<span class="pyro-marker-caption">here</span>""")
 
     test(m"a diagnostic's span has its caption at the line's indentation, with no marks"):
