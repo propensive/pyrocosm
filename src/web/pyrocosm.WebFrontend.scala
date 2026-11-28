@@ -133,7 +133,8 @@ object WebFrontend:
 // actually offers before it becomes an `Event`. Both serve until `stop()`.
 // `styles` is a stylesheet of the application's own, served at `/styles.css` and linked by every
 // page after Pyrocosm's, so that its rules prevail: a presentation in a site's colours and
-// faces, say.
+// faces, say. `scripts` is a script of its own likewise, served at `/scripts.js` and run by
+// every page after Pyrocosm's: what draws a moving backdrop behind a presentation, say.
 // `fallback` answers any request the frontend does not (an application's own API, say); a
 // request it declines is a 404. A `port` of 0 is a free port of the frontend's own, behind
 // the machine's hub, which serves every tool's front-end under one origin. `prefix` is the path
@@ -152,7 +153,8 @@ class WebFrontend
     presence: Presence = Presence.shared,
     prefix:   Optional[Text] = Unset,
     language: Optional[Text] = Unset,
-    styles:   Optional[Text] = Unset )
+    styles:   Optional[Text] = Unset,
+    scripts:  Optional[Text] = Unset )
   ( using monitor: Monitor, probate: Probate, errorPage: WebserverErrorPage )
 extends pyrocosm.Frontend:
 
@@ -233,7 +235,9 @@ extends pyrocosm.Frontend:
     val interface = Interface(Inline.text(Phrases.configuration()), List(panel))
     val renderer: HtmlRenderer = HtmlRenderer(prefix = served, locale = locale)
     val page: PyrocosmPage =
-      PyrocosmPage(interface, renderer, theme, prefix = served, styled = styles.present)
+      PyrocosmPage
+        ( interface, renderer, theme, prefix = served, styled = styles.present,
+          scripted = scripts.present )
 
     t"<!DOCTYPE html>${page.markup.show}"
 
@@ -259,7 +263,8 @@ extends pyrocosm.Frontend:
 
     def page: PyrocosmPage =
       val session: Optional[Text] = if shared.present then Unset else id
-      PyrocosmPage(interface, renderer, theme, session, presence, served, styles.present)
+      PyrocosmPage
+        ( interface, renderer, theme, session, presence, served, styles.present, scripts.present )
 
     // The reader's purview, as a page request's cookie says it is; nothing, without one.
     def adopt(cookies: Optional[Text]): Unit =
@@ -724,6 +729,11 @@ extends pyrocosm.Frontend:
           Http.Ok
             ( List(Http.Header(t"content-type", t"text/css; charset=utf-8")),
               Http.Body.Fixed(styles.or(t"").in[Data]) )
+
+        case t"/scripts.js" if scripts.present =>
+          Http.Ok
+            ( List(Http.Header(t"content-type", t"text/javascript; charset=utf-8")),
+              Http.Body.Fixed(scripts.or(t"").in[Data]) )
 
         case t"/config" =>
           Http.Ok

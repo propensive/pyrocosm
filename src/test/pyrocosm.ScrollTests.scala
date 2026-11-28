@@ -160,3 +160,14 @@ object ScrollTests extends Suite(m"Pyrocosm scroll tests"):
       (page(true).contains(own), first.contains(t"""href="/talk/pyrocosm.css""""), page(false).contains(own))
 
     . assert(_ == (true, true, false))
+
+    test(m"an application's own script is run after Pyrocosm's, and only where it has one"):
+      val interface: Interface = Interface(Inline.text(t"Talk"), Nil)
+      def page(scripted: Boolean): Text =
+        PyrocosmPage(interface, HtmlRenderer(), WebTheme.default, prefix = t"/talk", scripted = scripted).markup.show
+
+      val own: Text = t"""src="/talk/scripts.js""""
+      val first: Text = page(true).cut(own).at(Ordinal.zerary(0)).or(t"")
+      (page(true).contains(own), first.contains(t"""src="/talk/pyrocosm.js""""), page(false).contains(own))
+
+    . assert(_ == (true, true, false))

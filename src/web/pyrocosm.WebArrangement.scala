@@ -148,7 +148,8 @@ object PyrocosmPage:
 // others on one origin.
 class PyrocosmPage
   ( interface: Interface, renderer: HtmlRenderer, theme: WebTheme, session: Optional[Text] = Unset,
-    presence: Presence = Presence.shared, prefix: Text = t"", styled: Boolean = false )
+    presence: Presence = Presence.shared, prefix: Text = t"", styled: Boolean = false,
+    scripted: Boolean = false )
 extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu:
   import HtmlRenderer.{cls, panelId, classes, ariaLabel}
   import HtmlRenderer.given
@@ -464,10 +465,15 @@ extends Archetype, Viewport, VersoPanel, RectoPanel, Mainstay, Masthead, TopMenu
 
     val script = Script(src = t"$prefix/pyrocosm.js", defer = true)
 
+    // The application's own script, where it has one, after Pyrocosm's, which it may rely on.
+    val own: Html of Metadata =
+      if !scripted then Html.Fragment[Metadata]()
+      else Script(src = t"$prefix/scripts.js", defer = true)
+
     val phrases: Html of Metadata =
       PyrocosmPage.PhrasesMeta(content = Phrases.scripted.in[Json].show)
 
-    Html.Fragment[Metadata](fonts, mode, script, named, prefixed, phrases, super.head)
+    Html.Fragment[Metadata](fonts, mode, script, own, named, prefixed, phrases, super.head)
 
   // The fonts' import first, as CSS requires; then graffiti's rules; then this page's own.
   protected override def styles: Css = WebStyles.fonts + super.styles + WebStyles.rules(theme)
