@@ -417,6 +417,18 @@ project f pyrocosm
         summary  a slide's code has nothing in its `code`
       variant 3 empty-slide
         summary  a slide is empty
+      variant 4 shared-id
+        summary  two states have one id, or a slide and its animation's first frame have one each
+      variant 5 unknown-cue
+        summary  the transcript cues an id which no state has
+      variant 6 uncued
+        summary  a state with an id is not cued in the transcript
+      variant 7 disordered
+        summary  the transcript cues a state twice, or out of the order the states are shown
+      variant 8 unsaid-cue
+        summary  a cue is not in what is said, as one in a heading is not
+      variant 9 no-transcript
+        summary  the transcript the presentation is given cannot be read
     error 7 section-file
       summary  A section's file, in the language it was written in or another, is not as it should be
       source src/core/fuel.SectionFile.scala
@@ -660,14 +672,16 @@ project f pyrocosm
       variant 5 unrecognized
         summary  the alignment is not one fuel can read
       variant 6 no-transcript
-        summary  a slide has no transcript
+        summary  the presentation is given no transcript, or a state after the first has no id
         source src/client/fuel.ForcedAlignment.scala
       variant 7 different
         summary  the transcript and the alignment differ in too many words
         source src/client/fuel.ForcedAlignment.scala
       variant 8 unplaced
-        summary  the alignment has none of the words of a slide's transcript
+        summary  the alignment has none of the words of a state's cue
         source src/client/fuel.ForcedAlignment.scala
+      variant 9 no-model
+        summary  there is no model to align a recording in the language it is said to be in
     error 2 translating retired
       summary  Retired in Fuel 0.9.0, which has no `fuel translate`: `fuel translate` cannot do what it is asked
       variant 1 stray
