@@ -172,6 +172,8 @@
     }
 
     function spanFor(id) {
+      // A node kept from a slide whose mark was on part of it is whole again.
+      if (nodes[id] && nodes[id].firstElementChild) nodes[id].textContent = atoms[id].text;
       if (nodes[id]) return nodes[id];
       var atom = atoms[id];
       var span = document.createElement("span");
@@ -236,19 +238,32 @@
     });
     var timed = times.some(function (at) { return at !== null; });
 
+    // A diagnostic without a width, an error or a caution at a position: it is shown as a mark
+    // on the one character at its position, where any other caret is a pointer beneath its line.
+    function pointed(note) {
+      return note.last === null && note.start === note.end && (note.style === "erroneous" || note.style === "caution");
+    }
+
     // A frame's notes laid over its atoms: the note, if any, covering some part of each atom
-    // of each line, keyed by atom id — an atom is marked whole, never split.
+    // of each line, keyed by atom id, with the part of the atom's text it covers — the whole
+    // of it, or the columns `from` to `to`.
     function coverage(index) {
       var result = {};
       var notes = (data.slides[index] && data.slides[index].notes) || [];
       linesOf(index).forEach(function (ids, line) {
+        var length = 0;
+        ids.forEach(function (id) { length += atoms[id].text.length; });
         var offset = 0;
         ids.forEach(function (id) {
-          var end = offset + atoms[id].text.length;
+          var size = atoms[id].text.length, end = offset + size;
           notes.forEach(function (note) {
             if (result[id]) return;
-            var range = rangeOf(note, line, end);
-            if (range && range[0] < range[1] && range[0] < end && range[1] > offset) result[id] = note;
+            var range = rangeOf(note, line, length);
+            if (range && pointed(note) && length > 0) { var at = Math.min(range[0], length - 1); range = [at, at + 1]; }
+            if (range && range[0] < range[1] && range[0] < end && range[1] > offset) {
+              var from = Math.max(range[0], offset) - offset, to = Math.min(range[1], end) - offset;
+              result[id] = { style: note.style, from: from, to: to, whole: from <= 0 && to >= size };
+            }
           });
           offset = end;
         });
@@ -291,14 +306,14 @@
       notes.forEach(function (note) {
         var last = note.last === null ? note.line : note.last;
         var caret = note.last === null && note.start === note.end;
-        if (last !== line || !(caret || note.caption)) return;
+        if (last !== line || !((caret && !pointed(note)) || note.caption)) return;
         var range = rangeOf(note, line, length) || [0, 0];
         var pad = caret ? Math.max(range[0] - 1, 0) : range[0];
         var mark = caret ? "╱╲" : "‾".repeat(Math.max(range[1] - range[0], 1));
         var caption = document.createElement("span");
         if (note.caption) caption.innerHTML = note.caption;
         if (note.style === "erroneous" || note.style === "caution") {
-          if (caret) row(note, " ".repeat(pad)).appendChild(marks("╱╲"));
+          // A diagnostic's place is marked on its line, so it has its caption alone beneath.
           if (note.caption) {
             caption.className = "pyro-marker-caption";
             row(note, indent).appendChild(caption);
@@ -319,9 +334,23 @@
     // the marker rows shown, the block's language class its own.
     function dress(index) {
       var covered = coverage(index);
+      var parts = [];
       Object.keys(covered).forEach(function (id) {
-        nodes[id].classList.add("pyro-marked", "pyro-marked-" + covered[id].style);
+        var cover = covered[id];
+        if (cover.whole) { nodes[id].classList.add("pyro-marked", "pyro-marked-" + cover.style); return; }
+        // A mark on part of an atom is a span within it, made unmarked and marked once it is
+        // laid out, so that it fades in as a marked atom does.
+        var text = atoms[id].text;
+        var part = document.createElement("span");
+        part.className = "pyro-mark";
+        part.textContent = text.slice(cover.from, cover.to);
+        nodes[id].replaceChildren(document.createTextNode(text.slice(0, cover.from)), part, document.createTextNode(text.slice(cover.to)));
+        parts.push([part, cover.style]);
       });
+      if (parts.length) {
+        void pre.offsetHeight;
+        parts.forEach(function (entry) { entry[0].classList.add("pyro-marked", "pyro-marked-" + entry[1]); });
+      }
       // A frame with a focus mark fades everything but what is marked.
       var focusing = Object.keys(covered).some(function (id) { return covered[id].style === "focus"; });
       pre.classList.toggle("pyro-focusing", focusing);

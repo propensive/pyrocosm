@@ -119,3 +119,39 @@ object CodeThemeTests extends Suite(m"Pyrocosm code theme tests"):
       bare.block(code, 80).map(_.plain)
 
     . assert(_ == List(t"12│ val x = 1", t"  │     ‾ unused"))
+
+    // A diagnostic's mark on the web: the character at its position, or the part of a token.
+    test(m"an error without a width marks the character at its position, and has no pointer"):
+      val note = Block.Note(0, 3, 3, Block.Note.Style.Erroneous, Inline.text(t"here"))
+      val line: Block.Line = Block.Line(List(Token.plain(t"abcd")))
+      val html0: Text = HtmlRenderer().block(Block.Code(Language.Plain, List(line), List(note))).show
+
+      ( html0.contains(t"╱╲"),
+        html0.contains(t"""<span class="pyro-marker-caption">here</span>"""),
+        html0.cut(t"pyro-note-erroneous").size - 1,
+        html0.contains(t""">d</span></span>""") )
+
+    . assert(_ == (false, true, 1, true))
+
+    test(m"an error at the end of a line marks its last character"):
+      val note = Block.Note(0, 4, 4, Block.Note.Style.Erroneous, Inline.text(t"here"))
+      val line: Block.Line = Block.Line(List(Token.plain(t"abcd")))
+      val html0: Text = HtmlRenderer().block(Block.Code(Language.Plain, List(line), List(note))).show
+      (html0.contains(t"╱╲"), html0.contains(t""">d</span></span>"""))
+
+    . assert(_ == (false, true))
+
+    test(m"a mark on part of an animated block's token is a span within the token"):
+      val frames: List[List[Block.Line]] =
+        List(List(Block.Line(List(Token.plain(t"abcdef")))), List(Block.Line(List(Token.plain(t"abc")))))
+
+      val note = Block.Note(0, 2, 4, Block.Note.Style.Erroneous, Inline.text(t"here"))
+      val detail: Block.Slide.Detail = Block.Slide.Detail(notes = List(note))
+      val animation: Block.Animation = Block.Animation.of(frames, List(detail))
+      val code: Block = Block.Code(Language.Plain, frames.head.or(Nil), Nil, Unset, animation)
+      val html0: Text = HtmlRenderer().block(code).show
+
+      ( html0.contains(t""">ab<span class="pyro-mark pyro-marked pyro-marked-erroneous">cd</span>ef</span>"""),
+        html0.contains(t"""pyro-atom pyro-accent-unparsed pyro-marked""") )
+
+    . assert(_ == (true, false))
