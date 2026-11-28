@@ -480,6 +480,34 @@
     // the last. A keypress varies about its time, so that the typing is fast but not even.
     var TYPE = 58, ERASE = 26, JUMP = 280, POISE = 350, REST = 450;
 
+    // How long the block takes to close over the rows of marks which go before an edit, and
+    // to open for those which come after it.
+    var SETTLE = 500;
+
+    // Whether a slide has rows beneath its lines, for its carets and captions.
+    function hasRows(index) {
+      return linesOf(index).some(function (ids, line) {
+        var text = ids.map(function (id) { return atoms[id].text; }).join("");
+        return markersOf(index, line, text.length, "").length > 0;
+      });
+    }
+
+    // A change to the block's content, made at once, with the block's height eased from what
+    // it was to what it becomes, so that what is around the block does not jump.
+    function eased(change) {
+      var before = pre.getBoundingClientRect().height;
+      change();
+      var height = pre.getBoundingClientRect().height;
+      if (Math.abs(height - before) <= 0.5) return Promise.resolve();
+      pre.style.transition = "none";
+      pre.style.height = before + "px";
+      pre.style.overflow = "hidden";
+      void pre.offsetHeight;
+      pre.style.transition = "height " + SETTLE + "ms ease-in-out";
+      pre.style.height = height + "px";
+      return after(SETTLE).then(function () { pre.style.transition = ""; pre.style.height = ""; pre.style.overflow = ""; });
+    }
+
     function classOf(atom) { return "pyro-atom pyro-accent-" + atom.accent + (atom.binding ? " pyro-binding" : ""); }
 
     // A slide as characters, each with the class of its token and the token's id; a line's end
@@ -668,8 +696,13 @@
       var MOVE = step.transition.duration ? step.transition.duration * 1000 : MOVE_DEFAULT;
       var total = 0;
       if (code.querySelector(".pyro-marked, .pyro-marker") || pre.classList.contains("pyro-focusing")) total += FADE;
-      // An edit takes as long as its typing does.
-      if (step.transition.kind === "edit") return total + typing(frame, target, step.transition.duration).total;
+      // An edit takes as long as its typing does, and as the block takes to close over the rows
+      // of marks it has and to open for those the target has.
+      if (step.transition.kind === "edit") {
+        if (code.querySelector(".pyro-marker")) total += SETTLE;
+        if (hasRows(target)) total += SETTLE;
+        return total + typing(frame, target, step.transition.duration).total;
+      }
       if (step.departing.length) total += FADE;
       var measured = measure(target);
       var before = pre.getBoundingClientRect().height;
@@ -766,11 +799,18 @@
       if (transition.kind === "edit") {
         var plan = typing(frame, target, transition.duration);
         return undress.then(function () {
+          // The rows of marks, unseen by now, go, and the block closes over them.
+          return eased(function () { rows.forEach(function (row) { row.remove(); }); });
+        }).then(function () {
           return plan.keys.length ? type(plan) : Promise.resolve();
         }).then(function () {
-          departing.forEach(function (id) { delete nodes[id]; });
-          rebuild();
-          Object.keys(present).forEach(function (id) { nodes[id].style.opacity = ""; nodes[id].style.transform = ""; });
+          // The target's tokens take the typing's place, and the block opens for its rows.
+          return eased(function () {
+            departing.forEach(function (id) { delete nodes[id]; });
+            rebuild();
+            Object.keys(present).forEach(function (id) { nodes[id].style.opacity = ""; nodes[id].style.transform = ""; });
+          });
+        }).then(function () {
           return nextFrame().then(function () { return dress(target) ? after(FADE) : Promise.resolve(); });
         }).then(settle);
       }
