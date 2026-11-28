@@ -217,6 +217,14 @@ object CodeStyles:
         css".pyro-animated .pyro-line { display: block; min-height: 1.5em }" +
         css".pyro-animated .pyro-codeblock { will-change: height }" +
         css".pyro-animation-data { display: none }" +
+        // The cursor of an edit which is typed: a block one character wide, over the character
+        // it is before, which takes no room of its own. The script makes it blink.
+        css"""
+          .pyro-typing-caret {
+            position: absolute; width: 1ch; height: 1.3em; margin-top: 0.1em;
+            background-color: var(--pyro-code-fg); opacity: 0.75; pointer-events: none
+          }
+        """ +
         // An animated block's steps, beneath it, read down in order: each slide's number in a
         // circle beside its label. The current step's circle is filled with the accent and its
         // label is at full strength; the others are muted, and lift on hover, since a click on
