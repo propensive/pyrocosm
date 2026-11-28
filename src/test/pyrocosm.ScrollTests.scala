@@ -148,3 +148,15 @@ object ScrollTests extends Suite(m"Pyrocosm scroll tests"):
       (stacked.contains(t"position: static"), stacked.contains(t"max-height: none"))
 
     . assert(_ == (true, true))
+
+    // A page of an application with a sheet of its own links it after Pyrocosm's.
+    test(m"an application's own stylesheet is linked after Pyrocosm's, and only where it has one"):
+      val interface: Interface = Interface(Inline.text(t"Talk"), Nil)
+      def page(styled: Boolean): Text =
+        PyrocosmPage(interface, HtmlRenderer(), WebTheme.default, prefix = t"/talk", styled = styled).markup.show
+
+      val own: Text = t"""href="/talk/styles.css""""
+      val first: Text = page(true).cut(own).at(Ordinal.zerary(0)).or(t"")
+      (page(true).contains(own), first.contains(t"""href="/talk/pyrocosm.css""""), page(false).contains(own))
+
+    . assert(_ == (true, true, false))
