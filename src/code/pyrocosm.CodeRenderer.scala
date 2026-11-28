@@ -252,19 +252,36 @@ trait CodeRenderer:
     rows.indexed.map: (row: Html of Phrasing, index: Ordinal) =>
       if index.n0 == count - 1 then row else Html.Fragment[Phrasing](row, t"\n")
 
-  // The notes which end on line `index` and are drawn beneath it: a caret, or a captioned note.
+  // A diagnostic without a width, an error or a caution at a position: it is shown as a mark on
+  // the one character at its position, where any other caret is a pointer beneath its line.
+  private def pointed(note: Block.Note): Boolean =
+    note.caret
+    && (note.style == Block.Note.Style.Erroneous || note.style == Block.Note.Style.Caution)
+
+  // The columns of line `index`, of `length` characters, which a note marks: its range, or,
+  // for a diagnostic without a width, the character at its position — the last, at the end
+  // of the line.
+  private def marked(note: Block.Note, index: Int, length: Int): Optional[(Int, Int)] =
+    note.range(index, length).let: (from: Int, to: Int) =>
+      if !pointed(note) || length == 0 then (from, to) else
+        val at: Int = from.min(length - 1)
+        (at, at + 1)
+
+  // The notes which end on line `index` and are drawn beneath it: a caret which is a pointer,
+  // or a captioned note.
   private def markers(notes: List[Block.Note], index: Int, length: Int): List[Block.Note] =
-    notes.filter: (note: Block.Note) => note.lastLine == index && (note.caret || !note.caption.nil)
+    notes.filter: (note: Block.Note) =>
+      note.lastLine == index && ((note.caret && !pointed(note)) || !note.caption.nil)
 
   // The space which leads a line's text, which a diagnostic's caption is set after.
   private def indentation(text: Text): Text = text.s.takeWhile(_.isWhitespace).tt
 
   // The rows beneath a line for one of its notes, spaced with the line's own columns, since a
   // `pre` keeps them; `margin` is what stands where the line's number does, so they align. A
-  // diagnostic's span is already marked by its own style, so only a caret, which has no width to
-  // style, has a mark, `╱╲` beneath its position; its caption has a row of its own, smaller, at
-  // the line's indentation wherever on the line the span is. Any other note has `╱╲` or `‾`
-  // under each marked column, then its caption, on one row.
+  // diagnostic's span is already marked by its own style, and one without a width by the mark
+  // of the character at its position, so it has no row of marks; its caption has a row of its
+  // own, smaller, at the line's indentation wherever on the line the span is. Any other note
+  // has `╱╲` or `‾` under each marked column, then its caption, on one row.
   private def marker
     ( note:   Block.Note,
       index:  Int,
@@ -281,17 +298,11 @@ trait CodeRenderer:
 
     note.style match
       case Block.Note.Style.Erroneous | Block.Note.Style.Caution =>
-        val caret: List[Html of Phrasing] =
-          if note.caret then List(Span(`class` = style)(margin, t" "*pad, marked)) else Nil
+        if note.caption.nil then Nil else
+          val text: Html of Phrasing =
+            Span(`class` = cls(t"pyro-marker-caption"))(phrase(note.caption))
 
-        val caption: List[Html of Phrasing] =
-          if note.caption.nil then Nil else
-            val text: Html of Phrasing =
-              Span(`class` = cls(t"pyro-marker-caption"))(phrase(note.caption))
-
-            List(Span(`class` = style)(margin, indent, text))
-
-        caret + caption
+          List(Span(`class` = style)(margin, indent, text))
 
       case _ =>
         val caption: Html of Phrasing =
@@ -429,24 +440,25 @@ trait CodeRenderer:
 
       val ranges: List[(Int, Int, Block.Note)] =
         notes.bind: (note: Block.Note) =>
-          note.range(index.n0, length).lay(Nil): (range: (Int, Int)) =>
+          marked(note, index.n0, length).lay(Nil): (range: (Int, Int)) =>
             List((range(0), range(1), note))
 
       var offset: Int = 0
 
+      // Each atom, with the note which covers some of it, and the part of it that note covers.
       val spans: List[Html of Phrasing] =
         atoms.map: (atom: Block.Atom) =>
+          val start: Int = offset
           val end: Int = offset + atom.text.length
 
-          val covering: Optional[Block.Note] =
-            ranges
-            . seek: (range: (Int, Int, Block.Note)) =>
-                range(0) < range(1) && range(0) < end && range(1) > offset
-
-            . let(_(2))
+          val covering: Optional[(Int, Int, Block.Note)] =
+            ranges.seek: (range: (Int, Int, Block.Note)) =>
+              range(0) < range(1) && range(0) < end && range(1) > start
 
           offset = end
-          atomSpan(atom, covering)
+
+          covering.lay(atomSpan(atom)): (from: Int, to: Int, note: Block.Note) =>
+            atomSpan(atom, note, (from.max(start) - start, to.min(end) - start))
 
       val row: Html of Phrasing = Span(`class` = cls(t"pyro-line"))(spans*)
 
@@ -458,19 +470,38 @@ trait CodeRenderer:
 
       row :: beneath
 
-  def atomSpan(atom: Block.Atom, note: Optional[Block.Note] = Unset): Html of Phrasing =
+  // An atom, and the mark of a note on it: on the whole of it, as classes of its own, or on
+  // the part of it the note covers (`part`, as columns of its text), as a span within it.
+  def atomSpan
+    ( atom: Block.Atom,
+      note: Optional[Block.Note]  = Unset,
+      part: Optional[(Int, Int)]  = Unset )
+  :   Html of Phrasing =
+
     val binding: List[Name[CssClass]] =
       if atom.role == Token.Role.Binding then List(cls(t"pyro-binding")) else Nil
 
-    val marked: List[Name[CssClass]] =
+    val marks: List[Name[CssClass]] =
       note.lay(Nil): (note: Block.Note) =>
         List(cls(t"pyro-marked"), cls(t"pyro-marked-${note.style.toString.tt.lower}"))
 
+    val length: Int = atom.text.length
+    val whole: Boolean = part.lay(true) { (from: Int, to: Int) => from <= 0 && to >= length }
+
     val classes: List[Name[CssClass]] =
-      cls(t"pyro-atom") :: accentClass(atom.accent) :: (binding + marked)
+      cls(t"pyro-atom") :: accentClass(atom.accent) :: (binding + (if whole then marks else Nil))
 
     note.lay(Span(`class` = classes, `data-atom` = atom.id)(atom.text)): (note: Block.Note) =>
-      Span(`class` = classes, `data-atom` = atom.id, title = Inline.plain(note.caption))(atom.text)
+      val title: Text = Inline.plain(note.caption)
+
+      if whole then Span(`class` = classes, `data-atom` = atom.id, title = title)(atom.text)
+      else
+        val (from, to) = part.or((0, length))
+        def piece(start: Int, end: Int): Text = atom.text.s.substring(start, end).nn.tt
+        val inner: Html of Phrasing = Span(`class` = cls(t"pyro-mark") :: marks)(piece(from, to))
+
+        Span(`class` = classes, `data-atom` = atom.id, title = title)
+          ( piece(0, from), inner, piece(to, length) )
 
   // The animation as compact JSON: the block's language, atoms by id, slides, placements as
   // `[slide, line, id]`, and transitions with their moves as `[id, from, to]`. A slide's
@@ -570,7 +601,7 @@ trait CodeRenderer:
 
     val ranges: List[(Int, Int, Block.Note)] =
       notes.bind: (note: Block.Note) =>
-        note.range(index, length).lay(Nil): (range: (Int, Int)) => List((range(0), range(1), note))
+        marked(note, index, length).lay(Nil): (range: (Int, Int)) => List((range(0), range(1), note))
 
     // Each token, cut at the boundaries where a segment begins or ends inside it, with a
     // running offset into the line.

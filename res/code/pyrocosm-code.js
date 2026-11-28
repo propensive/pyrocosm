@@ -133,7 +133,8 @@
   // atom, and animates each atom from where it was to where it is (FLIP): a measured move,
   // so an inserted line, a reflowed line or a move across lines all follow; an arriving atom
   // fades in, a departing one leaves as a ghost over its old place. A fade lets the whole
-  // slide go before the next appears; an edit is not yet played, and is shown as a morph. The
+  // slide go before the next appears; an edit types the change, a keypress at a time, behind a
+  // cursor, and the slide's own tokens take its place once the typing is done. The
   // slide's annotations fade out before the step and the target's fade in after it, in its
   // language. Beneath the block, its steps: each slide's number and label, the current one
   // marked; a click on another animates the block straight to it. The result is the block's
@@ -171,6 +172,8 @@
     }
 
     function spanFor(id) {
+      // A node kept from a slide whose mark was on part of it is whole again.
+      if (nodes[id] && nodes[id].firstElementChild) nodes[id].textContent = atoms[id].text;
       if (nodes[id]) return nodes[id];
       var atom = atoms[id];
       var span = document.createElement("span");
@@ -235,19 +238,32 @@
     });
     var timed = times.some(function (at) { return at !== null; });
 
+    // A diagnostic without a width, an error or a caution at a position: it is shown as a mark
+    // on the one character at its position, where any other caret is a pointer beneath its line.
+    function pointed(note) {
+      return note.last === null && note.start === note.end && (note.style === "erroneous" || note.style === "caution");
+    }
+
     // A frame's notes laid over its atoms: the note, if any, covering some part of each atom
-    // of each line, keyed by atom id — an atom is marked whole, never split.
+    // of each line, keyed by atom id, with the part of the atom's text it covers — the whole
+    // of it, or the columns `from` to `to`.
     function coverage(index) {
       var result = {};
       var notes = (data.slides[index] && data.slides[index].notes) || [];
       linesOf(index).forEach(function (ids, line) {
+        var length = 0;
+        ids.forEach(function (id) { length += atoms[id].text.length; });
         var offset = 0;
         ids.forEach(function (id) {
-          var end = offset + atoms[id].text.length;
+          var size = atoms[id].text.length, end = offset + size;
           notes.forEach(function (note) {
             if (result[id]) return;
-            var range = rangeOf(note, line, end);
-            if (range && range[0] < range[1] && range[0] < end && range[1] > offset) result[id] = note;
+            var range = rangeOf(note, line, length);
+            if (range && pointed(note) && length > 0) { var at = Math.min(range[0], length - 1); range = [at, at + 1]; }
+            if (range && range[0] < range[1] && range[0] < end && range[1] > offset) {
+              var from = Math.max(range[0], offset) - offset, to = Math.min(range[1], end) - offset;
+              result[id] = { style: note.style, from: from, to: to, whole: from <= 0 && to >= size };
+            }
           });
           offset = end;
         });
@@ -290,14 +306,14 @@
       notes.forEach(function (note) {
         var last = note.last === null ? note.line : note.last;
         var caret = note.last === null && note.start === note.end;
-        if (last !== line || !(caret || note.caption)) return;
+        if (last !== line || !((caret && !pointed(note)) || note.caption)) return;
         var range = rangeOf(note, line, length) || [0, 0];
         var pad = caret ? Math.max(range[0] - 1, 0) : range[0];
         var mark = caret ? "╱╲" : "‾".repeat(Math.max(range[1] - range[0], 1));
         var caption = document.createElement("span");
         if (note.caption) caption.innerHTML = note.caption;
         if (note.style === "erroneous" || note.style === "caution") {
-          if (caret) row(note, " ".repeat(pad)).appendChild(marks("╱╲"));
+          // A diagnostic's place is marked on its line, so it has its caption alone beneath.
           if (note.caption) {
             caption.className = "pyro-marker-caption";
             row(note, indent).appendChild(caption);
@@ -318,9 +334,23 @@
     // the marker rows shown, the block's language class its own.
     function dress(index) {
       var covered = coverage(index);
+      var parts = [];
       Object.keys(covered).forEach(function (id) {
-        nodes[id].classList.add("pyro-marked", "pyro-marked-" + covered[id].style);
+        var cover = covered[id];
+        if (cover.whole) { nodes[id].classList.add("pyro-marked", "pyro-marked-" + cover.style); return; }
+        // A mark on part of an atom is a span within it, made unmarked and marked once it is
+        // laid out, so that it fades in as a marked atom does.
+        var text = atoms[id].text;
+        var part = document.createElement("span");
+        part.className = "pyro-mark";
+        part.textContent = text.slice(cover.from, cover.to);
+        nodes[id].replaceChildren(document.createTextNode(text.slice(0, cover.from)), part, document.createTextNode(text.slice(cover.to)));
+        parts.push([part, cover.style]);
       });
+      if (parts.length) {
+        void pre.offsetHeight;
+        parts.forEach(function (entry) { entry[0].classList.add("pyro-marked", "pyro-marked-" + entry[1]); });
+      }
       // A frame with a focus mark fades everything but what is marked.
       var focusing = Object.keys(covered).some(function (id) { return covered[id].style === "focus"; });
       pre.classList.toggle("pyro-focusing", focusing);
@@ -443,6 +473,215 @@
       return { present: present, transition: transition, fading: fading, departing: departing, arriving: arriving };
     }
 
+    // ---- An edit: the change from one slide to another, typed. ------------------------------
+
+    // Timings of an edit, in milliseconds: a keypress which types, one which erases, the
+    // cursor's jump to another place, its poise before the first keypress, and its rest after
+    // the last. A keypress varies about its time, so that the typing is fast but not even.
+    var TYPE = 58, ERASE = 26, JUMP = 280, POISE = 350, REST = 450;
+
+    // How long the block takes to close over the rows of marks which go before an edit, and
+    // to open for those which come after it.
+    var SETTLE = 500;
+
+    // Whether a slide has rows beneath its lines, for its carets and captions.
+    function hasRows(index) {
+      return linesOf(index).some(function (ids, line) {
+        var text = ids.map(function (id) { return atoms[id].text; }).join("");
+        return markersOf(index, line, text.length, "").length > 0;
+      });
+    }
+
+    // A change to the block's content, made at once, with the block's height eased from what
+    // it was to what it becomes, so that what is around the block does not jump.
+    function eased(change) {
+      var before = pre.getBoundingClientRect().height;
+      change();
+      var height = pre.getBoundingClientRect().height;
+      if (Math.abs(height - before) <= 0.5) return Promise.resolve();
+      pre.style.transition = "none";
+      pre.style.height = before + "px";
+      pre.style.overflow = "hidden";
+      void pre.offsetHeight;
+      pre.style.transition = "height " + SETTLE + "ms ease-in-out";
+      pre.style.height = height + "px";
+      return after(SETTLE).then(function () { pre.style.transition = ""; pre.style.height = ""; pre.style.overflow = ""; });
+    }
+
+    function classOf(atom) { return "pyro-atom pyro-accent-" + atom.accent + (atom.binding ? " pyro-binding" : ""); }
+
+    // A slide as characters, each with the class of its token and the token's id; a line's end
+    // is a character too.
+    function charsOf(index) {
+      var out = [];
+      linesOf(index).forEach(function (ids, line) {
+        if (line > 0) out.push({ ch: "\n", cls: "", atom: null });
+        ids.forEach(function (id) {
+          var cls = classOf(atoms[id]);
+          Array.from(atoms[id].text).forEach(function (ch) { out.push({ ch: ch, cls: cls, atom: id }); });
+        });
+      });
+      return out;
+    }
+
+    function linesIn(chars) {
+      var lines = [[]];
+      chars.forEach(function (item) { if (item.ch === "\n") lines.push([]); else lines[lines.length - 1].push(item); });
+      return lines;
+    }
+
+    function textIn(items) { return items.map(function (item) { return item.ch; }).join(""); }
+
+    // The edits which turn the characters `a` into `b`, as an editor's user would make them,
+    // in order: each a place in `a`, a number of characters to erase there, and the
+    // characters to type. Lines which are in both stay; a line which changes keeps what it
+    // begins and ends with, and has what is between replaced; a line which goes is erased
+    // with its end, and one which comes is typed with its own.
+    function hunks(a, b) {
+      var la = linesIn(a), lb = linesIn(b);
+      var ta = la.map(textIn), tb = lb.map(textIn);
+      var starts = [], offset = 0;
+      la.forEach(function (line) { starts.push(offset); offset += line.length + 1; });
+      var n = la.length, m = lb.length, i, j;
+      var table = [];
+      for (i = 0; i <= n; i++) { table.push(new Array(m + 1).fill(0)); }
+      for (i = n - 1; i >= 0; i--) for (j = m - 1; j >= 0; j--)
+        table[i][j] = ta[i] === tb[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+      var result = [];
+      var newline = { ch: "\n", cls: "", atom: null };
+      function change(ai, bj) {
+        var x = la[ai], y = lb[bj], head = 0, tail = 0;
+        while (head < x.length && head < y.length && x[head].ch === y[head].ch) head++;
+        while (tail < x.length - head && tail < y.length - head && x[x.length - 1 - tail].ch === y[y.length - 1 - tail].ch) tail++;
+        result.push({ at: starts[ai] + head, remove: x.length - head - tail, insert: y.slice(head, y.length - tail) });
+      }
+      function between(a0, a1, b0, b1) {
+        var paired = Math.min(a1 - a0, b1 - b0), k;
+        for (k = 0; k < paired; k++) change(a0 + k, b0 + k);
+        for (k = a0 + paired; k < a1; k++) {
+          if (k + 1 < n) result.push({ at: starts[k], remove: la[k].length + 1, insert: [] });
+          else result.push({ at: Math.max(starts[k] - 1, 0), remove: la[k].length + (k > 0 ? 1 : 0), insert: [] });
+        }
+        for (k = b0 + paired; k < b1; k++) {
+          if (a1 < n) result.push({ at: starts[a1], remove: 0, insert: lb[k].concat([newline]) });
+          else result.push({ at: a.length, remove: 0, insert: [newline].concat(lb[k]) });
+        }
+      }
+      i = 0; j = 0;
+      var a0 = 0, b0 = 0;
+      while (i < n && j < m) {
+        if (ta[i] === tb[j]) { between(a0, i, b0, j); i++; j++; a0 = i; b0 = j; }
+        else if (table[i + 1][j] >= table[i][j + 1]) i++;
+        else j++;
+      }
+      between(a0, n, b0, m);
+      return result.filter(function (hunk) { return hunk.remove > 0 || hunk.insert.length > 0; });
+    }
+
+    // A source of numbers between 0 and 1 which is the same each time it is made from the
+    // same seed, so that an edit takes as long when it is played as when it was measured.
+    function seeded(seed) {
+      var state = seed >>> 0;
+      return function () {
+        state = (state + 0x6D2B79F5) >>> 0;
+        var t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // The typing of an edit from slide `from` to slide `to`: the characters it begins with,
+    // its keypresses — the cursor's moves, the erasures and the characters typed, each after
+    // its wait — and how long the whole takes. A character typed into a token which keeps
+    // characters of another colour is typed in theirs: the token takes its own colour, whole,
+    // when the slide's tokens take the typing's place.
+    function typing(from, to, duration) {
+      var a = charsOf(from), b = charsOf(to);
+      var edits = hunks(a, b);
+      var random = seeded(from * 7919 + to * 104729 + a.length * 31 + b.length);
+
+      // The colour of what is kept, by the token of the target it ends in.
+      var kept = {}, position = 0, at = 0;
+      edits.forEach(function (edit) {
+        for (; at < edit.at; at++, position++) if (b[position] && b[position].atom && !kept[b[position].atom]) kept[b[position].atom] = a[at].cls;
+        at += edit.remove;
+        position += edit.insert.length;
+      });
+      for (; at < a.length; at++, position++) if (b[position] && b[position].atom && !kept[b[position].atom]) kept[b[position].atom] = a[at].cls;
+
+      var keys = [], delta = 0, total = 0;
+      function key(kind, wait, value) { keys.push({ kind: kind, wait: wait, value: value }); total += wait; }
+      edits.forEach(function (edit, index) {
+        key("move", index === 0 ? 0 : JUMP / 2, edit.at + delta + edit.remove);
+        var pause = index === 0 ? POISE : JUMP / 2;
+        for (var k = 0; k < edit.remove; k++) { key("erase", pause + ERASE * (0.75 + 0.5 * random())); pause = 0; }
+        edit.insert.forEach(function (item) {
+          var wait = TYPE * (0.5 + random());
+          if (item.ch === " " || item.ch === "\n") wait += TYPE * 0.8 * random();
+          if (random() < 0.06) wait += TYPE * 2 * random();
+          var typed = { ch: item.ch, cls: (item.atom && kept[item.atom]) || item.cls, atom: item.atom };
+          key("type", pause + wait, typed);
+          pause = 0;
+        });
+        delta += edit.insert.length - edit.remove;
+      });
+      var rest = REST;
+      if (duration && total + rest > 0) {
+        var scale = duration * 1000 / (total + rest);
+        keys.forEach(function (k) { k.wait *= scale; });
+        total *= scale; rest *= scale;
+      }
+      return { start: a, keys: keys, rest: rest, total: keys.length ? total + rest : 0 };
+    }
+
+    // The characters of an edit under way, drawn as lines, the cursor before the character at
+    // `caret`: runs of one class are one span, and the cursor blinks from when it is drawn, so
+    // that it is steady while keys are pressed and blinks when they are not.
+    function drawTyping(buffer, caret) {
+      var fragment = document.createDocumentFragment();
+      var line = null, run = null;
+      function open() { line = document.createElement("span"); line.className = "pyro-line"; fragment.appendChild(line); run = null; }
+      function cursor() {
+        var element = document.createElement("span");
+        element.className = "pyro-typing-caret";
+        line.appendChild(element);
+        run = null;
+        if (element.animate)
+          element.animate([{ opacity: 0.75, offset: 0 }, { opacity: 0.75, offset: 0.5 }, { opacity: 0, offset: 0.5 }, { opacity: 0, offset: 1 }],
+                          { duration: 1000, iterations: Infinity });
+      }
+      open();
+      buffer.forEach(function (item, index) {
+        if (index === caret) cursor();
+        if (item.ch === "\n") { open(); return; }
+        if (!run || run.className !== item.cls) { run = document.createElement("span"); run.className = item.cls; line.appendChild(run); }
+        run.textContent += item.ch;
+      });
+      if (caret >= buffer.length) cursor();
+      code.replaceChildren(fragment);
+    }
+
+    // An edit's typing, played: each keypress after its wait, and the cursor's rest after the
+    // last.
+    function type(plan) {
+      var buffer = plan.start.slice(), caret = 0, index = 0;
+      return new Promise(function (resolve) {
+        function next() {
+          if (index >= plan.keys.length) { setTimeout(resolve, plan.rest); return; }
+          var key = plan.keys[index++];
+          setTimeout(function () {
+            if (key.kind === "move") caret = key.value;
+            else if (key.kind === "erase") { buffer.splice(caret - 1, 1); caret--; }
+            else { buffer.splice(caret, 0, key.value); caret++; }
+            drawTyping(buffer, caret);
+            next();
+          }, key.wait);
+        }
+        next();
+      });
+    }
+
     // How long a step to `target` takes until the target's code has fully arrived — its
     // marks' fade out, its departures' fade out, the move and its arrivals' fade in; not the
     // target's marks' fade in, which follows — found before the step starts, by laying the
@@ -457,6 +696,13 @@
       var MOVE = step.transition.duration ? step.transition.duration * 1000 : MOVE_DEFAULT;
       var total = 0;
       if (code.querySelector(".pyro-marked, .pyro-marker") || pre.classList.contains("pyro-focusing")) total += FADE;
+      // An edit takes as long as its typing does, and as the block takes to close over the rows
+      // of marks it has and to open for those the target has.
+      if (step.transition.kind === "edit") {
+        if (code.querySelector(".pyro-marker")) total += SETTLE;
+        if (hasRows(target)) total += SETTLE;
+        return total + typing(frame, target, step.transition.duration).total;
+      }
       if (step.departing.length) total += FADE;
       var measured = measure(target);
       var before = pre.getBoundingClientRect().height;
@@ -500,7 +746,7 @@
       var current = {};
       code.querySelectorAll("[data-atom]").forEach(function (span) { current[span.dataset.atom] = span; });
 
-      // What departs and arrives; an edit is played as a morph for now.
+      // What departs and arrives.
       var step = exchange(target, current);
       var present = step.present, transition = step.transition, fading = step.fading;
       var departing = step.departing, arriving = step.arriving;
@@ -545,6 +791,28 @@
         rows.forEach(function (row) { row.style.opacity = "0"; });
         pre.classList.remove("pyro-focusing");
         undress = after(FADE);
+      }
+
+      // An edit has no fades and no move: once the marks have gone, the change is typed, and
+      // the target's own tokens then take the typing's place, its marker rows unseen until
+      // its marks fade in.
+      if (transition.kind === "edit") {
+        var plan = typing(frame, target, transition.duration);
+        return undress.then(function () {
+          // The rows of marks, unseen by now, go, and the block closes over them.
+          return eased(function () { rows.forEach(function (row) { row.remove(); }); });
+        }).then(function () {
+          return plan.keys.length ? type(plan) : Promise.resolve();
+        }).then(function () {
+          // The target's tokens take the typing's place, and the block opens for its rows.
+          return eased(function () {
+            departing.forEach(function (id) { delete nodes[id]; });
+            rebuild();
+            Object.keys(present).forEach(function (id) { nodes[id].style.opacity = ""; nodes[id].style.transform = ""; });
+          });
+        }).then(function () {
+          return nextFrame().then(function () { return dress(target) ? after(FADE) : Promise.resolve(); });
+        }).then(settle);
       }
 
       // Phase 1: departures fade out.

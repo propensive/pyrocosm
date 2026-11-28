@@ -132,11 +132,11 @@ object CodeStyles:
         css".pyro-alternative.pyro-current { display: block }" +
         css"""
           .pyro-note-erroneous {
-            text-decoration: underline wavy var(--pyro-tone-failure);
+            text-decoration: underline var(--pyro-tone-failure);
             background-color: color-mix(in srgb, var(--pyro-tone-failure) 15%, transparent)
           }
         """ +
-        css".pyro-note-caution { text-decoration: underline wavy var(--pyro-tone-warning) }" +
+        css".pyro-note-caution { text-decoration: underline var(--pyro-tone-warning) }" +
         css".pyro-note-highlight { background-color: var(--pyro-selection); border-radius: 2px }" +
         css"""
           .pyro-codeblock .pyro-note-highlight {
@@ -160,11 +160,18 @@ object CodeStyles:
         css"""
           .pyro-atom {
             display: inline-block; white-space: pre; border-radius: 2px;
-            text-decoration: underline wavy transparent;
+            text-decoration: underline transparent;
             transition: opacity 0.75s ease, background-color 0.75s ease, text-decoration-color 0.75s ease
           }
         """ +
-        // A frame's marks, on whole atoms: they fade out before a step and the target's fade
+        // A mark on part of an atom is a span within it, which fades as a marked atom does.
+        css"""
+          .pyro-mark {
+            border-radius: 2px; text-decoration: underline transparent;
+            transition: background-color 0.75s ease, text-decoration-color 0.75s ease
+          }
+        """ +
+        // A frame's marks, on its atoms or on the parts of them its notes cover: they fade out before a step and the target's fade
         // in after it, by the same transition; a marker row beneath a line is a block, as the
         // lines are, and fades likewise.
         css"""
@@ -217,6 +224,14 @@ object CodeStyles:
         css".pyro-animated .pyro-line { display: block; min-height: 1.5em }" +
         css".pyro-animated .pyro-codeblock { will-change: height }" +
         css".pyro-animation-data { display: none }" +
+        // The cursor of an edit which is typed: a block one character wide, over the character
+        // it is before, which takes no room of its own. The script makes it blink.
+        css"""
+          .pyro-typing-caret {
+            position: absolute; width: 1ch; height: 1.3em; margin-top: 0.1em;
+            background-color: var(--pyro-code-fg); opacity: 0.75; pointer-events: none
+          }
+        """ +
         // An animated block's steps, beneath it, read down in order: each slide's number in a
         // circle beside its label. The current step's circle is filled with the accent and its
         // label is at full strength; the others are muted, and lift on hover, since a click on
@@ -273,7 +288,14 @@ object CodeStyles:
           }
         """ +
         css".pyro-marker { white-space: pre-wrap } .pyro-marker .pyro-marks { letter-spacing: 0 }" +
-        css".pyro-marker-caption { font-size: 0.75em }" +
+        // A caption is smaller than the code, and a box of its own, so that the lines of one
+        // which wraps are as far apart as its own size asks, not as the code's does.
+        css"""
+          .pyro-marker-caption {
+            font-size: 0.75em; display: inline-block; vertical-align: top; line-height: 1.4;
+            padding-top: 0.3em; white-space: pre-wrap
+          }
+        """ +
         css"""
           .pyro-marker-erroneous { color: var(--pyro-code-accent-error) }
           .pyro-marker-caution { color: var(--pyro-tone-warning) }
