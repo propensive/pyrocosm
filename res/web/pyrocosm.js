@@ -1119,12 +1119,25 @@
 
   function after(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
 
+  // A video played from its start: muted, so that a browser lets it play by itself.
+  function replay(video) {
+    video.muted = true;
+    try { video.currentTime = 0; } catch (error) {}
+    var played = video.play();
+    if (played && played.catch) played.catch(function () {});
+  }
+
   function wireDeck(deck) {
     var leaves = Array.prototype.slice.call(deck.querySelectorAll(":scope > .pyro-leaf"));
     var counter = deck.querySelector(":scope > .pyro-deck-controls .pyro-deck-counter");
     var index = 0;
     var changing = false;
     var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // A slide's videos are played from their start when it is shown, and stopped as it goes.
+    function videos(leaf) {
+      return Array.prototype.slice.call(leaf.querySelectorAll(".pyro-video video"));
+    }
 
     function players(leaf) {
       return Array.prototype.slice.call(leaf.querySelectorAll(".pyro-animated"))
@@ -1146,6 +1159,8 @@
       function enter() {
         from.classList.remove("pyro-current", "pyro-leaving");
         to.classList.add("pyro-current");
+        videos(from).forEach(function (video) { video.pause(); });
+        videos(to).forEach(replay);
         players(to).forEach(function (player) {
           player.stop();
           player.show(backward ? player.data.slides.length - 1 : 0, false);
@@ -1272,6 +1287,14 @@
     });
 
     codeBlocks.wireAnimated(root);
+
+    // A video is played when it first appears, unless it is on a slide which is not shown.
+    root.querySelectorAll(".pyro-video video").forEach(function (video) {
+      if (video.dataset.pyroWired) return;
+      video.dataset.pyroWired = "1";
+      var leaf = video.closest(".pyro-leaf");
+      if (!leaf || leaf.classList.contains("pyro-current")) replay(video);
+    });
 
     root.querySelectorAll("a[data-local='true']").forEach(function (link) {
       if (link.dataset.pyroWired) return;

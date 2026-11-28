@@ -429,6 +429,12 @@ extends CodeRenderer:
     case Block.Image(source, alt) =>
       Figure(`class` = cls(t"pyro-image"))(Img(src = source, alt = alt), Figcaption(alt))
 
+    // A video is muted, as one which plays by itself must be, and the script plays it: from
+    // its start when its slide is shown, or when it is first on the page.
+    case Block.Video(source, alt) =>
+      Figure(`class` = cls(t"pyro-video")):
+        Video(src = source, muted = true, playsinline = true, preload = t"auto", `aria-label` = alt)
+
     // A figure's drawing, its ids qualified by the figure's so several drawings share a page,
     // is read as foreign (SVG) content into a holder, `<figure id>-svg`, which a redraw replaces
     // whole and a part revision patches inside. Markup that does not parse shows its description.
